@@ -19,3 +19,17 @@ jobs:
       - run: flutter pub get
       - run: flutter analyze
       - run: flutter test
+
+  windows-build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - name: Generate Windows runner
+        shell: pwsh
+        run: |
+          if (-not (Test-Path ".\windows")) { flutter create --platforms=windows . }
+      - run: flutter pub get
+      - run: flutter build windows --debug
