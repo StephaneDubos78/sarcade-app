@@ -28,3 +28,10 @@ Development launch:
 ```powershell
 .\tool\run-windows-demo.ps1 -EventId "<EVENT_ID>"
 ```
+
+
+## Windows storage and map source
+
+Windows V0.1 keeps persistent client data under `%LOCALAPPDATA%\\SARCADE\\data`, outside OneDrive/Documents. A process lock under `%LOCALAPPDATA%\\SARCADE` prevents a second client from opening Hive concurrently.
+
+The public OpenStreetMap tile endpoint is the development default only. Production deployments must configure `SARCADE_TILE_URL` and `SARCADE_TILE_ATTRIBUTION` for an approved tile service or SARCADE-managed/offline source.
