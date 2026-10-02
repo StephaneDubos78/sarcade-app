@@ -25,9 +25,9 @@ class OperationalMapPage extends StatefulWidget {
 class _OperationalMapPageState extends State<OperationalMapPage> {
   final _map=MapController(); final _realtime=RealtimeService(); final _location=LocationService(); final _notifications=NotificationService(); final _uuid=const Uuid();
   final Map<String,SarcadePosition> _positions={}; final Map<String,SarcadePoi> _pois={};
-  StreamSubscription? _rtSub,_gpsSub; String _status='Connexion…'; bool _tracking=false; bool _showPanel=true; String? _selectedDevice; List<SarcadePosition> _trace=[]; bool _traceLoading=false; late final OfflineSyncService _sync;
+  StreamSubscription? _rtSub,_gpsSub; Timer? _syncUiTimer; String _status='Connexion…'; bool _tracking=false; bool _showPanel=true; String? _selectedDevice; List<SarcadePosition> _trace=[]; bool _traceLoading=false; late final OfflineSyncService _sync;
 
-  @override void initState(){super.initState();_notifications.initialize();_sync=OfflineSyncService(api:widget.api,store:widget.store,eventId:widget.eventId);_loadLocal();_sync.start();_start();}
+  @override void initState(){super.initState();_notifications.initialize();_sync=OfflineSyncService(api:widget.api,store:widget.store,eventId:widget.eventId);_loadLocal();_sync.start();_syncUiTimer=Timer.periodic(const Duration(seconds:2),(_){if(mounted)setState((){});});_start();}
   bool _validPosition(SarcadePosition p){
     final t=p.time.toUtc(), now=DateTime.now().toUtc();
     return t.isAfter(DateTime.utc(2020)) && t.isBefore(now.add(const Duration(days:1)));
@@ -103,7 +103,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     return segments;
   }
 
-  @override void dispose(){_rtSub?.cancel();_gpsSub?.cancel();_sync.dispose();_realtime.dispose();widget.api.close();super.dispose();}
+  @override void dispose(){_rtSub?.cancel();_gpsSub?.cancel();_syncUiTimer?.cancel();_sync.dispose();_realtime.dispose();widget.api.close();super.dispose();}
 
   @override Widget build(BuildContext context){
     final sorted=_positions.values.toList()..sort((a,b)=>a.deviceId.compareTo(b.deviceId));
