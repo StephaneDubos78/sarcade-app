@@ -25,7 +25,7 @@ class OperationalMapPage extends StatefulWidget {
 class _OperationalMapPageState extends State<OperationalMapPage> {
   final _map=MapController(); final _realtime=RealtimeService(); final _location=LocationService(); final _notifications=NotificationService(); final _uuid=const Uuid();
   final Map<String,SarcadePosition> _positions={}; final Map<String,SarcadePoi> _pois={};
-  StreamSubscription? _rtSub,_gpsSub; String _status='Connexion…'; bool _tracking=false; late final OfflineSyncService _sync;
+  StreamSubscription? _rtSub,_gpsSub; String _status='Connexion…'; bool _tracking=false; bool _showPanel=true; String? _selectedDevice; late final OfflineSyncService _sync;
 
   @override void initState(){super.initState();_notifications.initialize();_sync=OfflineSyncService(api:widget.api,store:widget.store,eventId:widget.eventId);_loadLocal();_sync.start();_start();}
   void _loadLocal(){for(final j in widget.store.positions()){final p=SarcadePosition.fromJson(j);_positions[p.deviceId]=p;}for(final j in widget.store.pois()){final p=SarcadePoi.fromJson(j);_pois[p.id]=p;}}
@@ -36,7 +36,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       for(final p in data[1] as List<SarcadePoi>){_pois[p.id]=p;}
       _realtime.connect(widget.api.websocketUri(widget.eventId));
       _rtSub=_realtime.events.listen(_onRealtime,onError:(_){if(mounted)setState(()=>_status='Temps réel indisponible');});
-      if(mounted)setState(()=>_status='Connecté');
+      if(mounted){setState(()=>_status='Connecté');WidgetsBinding.instance.addPostFrameCallback((_)=>_fitOperators());}
     } catch(e){if(mounted)setState(()=>_status='Hors connexion');}
   }
   void _onRealtime(RealtimeEvent e){
@@ -73,28 +73,40 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     });
     setState(()=>_tracking=true);
   }
+  void _fitOperators(){
+    if(_positions.isEmpty)return;
+    final pts=_positions.values.map((p)=>LatLng(p.lat,p.lon)).toList();
+    if(pts.length==1){_map.move(pts.first,15);return;}
+    var minLat=pts.first.latitude,maxLat=pts.first.latitude,minLon=pts.first.longitude,maxLon=pts.first.longitude;
+    for(final p in pts){if(p.latitude<minLat)minLat=p.latitude;if(p.latitude>maxLat)maxLat=p.latitude;if(p.longitude<minLon)minLon=p.longitude;if(p.longitude>maxLon)maxLon=p.longitude;}
+    _map.fitCamera(CameraFit.bounds(bounds:LatLngBounds(LatLng(minLat,minLon),LatLng(maxLat,maxLon)),padding:const EdgeInsets.all(90),maxZoom:16));
+  }
+  void _select(SarcadePosition p){setState(()=>_selectedDevice=p.deviceId);_map.move(LatLng(p.lat,p.lon),16);}
+  String _age(DateTime t){final d=DateTime.now().toUtc().difference(t.toUtc());if(d.inSeconds<60)return '${d.inSeconds}s';if(d.inMinutes<60)return '${d.inMinutes} min';return '${d.inHours} h';}
+
   @override void dispose(){_rtSub?.cancel();_gpsSub?.cancel();_sync.dispose();_realtime.dispose();widget.api.close();super.dispose();}
 
   @override Widget build(BuildContext context){
+    final sorted=_positions.values.toList()..sort((a,b)=>a.deviceId.compareTo(b.deviceId));
     final markers=<Marker>[
-      ..._positions.values.map((p)=>Marker(point:LatLng(p.lat,p.lon),width:44,height:44,child:Tooltip(message:p.deviceId,child:Icon(Icons.person_pin_circle,size:40,color:p.deviceId==widget.deviceId?Colors.orange:Colors.blue)))),
+      ...sorted.map((p)=>Marker(point:LatLng(p.lat,p.lon),width:130,height:62,alignment:Alignment.topCenter,child:GestureDetector(onTap:()=>_select(p),child:Column(mainAxisSize:MainAxisSize.min,children:[Icon(Icons.person_pin_circle,size:38,color:p.deviceId==widget.deviceId?Colors.orange:(_selectedDevice==p.deviceId?Colors.deepPurple:Colors.blue)),Container(padding:const EdgeInsets.symmetric(horizontal:6,vertical:2),decoration:BoxDecoration(color:Colors.white,borderRadius:BorderRadius.circular(5),boxShadow:const [BoxShadow(blurRadius:2)]),child:Text(p.deviceId,style:const TextStyle(fontSize:11,fontWeight:FontWeight.w600)))])))),
       ..._pois.values.map((p)=>Marker(point:LatLng(p.lat,p.lon),width:40,height:40,child:Tooltip(message:p.label??p.kind,child:const Icon(Icons.location_on,size:38,color:Colors.red)))),
     ];
+    final selected=_selectedDevice==null?null:_positions[_selectedDevice];
     return Scaffold(
-      appBar:AppBar(title:const Text('SARCADE'),actions:[IconButton(tooltip:'Messages',onPressed:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>MessagesPage(eventId:widget.eventId,actorId:widget.deviceId,sync:_sync,store:widget.store))),icon:Badge(label:Text('${widget.store.pendingCount()}'),child:const Icon(Icons.message))),IconButton(tooltip:'Main courante',onPressed:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>LogbookPage(api:widget.api,eventId:widget.eventId))),icon:const Icon(Icons.receipt_long)),Padding(padding:const EdgeInsets.symmetric(horizontal:12),child:Center(child:Text(_status)))]),
-      body:FlutterMap(
-        mapController:_map,
-        options:const MapOptions(initialCenter:LatLng(48.8566,2.3522),initialZoom:11,maxZoom:20),
-        children:[
-          TileLayer(
-            urlTemplate:'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-            userAgentPackageName:'org.sarcade.app',
-            maxZoom:19,
-          ),
+      appBar:AppBar(title:const Text('SARCADE'),actions:[IconButton(tooltip:'Cadrer les opérateurs',onPressed:_fitOperators,icon:const Icon(Icons.center_focus_strong)),IconButton(tooltip:'Opérateurs',onPressed:()=>setState(()=>_showPanel=!_showPanel),icon:const Icon(Icons.groups)),IconButton(tooltip:'Messages',onPressed:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>MessagesPage(eventId:widget.eventId,actorId:widget.deviceId,sync:_sync,store:widget.store))),icon:Badge(label:Text('${widget.store.pendingCount()}'),child:const Icon(Icons.message))),IconButton(tooltip:'Main courante',onPressed:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>LogbookPage(api:widget.api,eventId:widget.eventId))),icon:const Icon(Icons.receipt_long)),Padding(padding:const EdgeInsets.symmetric(horizontal:12),child:Center(child:Text(_status)))]),
+      body:Row(children:[
+        if(_showPanel)SizedBox(width:285,child:Material(elevation:3,child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+          Padding(padding:const EdgeInsets.all(14),child:Text('Opérateurs (${sorted.length})',style:Theme.of(context).textTheme.titleMedium)),
+          Expanded(child:ListView(children:sorted.map((p)=>ListTile(selected:_selectedDevice==p.deviceId,leading:Icon(Icons.circle,size:13,color:DateTime.now().toUtc().difference(p.time.toUtc()).inMinutes<5?Colors.green:Colors.grey),title:Text(p.deviceId),subtitle:Text('Dernière position : ${_age(p.time)}'),onTap:()=>_select(p))).toList())),
+          if(selected!=null)Container(padding:const EdgeInsets.all(14),decoration:BoxDecoration(border:Border(top:BorderSide(color:Theme.of(context).dividerColor))),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text(selected.deviceId,style:const TextStyle(fontWeight:FontWeight.bold)),const SizedBox(height:6),Text('Lat : ${selected.lat.toStringAsFixed(6)}'),Text('Lon : ${selected.lon.toStringAsFixed(6)}'),Text('Précision : ${selected.accuracyM?.toStringAsFixed(1)??'-'} m'),Text('Heure : ${selected.time.toLocal()}')]))
+        ]))),
+        Expanded(child:FlutterMap(mapController:_map,options:const MapOptions(initialCenter:LatLng(48.8566,2.3522),initialZoom:11,maxZoom:20),children:[
+          TileLayer(urlTemplate:'https://tile.openstreetmap.org/{z}/{x}/{y}.png',userAgentPackageName:'org.sarcade.app',maxZoom:19),
           MarkerLayer(markers:markers),
           const RichAttributionWidget(attributions:[TextSourceAttribution('© OpenStreetMap contributors')]),
-        ],
-      ),
+        ]))
+      ]),
       floatingActionButton:FloatingActionButton.extended(onPressed:_toggleTracking,icon:Icon(_tracking?Icons.location_off:Icons.my_location),label:Text(_tracking?'Arrêter GPS':'Partager position')),
     );
   }
