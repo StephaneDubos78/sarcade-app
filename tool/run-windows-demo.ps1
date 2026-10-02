@@ -1,7 +1,9 @@
 param(
   [string]$ServerUrl = "http://localhost:8000",
   [Parameter(Mandatory=$true)][string]$EventId,
-  [string]$DeviceId = "pco-windows"
+  [string]$DeviceId = "pco-windows",
+  [string]$TileUrl = "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+  [string]$TileAttribution = "© OpenStreetMap contributors"
 )
 
 $ErrorActionPreference="Stop"
@@ -33,4 +35,4 @@ if(-not (Test-Path ".\windows")){
 flutter pub get
 
 Write-Host "Launching event $EventId..."
-flutter run -d windows --dart-define=SARCADE_SERVER_URL=$ServerUrl --dart-define=SARCADE_EVENT_ID=$EventId --dart-define=SARCADE_DEVICE_ID=$DeviceId
+flutter run -d windows --dart-define=SARCADE_SERVER_URL=$ServerUrl --dart-define=SARCADE_EVENT_ID=$EventId --dart-define=SARCADE_DEVICE_ID=$DeviceId --dart-define=SARCADE_TILE_URL=$TileUrl --dart-define=SARCADE_TILE_ATTRIBUTION=$TileAttribution
