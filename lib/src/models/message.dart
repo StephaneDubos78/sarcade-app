@@ -7,5 +7,11 @@ class SarcadeMessage {
 class SarcadeAck {
  final String id,eventId,messageId,actorId,status; final DateTime time;
  const SarcadeAck({required this.id,required this.eventId,required this.messageId,required this.actorId,required this.status,required this.time});
+ factory SarcadeAck.fromJson(Map<String,dynamic> j)=>SarcadeAck(id:j['id'],eventId:j['event_id'],messageId:j['message_id'],actorId:j['actor_id'],status:j['status'],time:DateTime.parse(j['time']));
  Map<String,dynamic> toJson()=>{'id':id,'event_id':eventId,'message_id':messageId,'actor_id':actorId,'status':status,'time':time.toUtc().toIso8601String()};
+}
+class LogbookEntry {
+ final int seq; final String kind,summary; final String? objectId,actorId; final DateTime time;
+ const LogbookEntry({required this.seq,required this.kind,required this.summary,required this.time,this.objectId,this.actorId});
+ factory LogbookEntry.fromJson(Map<String,dynamic> j)=>LogbookEntry(seq:j['seq'],kind:j['kind'],objectId:j['object_id'],actorId:j['actor_id'],summary:j['summary'],time:DateTime.parse(j['time']));
 }
