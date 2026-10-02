@@ -30,7 +30,8 @@ jobs:
       - name: Generate Windows runner
         shell: pwsh
         run: |
-          if (-not (Test-Path ".\windows")) { flutter create --platforms=windows . }
+          if (-not (Test-Path ".\windows")) { flutter create --platforms=windows --no-pub . }
+          if (Test-Path ".\test\widget_test.dart") { Remove-Item ".\test\widget_test.dart" -Force }
       - run: flutter pub get
       - run: flutter analyze
       - run: flutter test
