@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'src/app.dart';
 import 'src/offline/local_store.dart';
 
+// Keep the file handle alive for the process lifetime so the exclusive lock remains held.
 RandomAccessFile? _instanceLock;
 
 Future<bool> _acquireSingleInstance() async {
@@ -31,5 +32,6 @@ Future<void> main() async {
   }
   final store=LocalStore();
   await store.init();
+  assert(_instanceLock != null || !Platform.isWindows);
   runApp(SarcadeApp(store:store));
 }
