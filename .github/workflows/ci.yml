@@ -32,4 +32,6 @@ jobs:
         run: |
           if (-not (Test-Path ".\windows")) { flutter create --platforms=windows . }
       - run: flutter pub get
-      - run: flutter build windows --debug
+      - run: flutter analyze
+      - run: flutter test
+      - run: flutter build windows --release
