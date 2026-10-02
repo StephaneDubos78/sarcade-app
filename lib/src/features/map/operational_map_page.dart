@@ -17,8 +17,8 @@ import '../../offline/local_store.dart';
 import '../../offline/sync_service.dart';
 
 class OperationalMapPage extends StatefulWidget {
-  final SarcadeApi api; final String eventId, deviceId; final LocalStore store;
-  const OperationalMapPage({super.key,required this.api,required this.eventId,required this.deviceId,required this.store});
+  final SarcadeApi api; final String eventId,deviceId,tileUrl,tileAttribution; final LocalStore store;
+  const OperationalMapPage({super.key,required this.api,required this.eventId,required this.deviceId,required this.store,required this.tileUrl,required this.tileAttribution});
   @override State<OperationalMapPage> createState()=>_OperationalMapPageState();
 }
 
@@ -121,10 +121,10 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           if(selected!=null)Container(padding:const EdgeInsets.all(14),decoration:BoxDecoration(border:Border(top:BorderSide(color:Theme.of(context).dividerColor))),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text(selected.deviceId,style:const TextStyle(fontWeight:FontWeight.bold)),const SizedBox(height:6),Text('Lat : ${selected.lat.toStringAsFixed(6)}'),Text('Lon : ${selected.lon.toStringAsFixed(6)}'),Text('Précision : ${selected.accuracyM?.toStringAsFixed(1)??'-'} m'),Text('Heure : ${selected.time.toLocal()}'),Text(_traceLoading?'Trace : chargement…':'Trace : ${_trace.length} points')]))
         ]))),
         Expanded(child:FlutterMap(mapController:_map,options:const MapOptions(initialCenter:LatLng(48.8566,2.3522),initialZoom:11,maxZoom:20),children:[
-          TileLayer(urlTemplate:'https://tile.openstreetmap.org/{z}/{x}/{y}.png',userAgentPackageName:'org.sarcade.app',maxZoom:19),
+          TileLayer(urlTemplate:widget.tileUrl,userAgentPackageName:'org.sarcade.app',maxZoom:19),
           if(_trace.length>1)PolylineLayer(polylines:_traceSegments().map((segment)=>Polyline(points:segment.map((p)=>LatLng(p.lat,p.lon)).toList(),strokeWidth:4,color:Colors.deepPurple)).toList()),
           MarkerLayer(markers:markers),
-          const RichAttributionWidget(attributions:[TextSourceAttribution('© OpenStreetMap contributors')]),
+          RichAttributionWidget(attributions:[TextSourceAttribution(widget.tileAttribution)]),
         ]))
       ]),
       floatingActionButton:FloatingActionButton.extended(onPressed:_toggleTracking,icon:Icon(_tracking?Icons.location_off:Icons.my_location),label:Text(_tracking?'Arrêter GPS':'Partager position')),
