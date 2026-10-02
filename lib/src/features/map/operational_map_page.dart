@@ -28,7 +28,11 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   StreamSubscription? _rtSub,_gpsSub; String _status='Connexion…'; bool _tracking=false; bool _showPanel=true; String? _selectedDevice; List<SarcadePosition> _trace=[]; bool _traceLoading=false; late final OfflineSyncService _sync;
 
   @override void initState(){super.initState();_notifications.initialize();_sync=OfflineSyncService(api:widget.api,store:widget.store,eventId:widget.eventId);_loadLocal();_sync.start();_start();}
-  void _loadLocal(){for(final j in widget.store.positions()){final p=SarcadePosition.fromJson(j);_positions[p.deviceId]=p;}for(final j in widget.store.pois()){final p=SarcadePoi.fromJson(j);_pois[p.id]=p;}}
+  bool _validPosition(SarcadePosition p){
+    final t=p.time.toUtc(), now=DateTime.now().toUtc();
+    return t.isAfter(DateTime.utc(2020)) && t.isBefore(now.add(const Duration(days:1)));
+  }
+  void _loadLocal(){for(final j in widget.store.positions()){final p=SarcadePosition.fromJson(j);if(p.eventId==widget.eventId&&_validPosition(p))_positions[p.deviceId]=p;}for(final j in widget.store.pois()){final p=SarcadePoi.fromJson(j);if(p.eventId==widget.eventId)_pois[p.id]=p;}}
   Future<void> _start() async {
     try {
       final data=await Future.wait([widget.api.latestPositions(widget.eventId),widget.api.pois(widget.eventId)]);
@@ -40,7 +44,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     } catch(e){if(mounted)setState(()=>_status='Hors connexion');}
   }
   void _onRealtime(RealtimeEvent e){
-    if(e.type=='position.updated'){final p=SarcadePosition.fromJson(e.data);widget.store.cachePosition(p.toJson());setState(()=>_positions[p.deviceId]=p);}
+    if(e.type=='position.updated'){final p=SarcadePosition.fromJson(e.data);if(_validPosition(p)){widget.store.cachePosition(p.toJson());if(mounted)setState((){_positions[p.deviceId]=p;if(_selectedDevice==p.deviceId)_trace.add(p);});}}
     if(e.type=='poi.created'){final p=SarcadePoi.fromJson(e.data);widget.store.cachePoi(e.data);setState(()=>_pois[p.id]=p);}
     if(e.type=='message.created'){_receiveMessage(e.data);}
     if(e.type=='ack.created'){widget.store.cacheAck(e.data);if(mounted)setState((){});}
