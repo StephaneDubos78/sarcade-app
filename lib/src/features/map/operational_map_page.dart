@@ -87,6 +87,21 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   }
   Future<void> _select(SarcadePosition p) async {setState((){_selectedDevice=p.deviceId;_traceLoading=true;_trace=[];});_map.move(LatLng(p.lat,p.lon),16);try{final h=await widget.api.positionHistory(widget.eventId,p.deviceId);if(mounted)setState(()=>_trace=h.where(_validPosition).toList());}finally{if(mounted)setState(()=>_traceLoading=false);}}
   String _age(DateTime t){final d=DateTime.now().toUtc().difference(t.toUtc());if(d.inSeconds<60)return '${d.inSeconds}s';if(d.inMinutes<60)return '${d.inMinutes} min';return '${d.inHours} h';}
+  List<List<SarcadePosition>> _traceSegments(){
+    if(_trace.length<2)return _trace.isEmpty?<List<SarcadePosition>>[]:[List<SarcadePosition>.from(_trace)];
+    final ordered=List<SarcadePosition>.from(_trace)..sort((a,b)=>a.time.compareTo(b.time));
+    final segments=<List<SarcadePosition>>[]; var current=<SarcadePosition>[ordered.first];
+    for(var i=1;i<ordered.length;i++){
+      final previous=ordered[i-1], next=ordered[i];
+      final gap=next.time.toUtc().difference(previous.time.toUtc());
+      if(gap>const Duration(minutes:5)){
+        if(current.length>1)segments.add(current);
+        current=<SarcadePosition>[next];
+      }else{current.add(next);}
+    }
+    if(current.length>1)segments.add(current);
+    return segments;
+  }
 
   @override void dispose(){_rtSub?.cancel();_gpsSub?.cancel();_sync.dispose();_realtime.dispose();widget.api.close();super.dispose();}
 
@@ -107,7 +122,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         ]))),
         Expanded(child:FlutterMap(mapController:_map,options:const MapOptions(initialCenter:LatLng(48.8566,2.3522),initialZoom:11,maxZoom:20),children:[
           TileLayer(urlTemplate:'https://tile.openstreetmap.org/{z}/{x}/{y}.png',userAgentPackageName:'org.sarcade.app',maxZoom:19),
-          if(_trace.length>1)PolylineLayer(polylines:[Polyline(points:_trace.map((p)=>LatLng(p.lat,p.lon)).toList(),strokeWidth:4,color:Colors.deepPurple)]),
+          if(_trace.length>1)PolylineLayer(polylines:_traceSegments().map((segment)=>Polyline(points:segment.map((p)=>LatLng(p.lat,p.lon)).toList(),strokeWidth:4,color:Colors.deepPurple)).toList()),
           MarkerLayer(markers:markers),
           const RichAttributionWidget(attributions:[TextSourceAttribution('© OpenStreetMap contributors')]),
         ]))
