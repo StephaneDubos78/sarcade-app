@@ -9,8 +9,14 @@ permissions:
   contents: read
 
 jobs:
-  structure:
+  flutter:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: test -f README.md && test -f LICENSE
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - run: flutter create --platforms=android,web,linux .
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test
