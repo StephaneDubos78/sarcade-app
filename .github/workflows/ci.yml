@@ -16,7 +16,6 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
-      - run: flutter create --platforms=android,web,linux .
       - run: flutter pub get
       - run: flutter analyze
       - run: flutter test
