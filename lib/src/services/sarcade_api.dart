@@ -12,6 +12,12 @@ class SarcadeApi {
     if(r.statusCode!=200) throw Exception('positions_http_${r.statusCode}');
     return (jsonDecode(r.body) as List).map((e)=>SarcadePosition.fromJson(e)).toList();
   }
+  Future<List<SarcadePosition>> positionHistory(String eventId,String deviceId,{int limit=500}) async {
+    final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/events/$eventId/devices/$deviceId/positions?limit=$limit'));
+    if(r.statusCode!=200) throw Exception('history_http_${r.statusCode}');
+    return (jsonDecode(r.body) as List).map((e)=>SarcadePosition.fromJson(e)).toList();
+  }
+
   Future<List<SarcadePoi>> pois(String eventId) async {
     final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/events/$eventId/pois'));
     if(r.statusCode!=200) throw Exception('pois_http_${r.statusCode}');
