@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
-import 'package:flutter_map_maplibre/flutter_map_maplibre.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:uuid/uuid.dart';
 
@@ -87,9 +86,13 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         mapController:_map,
         options:const MapOptions(initialCenter:LatLng(48.8566,2.3522),initialZoom:11,maxZoom:20),
         children:[
-          const MapLibreLayer(initStyle:'https://demotiles.maplibre.org/style.json'),
+          TileLayer(
+            urlTemplate:'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+            userAgentPackageName:'org.sarcade.app',
+            maxZoom:19,
+          ),
           MarkerLayer(markers:markers),
-          const RichAttributionWidget(attributions:[TextSourceAttribution('© OpenStreetMap contributors'),TextSourceAttribution('MapLibre')]),
+          const RichAttributionWidget(attributions:[TextSourceAttribution('© OpenStreetMap contributors')]),
         ],
       ),
       floatingActionButton:FloatingActionButton.extended(onPressed:_toggleTracking,icon:Icon(_tracking?Icons.location_off:Icons.my_location),label:Text(_tracking?'Arrêter GPS':'Partager position')),
