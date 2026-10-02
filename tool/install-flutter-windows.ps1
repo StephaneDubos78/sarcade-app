@@ -8,6 +8,9 @@ if(-not (Has "winget")){ throw "winget is required." }
 Write-Host "[SARCADE] Installing Git..." -ForegroundColor Cyan
 winget install --id Git.Git -e --source winget --accept-source-agreements --accept-package-agreements
 
+Write-Host "[SARCADE] Installing NuGet CLI..." -ForegroundColor Cyan
+winget install --id Microsoft.NuGet -e --source winget --accept-source-agreements --accept-package-agreements
+
 Write-Host "[SARCADE] Installing Visual Studio Build Tools / C++ workload..." -ForegroundColor Cyan
 winget install --id Microsoft.VisualStudio.2022.BuildTools -e --source winget --accept-source-agreements --accept-package-agreements --override "--wait --passive --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"
 
