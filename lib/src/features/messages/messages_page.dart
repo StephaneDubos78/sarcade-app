@@ -3,6 +3,7 @@ import 'package:uuid/uuid.dart';
 import '../../models/message.dart';
 import '../../offline/local_store.dart';
 import '../../offline/sync_service.dart';
+import '../../models/recipient.dart';
 
 class MessagesPage extends StatefulWidget {
  final String eventId,actorId; final OfflineSyncService sync; final LocalStore store;
@@ -10,7 +11,7 @@ class MessagesPage extends StatefulWidget {
  @override State<MessagesPage> createState()=>_MessagesPageState();
 }
 class _MessagesPageState extends State<MessagesPage>{
- final _text=TextEditingController(); final _uuid=const Uuid(); String _priority='routine';
+ final _text=TextEditingController(); final _recipient=TextEditingController(); final _uuid=const Uuid(); String _priority='routine'; String _recipientType='team';
  List<SarcadeMessage> get _messages=>(widget.store.messages().map(SarcadeMessage.fromJson).toList()..sort((a,b)=>a.createdAt.compareTo(b.createdAt)));
  Map<String,List<SarcadeAck>> get _acks {
    final out=<String,List<SarcadeAck>>{};
@@ -19,7 +20,9 @@ class _MessagesPageState extends State<MessagesPage>{
  }
  Future<void> _send() async {
    final body=_text.text.trim(); if(body.isEmpty)return;
-   final m=SarcadeMessage(id:_uuid.v4(),eventId:widget.eventId,senderId:widget.actorId,recipientIds:const [],priority:_priority,body:body,createdAt:DateTime.now().toUtc());
+   final raw=_recipient.text.trim();
+   final recipients=raw.isEmpty?<String>[]:[SarcadeRecipient(id:raw,label:raw,type:_recipientType).protocolId];
+   final m=SarcadeMessage(id:_uuid.v4(),eventId:widget.eventId,senderId:widget.actorId,recipientIds:recipients,priority:_priority,body:body,createdAt:DateTime.now().toUtc());
    await widget.store.cacheMessage(m.toJson());
    await widget.sync.queue(objectId:m.id,objectType:'message',payload:m.toJson());
    if(mounted)setState((){}); _text.clear();
@@ -45,6 +48,8 @@ class _MessagesPageState extends State<MessagesPage>{
     })),
     SafeArea(child:Row(children:[
       DropdownButton(value:_priority,items:const [DropdownMenuItem(value:'routine',child:Text('Routine')),DropdownMenuItem(value:'urgent',child:Text('Urgent')),DropdownMenuItem(value:'immediate',child:Text('Immédiat'))],onChanged:(v)=>setState(()=>_priority=v!)),
+      SizedBox(width:90,child:DropdownButton(value:_recipientType,isExpanded:true,items:const [DropdownMenuItem(value:'team',child:Text('Équipe')),DropdownMenuItem(value:'user',child:Text('Agent'))],onChanged:(v)=>setState(()=>_recipientType=v!))),
+      SizedBox(width:110,child:TextField(controller:_recipient,decoration:const InputDecoration(hintText:'ID ou vide'))),
       Expanded(child:TextField(controller:_text,maxLength:2048,decoration:const InputDecoration(hintText:'Message court',counterText:''))),
       IconButton(onPressed:_send,icon:const Icon(Icons.send))
     ]))
