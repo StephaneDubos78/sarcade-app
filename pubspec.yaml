@@ -17,8 +17,7 @@ dependencies:
   hive_ce: ^2.20.1
   hive_ce_flutter: ^2.4.0
   connectivity_plus: ^7.3.1
-  local_notifier: ^0.1.6
-  windows_single_instance: ^1.0.1
+  windows_single_instance: ^1.2.0
 dev_dependencies:
   flutter_test:
     sdk: flutter
