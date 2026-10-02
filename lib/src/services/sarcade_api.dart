@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../models/poi.dart';
 import '../models/position.dart';
+import '../models/message.dart';
 
 class SarcadeApi {
   final String baseUrl; final http.Client _client;
@@ -33,6 +34,16 @@ class SarcadeApi {
     return (changes:(j['changes'] as List).map((e)=>Map<String,dynamic>.from(e)).toList(),nextCursor:j['next_cursor'] as String);
   }
 
+  Future<List<SarcadeMessage>> messages(String eventId) async {
+    final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/events/$eventId/messages'));
+    if(r.statusCode!=200) throw Exception('messages_http_${r.statusCode}');
+    return (jsonDecode(r.body) as List).map((e)=>SarcadeMessage.fromJson(e)).toList();
+  }
+  Future<List<LogbookEntry>> logbook(String eventId,{int after=0}) async {
+    final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/events/$eventId/logbook?after=$after'));
+    if(r.statusCode!=200) throw Exception('logbook_http_${r.statusCode}');
+    return (jsonDecode(r.body) as List).map((e)=>LogbookEntry.fromJson(e)).toList();
+  }
   Uri websocketUri(String eventId){final u=Uri.parse(baseUrl);return u.replace(scheme:u.scheme=='https'?'wss':'ws',path:'/api/v0.1/events/$eventId/ws');}
   void close()=>_client.close();
 }
