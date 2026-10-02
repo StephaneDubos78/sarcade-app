@@ -20,6 +20,19 @@ class SarcadeApi {
     final r=await _client.post(Uri.parse('$baseUrl/api/v0.1/positions'),headers:{'content-type':'application/json'},body:jsonEncode(p.toJson()));
     if(r.statusCode!=202) throw Exception('position_http_${r.statusCode}');
   }
+  Future<List<Map<String,dynamic>>> sync(List<Map<String,dynamic>> operations) async {
+    final r=await _client.post(Uri.parse('$baseUrl/api/v0.1/sync'),headers:{'content-type':'application/json'},body:jsonEncode(operations));
+    if(r.statusCode!=200) throw Exception('sync_http_${r.statusCode}');
+    return (jsonDecode(r.body) as List).map((e)=>Map<String,dynamic>.from(e)).toList();
+  }
+
+  Future<({List<Map<String,dynamic>> changes,String nextCursor})> changes(String eventId,int after) async {
+    final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/events/$eventId/sync/changes?after=$after'));
+    if(r.statusCode!=200) throw Exception('changes_http_${r.statusCode}');
+    final j=jsonDecode(r.body) as Map<String,dynamic>;
+    return (changes:(j['changes'] as List).map((e)=>Map<String,dynamic>.from(e)).toList(),nextCursor:j['next_cursor'] as String);
+  }
+
   Uri websocketUri(String eventId){final u=Uri.parse(baseUrl);return u.replace(scheme:u.scheme=='https'?'wss':'ws',path:'/api/v0.1/events/$eventId/ws');}
   void close()=>_client.close();
 }
