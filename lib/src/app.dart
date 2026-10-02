@@ -17,7 +17,7 @@ class SarcadeApp extends StatelessWidget {
       theme:ThemeData(colorScheme:ColorScheme.fromSeed(seedColor:const Color(0xFF173A6A)),useMaterial3:true),
       home:c.eventId.trim().isEmpty
         ? _ConfigurationRequired(serverUrl:c.serverUrl)
-        : OperationalMapPage(api:SarcadeApi(baseUrl:c.serverUrl),eventId:c.eventId,deviceId:c.deviceId,store:store),
+        : OperationalMapPage(api:SarcadeApi(baseUrl:c.serverUrl),eventId:c.eventId,deviceId:c.deviceId,store:store,tileUrl:c.tileUrl,tileAttribution:c.tileAttribution),
     );
   }
 }
