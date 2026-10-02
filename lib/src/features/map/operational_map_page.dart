@@ -1,0 +1,71 @@
+import 'dart:async';
+import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:flutter_map_maplibre/flutter_map_maplibre.dart';
+import 'package:latlong2/latlong.dart';
+import 'package:uuid/uuid.dart';
+
+import '../../models/poi.dart';
+import '../../models/position.dart';
+import '../../services/location_service.dart';
+import '../../services/realtime_service.dart';
+import '../../services/sarcade_api.dart';
+
+class OperationalMapPage extends StatefulWidget {
+  final SarcadeApi api; final String eventId, deviceId;
+  const OperationalMapPage({super.key,required this.api,required this.eventId,required this.deviceId});
+  @override State<OperationalMapPage> createState()=>_OperationalMapPageState();
+}
+
+class _OperationalMapPageState extends State<OperationalMapPage> {
+  final _map=MapController(); final _realtime=RealtimeService(); final _location=LocationService(); final _uuid=const Uuid();
+  final Map<String,SarcadePosition> _positions={}; final Map<String,SarcadePoi> _pois={};
+  StreamSubscription? _rtSub,_gpsSub; String _status='Connexion…'; bool _tracking=false;
+
+  @override void initState(){super.initState();_start();}
+  Future<void> _start() async {
+    try {
+      final data=await Future.wait([widget.api.latestPositions(widget.eventId),widget.api.pois(widget.eventId)]);
+      for(final p in data[0] as List<SarcadePosition>){_positions[p.deviceId]=p;}
+      for(final p in data[1] as List<SarcadePoi>){_pois[p.id]=p;}
+      _realtime.connect(widget.api.websocketUri(widget.eventId));
+      _rtSub=_realtime.events.listen(_onRealtime,onError:(_){if(mounted)setState(()=>_status='Temps réel indisponible');});
+      if(mounted)setState(()=>_status='Connecté');
+    } catch(e){if(mounted)setState(()=>_status='Hors connexion');}
+  }
+  void _onRealtime(RealtimeEvent e){
+    if(e.type=='position.updated'){final p=SarcadePosition.fromJson(e.data);setState(()=>_positions[p.deviceId]=p);}
+    if(e.type=='poi.created'){final p=SarcadePoi.fromJson(e.data);setState(()=>_pois[p.id]=p);}
+  }
+  Future<void> _toggleTracking() async {
+    if(_tracking){await _gpsSub?.cancel();setState(()=>_tracking=false);return;}
+    if(!await _location.ensurePermission()){if(mounted)ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Localisation non autorisée ou indisponible')));return;}
+    _gpsSub=_location.positions().listen((g) async {
+      final p=SarcadePosition(id:_uuid.v4(),eventId:widget.eventId,deviceId:widget.deviceId,lat:g.latitude,lon:g.longitude,time:g.timestamp,altM:g.altitude,accuracyM:g.accuracy,headingDeg:g.heading>=0?g.heading:null,speedMps:g.speed>=0?g.speed:null);
+      if(mounted)setState(()=>_positions[widget.deviceId]=p);
+      try{await widget.api.sendPosition(p);}catch(_){}
+    });
+    setState(()=>_tracking=true);
+  }
+  @override void dispose(){_rtSub?.cancel();_gpsSub?.cancel();_realtime.dispose();widget.api.close();super.dispose();}
+
+  @override Widget build(BuildContext context){
+    final markers=<Marker>[
+      ..._positions.values.map((p)=>Marker(point:LatLng(p.lat,p.lon),width:44,height:44,child:Tooltip(message:p.deviceId,child:Icon(Icons.person_pin_circle,size:40,color:p.deviceId==widget.deviceId?Colors.orange:Colors.blue)))),
+      ..._pois.values.map((p)=>Marker(point:LatLng(p.lat,p.lon),width:40,height:40,child:Tooltip(message:p.label??p.kind,child:const Icon(Icons.location_on,size:38,color:Colors.red)))),
+    ];
+    return Scaffold(
+      appBar:AppBar(title:const Text('SARCADE'),actions:[Padding(padding:const EdgeInsets.symmetric(horizontal:12),child:Center(child:Text(_status)))]),
+      body:FlutterMap(
+        mapController:_map,
+        options:const MapOptions(initialCenter:LatLng(48.8566,2.3522),initialZoom:11,maxZoom:20),
+        children:[
+          const MapLibreLayer(initStyle:'https://demotiles.maplibre.org/style.json'),
+          MarkerLayer(markers:markers),
+          const RichAttributionWidget(attributions:[TextSourceAttribution('© OpenStreetMap contributors'),TextSourceAttribution('MapLibre')]),
+        ],
+      ),
+      floatingActionButton:FloatingActionButton.extended(onPressed:_toggleTracking,icon:Icon(_tracking?Icons.location_off:Icons.my_location),label:Text(_tracking?'Arrêter GPS':'Partager position')),
+    );
+  }
+}
