@@ -7,6 +7,9 @@ import 'package:uuid/uuid.dart';
 
 import '../../models/poi.dart';
 import '../../models/position.dart';
+import '../../models/message.dart';
+import '../messages/messages_page.dart';
+import '../logbook/logbook_page.dart';
 import '../../services/location_service.dart';
 import '../../services/realtime_service.dart';
 import '../../services/sarcade_api.dart';
@@ -38,7 +41,9 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   }
   void _onRealtime(RealtimeEvent e){
     if(e.type=='position.updated'){final p=SarcadePosition.fromJson(e.data);widget.store.cachePosition(p.toJson());setState(()=>_positions[p.deviceId]=p);}
-    if(e.type=='poi.created'){final p=SarcadePoi.fromJson(e.data);setState(()=>_pois[p.id]=p);}
+    if(e.type=='poi.created'){final p=SarcadePoi.fromJson(e.data);widget.store.cachePoi(e.data);setState(()=>_pois[p.id]=p);}
+    if(e.type=='message.created'){widget.store.cacheMessage(e.data);if(mounted)setState((){});}
+    if(e.type=='ack.created'){widget.store.cacheAck(e.data);if(mounted)setState((){});}
   }
   Future<void> _toggleTracking() async {
     if(_tracking){await _gpsSub?.cancel();setState(()=>_tracking=false);return;}
@@ -59,7 +64,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       ..._pois.values.map((p)=>Marker(point:LatLng(p.lat,p.lon),width:40,height:40,child:Tooltip(message:p.label??p.kind,child:const Icon(Icons.location_on,size:38,color:Colors.red)))),
     ];
     return Scaffold(
-      appBar:AppBar(title:const Text('SARCADE'),actions:[Padding(padding:const EdgeInsets.symmetric(horizontal:12),child:Center(child:Text(_status)))]),
+      appBar:AppBar(title:const Text('SARCADE'),actions:[IconButton(tooltip:'Messages',onPressed:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>MessagesPage(eventId:widget.eventId,actorId:widget.deviceId,sync:_sync,store:widget.store))),icon:Badge(label:Text('${widget.store.pendingCount()}'),child:const Icon(Icons.message))),IconButton(tooltip:'Main courante',onPressed:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>LogbookPage(api:widget.api,eventId:widget.eventId))),icon:const Icon(Icons.receipt_long)),Padding(padding:const EdgeInsets.symmetric(horizontal:12),child:Center(child:Text(_status)))]),
       body:FlutterMap(
         mapController:_map,
         options:const MapOptions(initialCenter:LatLng(48.8566,2.3522),initialZoom:11,maxZoom:20),
