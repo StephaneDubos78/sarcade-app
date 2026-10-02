@@ -37,6 +37,8 @@ class OfflineSyncService {
         final p=Map<String,dynamic>.from(c['payload']);
         if(c['object_type']=='position') await store.cachePosition(p);
         if(c['object_type']=='poi') await store.cachePoi(p);
+        if(c['object_type']=='message') await store.cacheMessage(p);
+        if(c['object_type']=='ack') await store.cacheAck(p);
       }
       await store.setCursor(eventId,feed.nextCursor);
     } catch(_){
