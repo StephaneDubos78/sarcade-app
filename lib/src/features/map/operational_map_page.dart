@@ -7,7 +7,6 @@ import 'package:uuid/uuid.dart';
 
 import '../../models/poi.dart';
 import '../../models/position.dart';
-import '../../models/message.dart';
 import '../messages/messages_page.dart';
 import '../logbook/logbook_page.dart';
 import '../../services/notification_service.dart';
