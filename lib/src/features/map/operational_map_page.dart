@@ -10,23 +10,26 @@ import '../../models/position.dart';
 import '../../services/location_service.dart';
 import '../../services/realtime_service.dart';
 import '../../services/sarcade_api.dart';
+import '../../offline/local_store.dart';
+import '../../offline/sync_service.dart';
 
 class OperationalMapPage extends StatefulWidget {
-  final SarcadeApi api; final String eventId, deviceId;
-  const OperationalMapPage({super.key,required this.api,required this.eventId,required this.deviceId});
+  final SarcadeApi api; final String eventId, deviceId; final LocalStore store;
+  const OperationalMapPage({super.key,required this.api,required this.eventId,required this.deviceId,required this.store});
   @override State<OperationalMapPage> createState()=>_OperationalMapPageState();
 }
 
 class _OperationalMapPageState extends State<OperationalMapPage> {
   final _map=MapController(); final _realtime=RealtimeService(); final _location=LocationService(); final _uuid=const Uuid();
   final Map<String,SarcadePosition> _positions={}; final Map<String,SarcadePoi> _pois={};
-  StreamSubscription? _rtSub,_gpsSub; String _status='Connexion…'; bool _tracking=false;
+  StreamSubscription? _rtSub,_gpsSub; String _status='Connexion…'; bool _tracking=false; late final OfflineSyncService _sync;
 
-  @override void initState(){super.initState();_start();}
+  @override void initState(){super.initState();_sync=OfflineSyncService(api:widget.api,store:widget.store,eventId:widget.eventId);_loadLocal();_sync.start();_start();}
+  void _loadLocal(){for(final j in widget.store.positions()){final p=SarcadePosition.fromJson(j);_positions[p.deviceId]=p;}for(final j in widget.store.pois()){final p=SarcadePoi.fromJson(j);_pois[p.id]=p;}}
   Future<void> _start() async {
     try {
       final data=await Future.wait([widget.api.latestPositions(widget.eventId),widget.api.pois(widget.eventId)]);
-      for(final p in data[0] as List<SarcadePosition>){_positions[p.deviceId]=p;}
+      for(final p in data[0] as List<SarcadePosition>){_positions[p.deviceId]=p;widget.store.cachePosition(p.toJson());}
       for(final p in data[1] as List<SarcadePoi>){_pois[p.id]=p;}
       _realtime.connect(widget.api.websocketUri(widget.eventId));
       _rtSub=_realtime.events.listen(_onRealtime,onError:(_){if(mounted)setState(()=>_status='Temps réel indisponible');});
@@ -34,7 +37,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     } catch(e){if(mounted)setState(()=>_status='Hors connexion');}
   }
   void _onRealtime(RealtimeEvent e){
-    if(e.type=='position.updated'){final p=SarcadePosition.fromJson(e.data);setState(()=>_positions[p.deviceId]=p);}
+    if(e.type=='position.updated'){final p=SarcadePosition.fromJson(e.data);widget.store.cachePosition(p.toJson());setState(()=>_positions[p.deviceId]=p);}
     if(e.type=='poi.created'){final p=SarcadePoi.fromJson(e.data);setState(()=>_pois[p.id]=p);}
   }
   Future<void> _toggleTracking() async {
@@ -42,12 +45,13 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     if(!await _location.ensurePermission()){if(mounted)ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Localisation non autorisée ou indisponible')));return;}
     _gpsSub=_location.positions().listen((g) async {
       final p=SarcadePosition(id:_uuid.v4(),eventId:widget.eventId,deviceId:widget.deviceId,lat:g.latitude,lon:g.longitude,time:g.timestamp,altM:g.altitude,accuracyM:g.accuracy,headingDeg:g.heading>=0?g.heading:null,speedMps:g.speed>=0?g.speed:null);
+      await widget.store.cachePosition(p.toJson());
       if(mounted)setState(()=>_positions[widget.deviceId]=p);
-      try{await widget.api.sendPosition(p);}catch(_){}
+      await _sync.queue(objectId:p.id,objectType:'position',payload:p.toJson());
     });
     setState(()=>_tracking=true);
   }
-  @override void dispose(){_rtSub?.cancel();_gpsSub?.cancel();_realtime.dispose();widget.api.close();super.dispose();}
+  @override void dispose(){_rtSub?.cancel();_gpsSub?.cancel();_sync.dispose();_realtime.dispose();widget.api.close();super.dispose();}
 
   @override Widget build(BuildContext context){
     final markers=<Marker>[
