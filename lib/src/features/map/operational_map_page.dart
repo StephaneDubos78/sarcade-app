@@ -10,6 +10,7 @@ import '../../models/position.dart';
 import '../../models/message.dart';
 import '../messages/messages_page.dart';
 import '../logbook/logbook_page.dart';
+import '../../services/notification_service.dart';
 import '../../services/location_service.dart';
 import '../../services/realtime_service.dart';
 import '../../services/sarcade_api.dart';
@@ -23,11 +24,11 @@ class OperationalMapPage extends StatefulWidget {
 }
 
 class _OperationalMapPageState extends State<OperationalMapPage> {
-  final _map=MapController(); final _realtime=RealtimeService(); final _location=LocationService(); final _uuid=const Uuid();
+  final _map=MapController(); final _realtime=RealtimeService(); final _location=LocationService(); final _notifications=NotificationService(); final _uuid=const Uuid();
   final Map<String,SarcadePosition> _positions={}; final Map<String,SarcadePoi> _pois={};
   StreamSubscription? _rtSub,_gpsSub; String _status='Connexion…'; bool _tracking=false; late final OfflineSyncService _sync;
 
-  @override void initState(){super.initState();_sync=OfflineSyncService(api:widget.api,store:widget.store,eventId:widget.eventId);_loadLocal();_sync.start();_start();}
+  @override void initState(){super.initState();_notifications.initialize();_sync=OfflineSyncService(api:widget.api,store:widget.store,eventId:widget.eventId);_loadLocal();_sync.start();_start();}
   void _loadLocal(){for(final j in widget.store.positions()){final p=SarcadePosition.fromJson(j);_positions[p.deviceId]=p;}for(final j in widget.store.pois()){final p=SarcadePoi.fromJson(j);_pois[p.id]=p;}}
   Future<void> _start() async {
     try {
@@ -42,9 +43,26 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   void _onRealtime(RealtimeEvent e){
     if(e.type=='position.updated'){final p=SarcadePosition.fromJson(e.data);widget.store.cachePosition(p.toJson());setState(()=>_positions[p.deviceId]=p);}
     if(e.type=='poi.created'){final p=SarcadePoi.fromJson(e.data);widget.store.cachePoi(e.data);setState(()=>_pois[p.id]=p);}
-    if(e.type=='message.created'){widget.store.cacheMessage(e.data);if(mounted)setState((){});}
+    if(e.type=='message.created'){_receiveMessage(e.data);}
     if(e.type=='ack.created'){widget.store.cacheAck(e.data);if(mounted)setState((){});}
   }
+
+  Future<void> _receiveMessage(Map<String,dynamic> data) async {
+    final m=SarcadeMessage.fromJson(data);
+    await widget.store.cacheMessage(data);
+    final addressed=m.recipientIds.isEmpty||m.recipientIds.contains('user:${widget.deviceId}')||m.recipientIds.contains(widget.deviceId);
+    if(addressed && m.senderId!=widget.deviceId){
+      final existing=widget.store.acks().map(SarcadeAck.fromJson).any((a)=>a.messageId==m.id&&a.actorId==widget.deviceId&&a.status=='received');
+      if(!existing){
+        final ack=SarcadeAck(id:_uuid.v4(),eventId:widget.eventId,messageId:m.id,actorId:widget.deviceId,status:'received',time:DateTime.now().toUtc());
+        await widget.store.cacheAck(ack.toJson());
+        await _sync.queue(objectId:ack.id,objectType:'ack',payload:ack.toJson());
+      }
+      await _notifications.message(title:'SARCADE · ${m.priority}',body:m.body,priority:m.priority);
+    }
+    if(mounted)setState((){});
+  }
+
   Future<void> _toggleTracking() async {
     if(_tracking){await _gpsSub?.cancel();setState(()=>_tracking=false);return;}
     if(!await _location.ensurePermission()){if(mounted)ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Localisation non autorisée ou indisponible')));return;}
