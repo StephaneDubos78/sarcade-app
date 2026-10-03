@@ -7,6 +7,7 @@ import 'package:uuid/uuid.dart';
 import '../../models/poi.dart';
 import '../../models/message.dart';
 import '../../models/position.dart';
+import '../../models/reference_site.dart';
 import '../messages/messages_page.dart';
 import '../logbook/logbook_page.dart';
 import '../files/files_page.dart';
@@ -25,20 +26,25 @@ class OperationalMapPage extends StatefulWidget {
 
 class _OperationalMapPageState extends State<OperationalMapPage> {
   final _map=MapController(); final _realtime=RealtimeService(); final _location=LocationService(); final _notifications=NotificationService(); final _uuid=const Uuid();
-  final Map<String,SarcadePosition> _positions={}; final Map<String,SarcadePoi> _pois={};
-  StreamSubscription? _rtSub,_gpsSub; Timer? _syncUiTimer; String _status='Connexion…'; bool _tracking=false; bool _showPanel=true; String? _selectedDevice; List<SarcadePosition> _trace=[]; bool _traceLoading=false; late final OfflineSyncService _sync;
+  final Map<String,SarcadePosition> _positions={}; final Map<String,SarcadePoi> _pois={}; final Map<String,ReferenceSite> _references={};
+  StreamSubscription? _rtSub,_gpsSub; Timer? _syncUiTimer; String _status='Connexion…'; bool _tracking=false; bool _showPanel=true; bool _showReferencePanel=false; bool _showHighPoints=true; bool _showRelays=true; String _referenceQuery=''; String? _selectedDevice; ReferenceSite? _selectedReference; List<SarcadePosition> _trace=[]; bool _traceLoading=false; late final OfflineSyncService _sync;
 
   @override void initState(){super.initState();_notifications.initialize();_sync=OfflineSyncService(api:widget.api,store:widget.store,eventId:widget.eventId);_loadLocal();_sync.start();_syncUiTimer=Timer.periodic(const Duration(seconds:2),(_){if(mounted)setState((){});});_start();}
   bool _validPosition(SarcadePosition p){
     final t=p.time.toUtc(), now=DateTime.now().toUtc();
     return t.isAfter(DateTime.utc(2020)) && t.isBefore(now.add(const Duration(days:1)));
   }
-  void _loadLocal(){for(final j in widget.store.positions()){final p=SarcadePosition.fromJson(j);if(p.eventId==widget.eventId&&_validPosition(p))_positions[p.deviceId]=p;}for(final j in widget.store.pois()){final p=SarcadePoi.fromJson(j);if(p.eventId==widget.eventId)_pois[p.id]=p;}}
+  void _loadLocal(){for(final j in widget.store.positions()){final p=SarcadePosition.fromJson(j);if(p.eventId==widget.eventId&&_validPosition(p))_positions[p.deviceId]=p;}for(final j in widget.store.pois()){final p=SarcadePoi.fromJson(j);if(p.eventId==widget.eventId)_pois[p.id]=p;}for(final j in widget.store.references()){final p=ReferenceSite.fromJson(j);if(p.status=='active')_references[p.id]=p;}}
   Future<void> _start() async {
     try {
       final data=await Future.wait([widget.api.latestPositions(widget.eventId),widget.api.pois(widget.eventId)]);
       for(final p in data[0] as List<SarcadePosition>){if(_validPosition(p)){_positions[p.deviceId]=p;widget.store.cachePosition(p.toJson());}}
       for(final p in data[1] as List<SarcadePoi>){_pois[p.id]=p;}
+      try{
+        final refs=await widget.api.referenceSites();
+        _references.clear();
+        for(final p in refs){_references[p.id]=p;await widget.store.cacheReference(p.toJson());}
+      }catch(_){}
       _realtime.connect(widget.api.websocketUri(widget.eventId));
       _rtSub=_realtime.events.listen(_onRealtime,onError:(_){if(mounted)setState(()=>_status='Temps réel indisponible');});
       if(mounted){setState(()=>_status='Connecté');WidgetsBinding.instance.addPostFrameCallback((_)=>_fitOperators());}
@@ -87,6 +93,19 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     _map.fitCamera(CameraFit.bounds(bounds:LatLngBounds(LatLng(minLat,minLon),LatLng(maxLat,maxLon)),padding:const EdgeInsets.all(90),maxZoom:16));
   }
   Future<void> _select(SarcadePosition p) async {setState((){_selectedDevice=p.deviceId;_traceLoading=true;_trace=[];});_map.move(LatLng(p.lat,p.lon),16);try{final h=await widget.api.positionHistory(widget.eventId,p.deviceId);if(mounted)setState(()=>_trace=h.where(_validPosition).toList());}finally{if(mounted)setState(()=>_traceLoading=false);}}
+  void _selectReference(ReferenceSite site){setState((){_selectedReference=site;_showReferencePanel=true;_showPanel=false;});_map.move(LatLng(site.lat,site.lon),14);}
+  List<ReferenceSite> _filteredReferences(){
+    final q=_referenceQuery.trim().toLowerCase();
+    final rows=_references.values.where((r){
+      if(r.isHighPoint&&!_showHighPoints)return false;
+      if(r.isRelay&&!_showRelays)return false;
+      if(q.isEmpty)return true;
+      final haystack=[r.name,r.callsign??'',r.mode??'',r.subtype??'',r.rxMhz?.toString()??'',r.txMhz?.toString()??''].join(' ').toLowerCase();
+      return haystack.contains(q.replaceAll(',','.'))||haystack.contains(q);
+    }).toList()..sort((a,b)=>a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    return rows;
+  }
+  String _frequency(double? value)=>value==null?'-':'${value.toStringAsFixed(3)} MHz';
   String _age(DateTime t){final d=DateTime.now().toUtc().difference(t.toUtc());if(d.inSeconds<60)return '${d.inSeconds}s';if(d.inMinutes<60)return '${d.inMinutes} min';return '${d.inHours} h';}
   List<List<SarcadePosition>> _traceSegments(){
     if(_trace.length<2)return _trace.isEmpty?<List<SarcadePosition>>[]:[List<SarcadePosition>.from(_trace)];
@@ -111,11 +130,38 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     final markers=<Marker>[
       ...sorted.map((p)=>Marker(point:LatLng(p.lat,p.lon),width:130,height:62,alignment:Alignment.topCenter,child:GestureDetector(onTap:()=>_select(p),child:Column(mainAxisSize:MainAxisSize.min,children:[Icon(Icons.person_pin_circle,size:38,color:p.deviceId==widget.deviceId?Colors.orange:(_selectedDevice==p.deviceId?Colors.deepPurple:Colors.blue)),Container(padding:const EdgeInsets.symmetric(horizontal:6,vertical:2),decoration:BoxDecoration(color:Colors.white,borderRadius:BorderRadius.circular(5),boxShadow:const [BoxShadow(blurRadius:2)]),child:Text(p.deviceId,style:const TextStyle(fontSize:11,fontWeight:FontWeight.w600)))])))),
       ..._pois.values.map((p)=>Marker(point:LatLng(p.lat,p.lon),width:40,height:40,child:Tooltip(message:p.label??p.kind,child:const Icon(Icons.location_on,size:38,color:Colors.red)))),
+      ..._references.values.where((r)=>(r.isHighPoint&&_showHighPoints)||(r.isRelay&&_showRelays)).map((r)=>Marker(
+        point:LatLng(r.lat,r.lon),width:46,height:46,
+        child:Tooltip(message:r.name,child:GestureDetector(onTap:()=>_selectReference(r),child:Icon(r.isHighPoint?Icons.terrain:Icons.cell_tower,size:34,color:r.isHighPoint?Colors.indigo:Colors.deepOrange))),
+      )),
     ];
     final selected=_selectedDevice==null?null:_positions[_selectedDevice];
     return Scaffold(
-      appBar:AppBar(title:const Text('SARCADE'),actions:[IconButton(tooltip:'Synchroniser',onPressed:() async {await _sync.syncNow();if(mounted)setState((){});},icon:const Icon(Icons.sync)),IconButton(tooltip:'Cadrer les opérateurs',onPressed:_fitOperators,icon:const Icon(Icons.center_focus_strong)),IconButton(tooltip:'Opérateurs',onPressed:()=>setState(()=>_showPanel=!_showPanel),icon:const Icon(Icons.groups)),IconButton(tooltip:'Messages',onPressed:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>MessagesPage(eventId:widget.eventId,actorId:widget.deviceId,sync:_sync,store:widget.store))),icon:Badge(label:Text('${widget.store.pendingCount()}'),child:const Icon(Icons.message))),IconButton(tooltip:'Fichiers',onPressed:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>FilesPage(api:widget.api,eventId:widget.eventId,actorId:widget.deviceId))),icon:const Icon(Icons.folder_copy_outlined)),IconButton(tooltip:'Main courante',onPressed:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>LogbookPage(api:widget.api,eventId:widget.eventId))),icon:const Icon(Icons.receipt_long)),Padding(padding:const EdgeInsets.symmetric(horizontal:12),child:Center(child:Text('$_status · ${widget.store.pendingCount()} attente')))]),
+      appBar:AppBar(title:const Text('SARCADE'),actions:[IconButton(tooltip:'Synchroniser',onPressed:() async {await _sync.syncNow();if(mounted)setState((){});},icon:const Icon(Icons.sync)),IconButton(tooltip:'Cadrer les opérateurs',onPressed:_fitOperators,icon:const Icon(Icons.center_focus_strong)),IconButton(tooltip:'Opérateurs',onPressed:()=>setState((){_showPanel=!_showPanel;if(_showPanel)_showReferencePanel=false;}),icon:const Icon(Icons.groups)),IconButton(tooltip:'Référentiel radio',onPressed:()=>setState((){_showReferencePanel=!_showReferencePanel;if(_showReferencePanel)_showPanel=false;}),icon:const Icon(Icons.cell_tower)),IconButton(tooltip:'Messages',onPressed:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>MessagesPage(eventId:widget.eventId,actorId:widget.deviceId,sync:_sync,store:widget.store))),icon:Badge(label:Text('${widget.store.pendingCount()}'),child:const Icon(Icons.message))),IconButton(tooltip:'Fichiers',onPressed:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>FilesPage(api:widget.api,eventId:widget.eventId,actorId:widget.deviceId))),icon:const Icon(Icons.folder_copy_outlined)),IconButton(tooltip:'Main courante',onPressed:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>LogbookPage(api:widget.api,eventId:widget.eventId))),icon:const Icon(Icons.receipt_long)),Padding(padding:const EdgeInsets.symmetric(horizontal:12),child:Center(child:Text('$_status · ${widget.store.pendingCount()} attente')))]),
       body:Row(children:[
+        if(_showReferencePanel)SizedBox(width:355,child:Material(elevation:3,child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+          Padding(padding:const EdgeInsets.fromLTRB(14,14,14,6),child:Text('Référentiel radio (${_filteredReferences().length})',style:Theme.of(context).textTheme.titleMedium)),
+          Padding(padding:const EdgeInsets.symmetric(horizontal:12,vertical:4),child:TextField(decoration:const InputDecoration(prefixIcon:Icon(Icons.search),hintText:'Nom, indicatif, fréquence, mode…',isDense:true,border:OutlineInputBorder()),onChanged:(v)=>setState(()=>_referenceQuery=v))),
+          Padding(padding:const EdgeInsets.symmetric(horizontal:12,vertical:6),child:Wrap(spacing:8,children:[
+            FilterChip(label:const Text('Points hauts'),selected:_showHighPoints,onSelected:(v)=>setState(()=>_showHighPoints=v)),
+            FilterChip(label:const Text('Relais'),selected:_showRelays,onSelected:(v)=>setState(()=>_showRelays=v)),
+          ])),
+          Expanded(child:ListView.builder(itemCount:_filteredReferences().length,itemBuilder:(context,index){final r=_filteredReferences()[index];return ListTile(selected:_selectedReference?.id==r.id,leading:Icon(r.isHighPoint?Icons.terrain:Icons.cell_tower,color:r.isHighPoint?Colors.indigo:Colors.deepOrange),title:Text(r.name),subtitle:Text(r.subtitle),onTap:()=>_selectReference(r));})),
+          if(_selectedReference!=null)Builder(builder:(context){final r=_selectedReference!;return Container(padding:const EdgeInsets.all(14),decoration:BoxDecoration(border:Border(top:BorderSide(color:Theme.of(context).dividerColor))),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+            Text(r.name,style:const TextStyle(fontWeight:FontWeight.bold)),
+            if(r.callsign?.isNotEmpty==true)Text('Indicatif : ${r.callsign}'),
+            if(r.isHighPoint&&r.altM!=null)Text('Altitude : ${r.altM!.toStringAsFixed(0)} m'),
+            if(r.subtype?.isNotEmpty==true)Text('Type : ${r.subtype}'),
+            if(r.mode?.isNotEmpty==true)Text('Mode : ${r.mode}'),
+            if(r.isRelay)Text('Entrée : ${_frequency(r.rxMhz)}'),
+            if(r.isRelay)Text('Sortie : ${_frequency(r.txMhz)}'),
+            if(r.ctcssRx?.isNotEmpty==true)Text('CTCSS entrée : ${r.ctcssRx}'),
+            if(r.ctcssTx?.isNotEmpty==true)Text('CTCSS sortie : ${r.ctcssTx}'),
+            if(r.access?.isNotEmpty==true)Text('Accès : ${r.access}'),
+            if(r.clearance?.isNotEmpty==true)Text('Dégagement : ${r.clearance}'),
+            if(r.verifiedAt?.isNotEmpty==true)Text('Vérifié : ${r.verifiedAt}'),
+          ]));}),
+        ]))),
         if(_showPanel)SizedBox(width:285,child:Material(elevation:3,child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
           Padding(padding:const EdgeInsets.all(14),child:Text('Opérateurs (${sorted.length})',style:Theme.of(context).textTheme.titleMedium)),
           Expanded(child:ListView(children:sorted.map((p)=>ListTile(selected:_selectedDevice==p.deviceId,leading:Icon(Icons.circle,size:13,color:DateTime.now().toUtc().difference(p.time.toUtc()).inMinutes<5?Colors.green:Colors.grey),title:Text(p.deviceId),subtitle:Text('Dernière position : ${_age(p.time)}'),onTap:()=>_select(p))).toList())),
