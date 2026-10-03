@@ -3,6 +3,7 @@ import 'package:http/http.dart' as http;
 import '../models/poi.dart';
 import '../models/position.dart';
 import '../models/message.dart';
+import '../models/shared_file.dart';
 
 class SarcadeApi {
   final String baseUrl; final http.Client _client;
@@ -38,6 +39,25 @@ class SarcadeApi {
     if(r.statusCode!=200) throw Exception('changes_http_${r.statusCode}');
     final j=jsonDecode(r.body) as Map<String,dynamic>;
     return (changes:(j['changes'] as List).map((e)=>Map<String,dynamic>.from(e)).toList(),nextCursor:j['next_cursor'] as String);
+  }
+
+  Future<List<SarcadeSharedFile>> files(String eventId) async {
+    final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/events/$eventId/files'));
+    if(r.statusCode!=200) throw Exception('files_http_${r.statusCode}');
+    return (jsonDecode(r.body) as List).map((e)=>SarcadeSharedFile.fromJson(e)).toList();
+  }
+  Future<SarcadeSharedFile> uploadFile(String eventId,String senderId,String name,String mimeType,List<int> bytes) async {
+    final req=http.MultipartRequest('POST',Uri.parse('$baseUrl/api/v0.1/events/$eventId/files'))
+      ..fields['sender_id']=senderId
+      ..files.add(http.MultipartFile.fromBytes('file',bytes,filename:name,contentType:http.MediaType.parse(mimeType)));
+    final streamed=await _client.send(req); final body=await streamed.stream.bytesToString();
+    if(streamed.statusCode!=201) throw Exception('file_upload_http_${streamed.statusCode}:$body');
+    return SarcadeSharedFile.fromJson(jsonDecode(body));
+  }
+  Future<List<int>> downloadFile(String eventId,String fileId) async {
+    final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/events/$eventId/files/$fileId/content'));
+    if(r.statusCode!=200) throw Exception('file_download_http_${r.statusCode}');
+    return r.bodyBytes;
   }
 
   Future<List<SarcadeMessage>> messages(String eventId) async {
