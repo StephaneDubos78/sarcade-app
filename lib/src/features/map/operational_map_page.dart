@@ -9,6 +9,7 @@ import '../../models/message.dart';
 import '../../models/position.dart';
 import '../messages/messages_page.dart';
 import '../logbook/logbook_page.dart';
+import '../files/files_page.dart';
 import '../../services/notification_service.dart';
 import '../../services/location_service.dart';
 import '../../services/realtime_service.dart';
@@ -113,7 +114,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     ];
     final selected=_selectedDevice==null?null:_positions[_selectedDevice];
     return Scaffold(
-      appBar:AppBar(title:const Text('SARCADE'),actions:[IconButton(tooltip:'Synchroniser',onPressed:() async {await _sync.syncNow();if(mounted)setState((){});},icon:const Icon(Icons.sync)),IconButton(tooltip:'Cadrer les opérateurs',onPressed:_fitOperators,icon:const Icon(Icons.center_focus_strong)),IconButton(tooltip:'Opérateurs',onPressed:()=>setState(()=>_showPanel=!_showPanel),icon:const Icon(Icons.groups)),IconButton(tooltip:'Messages',onPressed:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>MessagesPage(eventId:widget.eventId,actorId:widget.deviceId,sync:_sync,store:widget.store))),icon:Badge(label:Text('${widget.store.pendingCount()}'),child:const Icon(Icons.message))),IconButton(tooltip:'Main courante',onPressed:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>LogbookPage(api:widget.api,eventId:widget.eventId))),icon:const Icon(Icons.receipt_long)),Padding(padding:const EdgeInsets.symmetric(horizontal:12),child:Center(child:Text('$_status · ${widget.store.pendingCount()} attente')))]),
+      appBar:AppBar(title:const Text('SARCADE'),actions:[IconButton(tooltip:'Synchroniser',onPressed:() async {await _sync.syncNow();if(mounted)setState((){});},icon:const Icon(Icons.sync)),IconButton(tooltip:'Cadrer les opérateurs',onPressed:_fitOperators,icon:const Icon(Icons.center_focus_strong)),IconButton(tooltip:'Opérateurs',onPressed:()=>setState(()=>_showPanel=!_showPanel),icon:const Icon(Icons.groups)),IconButton(tooltip:'Messages',onPressed:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>MessagesPage(eventId:widget.eventId,actorId:widget.deviceId,sync:_sync,store:widget.store))),icon:Badge(label:Text('${widget.store.pendingCount()}'),child:const Icon(Icons.message))),IconButton(tooltip:'Fichiers',onPressed:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>FilesPage(api:widget.api,eventId:widget.eventId,actorId:widget.deviceId))),icon:const Icon(Icons.folder_copy_outlined)),IconButton(tooltip:'Main courante',onPressed:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>LogbookPage(api:widget.api,eventId:widget.eventId))),icon:const Icon(Icons.receipt_long)),Padding(padding:const EdgeInsets.symmetric(horizontal:12),child:Center(child:Text('$_status · ${widget.store.pendingCount()} attente')))]),
       body:Row(children:[
         if(_showPanel)SizedBox(width:285,child:Material(elevation:3,child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
           Padding(padding:const EdgeInsets.all(14),child:Text('Opérateurs (${sorted.length})',style:Theme.of(context).textTheme.titleMedium)),
