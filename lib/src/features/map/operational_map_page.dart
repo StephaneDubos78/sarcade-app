@@ -40,11 +40,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       final data=await Future.wait([widget.api.latestPositions(widget.eventId),widget.api.pois(widget.eventId)]);
       for(final p in data[0] as List<SarcadePosition>){if(_validPosition(p)){_positions[p.deviceId]=p;widget.store.cachePosition(p.toJson());}}
       for(final p in data[1] as List<SarcadePoi>){_pois[p.id]=p;}
-      try{
-        final refs=await widget.api.referenceSites();
-        _references.clear();
-        for(final p in refs){_references[p.id]=p;await widget.store.cacheReference(p.toJson());}
-      }catch(_){}
+      try{await _refreshReferences(silent:true);}catch(_){}
       _realtime.connect(widget.api.websocketUri(widget.eventId));
       _rtSub=_realtime.events.listen(_onRealtime,onError:(_){if(mounted)setState(()=>_status='Temps réel indisponible');});
       if(mounted){setState(()=>_status='Connecté');WidgetsBinding.instance.addPostFrameCallback((_)=>_fitOperators());}
@@ -93,6 +89,17 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     _map.fitCamera(CameraFit.bounds(bounds:LatLngBounds(LatLng(minLat,minLon),LatLng(maxLat,maxLon)),padding:const EdgeInsets.all(90),maxZoom:16));
   }
   Future<void> _select(SarcadePosition p) async {setState((){_selectedDevice=p.deviceId;_traceLoading=true;_trace=[];});_map.move(LatLng(p.lat,p.lon),16);try{final h=await widget.api.positionHistory(widget.eventId,p.deviceId);if(mounted)setState(()=>_trace=h.where(_validPosition).toList());}finally{if(mounted)setState(()=>_traceLoading=false);}}
+  Future<void> _refreshReferences({bool silent=false}) async {
+    try{
+      final refs=await widget.api.referenceSites();
+      await widget.store.replaceReferences(refs.map((e)=>e.toJson()).toList());
+      if(mounted)setState((){_references..clear()..addEntries(refs.map((e)=>MapEntry(e.id,e)));});
+      if(!silent&&mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('Référentiel mis à jour : ${refs.length} éléments')));
+    }catch(e){
+      if(!silent&&mounted)ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Mise à jour du référentiel impossible')));
+      rethrow;
+    }
+  }
   void _selectReference(ReferenceSite site){setState((){_selectedReference=site;_showReferencePanel=true;_showPanel=false;});_map.move(LatLng(site.lat,site.lon),14);}
   List<ReferenceSite> _filteredReferences(){
     final q=_referenceQuery.trim().toLowerCase();
@@ -140,7 +147,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       appBar:AppBar(title:const Text('SARCADE'),actions:[IconButton(tooltip:'Synchroniser',onPressed:() async {await _sync.syncNow();if(mounted)setState((){});},icon:const Icon(Icons.sync)),IconButton(tooltip:'Cadrer les opérateurs',onPressed:_fitOperators,icon:const Icon(Icons.center_focus_strong)),IconButton(tooltip:'Opérateurs',onPressed:()=>setState((){_showPanel=!_showPanel;if(_showPanel)_showReferencePanel=false;}),icon:const Icon(Icons.groups)),IconButton(tooltip:'Référentiel radio',onPressed:()=>setState((){_showReferencePanel=!_showReferencePanel;if(_showReferencePanel)_showPanel=false;}),icon:const Icon(Icons.cell_tower)),IconButton(tooltip:'Messages',onPressed:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>MessagesPage(eventId:widget.eventId,actorId:widget.deviceId,sync:_sync,store:widget.store))),icon:Badge(label:Text('${widget.store.pendingCount()}'),child:const Icon(Icons.message))),IconButton(tooltip:'Fichiers',onPressed:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>FilesPage(api:widget.api,eventId:widget.eventId,actorId:widget.deviceId))),icon:const Icon(Icons.folder_copy_outlined)),IconButton(tooltip:'Main courante',onPressed:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>LogbookPage(api:widget.api,eventId:widget.eventId))),icon:const Icon(Icons.receipt_long)),Padding(padding:const EdgeInsets.symmetric(horizontal:12),child:Center(child:Text('$_status · ${widget.store.pendingCount()} attente')))]),
       body:Row(children:[
         if(_showReferencePanel)SizedBox(width:355,child:Material(elevation:3,child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
-          Padding(padding:const EdgeInsets.fromLTRB(14,14,14,6),child:Text('Référentiel radio (${_filteredReferences().length})',style:Theme.of(context).textTheme.titleMedium)),
+          Padding(padding:const EdgeInsets.fromLTRB(14,8,6,0),child:Row(children:[Expanded(child:Text('Référentiel radio (${_filteredReferences().length})',style:Theme.of(context).textTheme.titleMedium)),IconButton(tooltip:'Actualiser le référentiel',onPressed:()=>_refreshReferences(),icon:const Icon(Icons.refresh))])),
           Padding(padding:const EdgeInsets.symmetric(horizontal:12,vertical:4),child:TextField(decoration:const InputDecoration(prefixIcon:Icon(Icons.search),hintText:'Nom, indicatif, fréquence, mode…',isDense:true,border:OutlineInputBorder()),onChanged:(v)=>setState(()=>_referenceQuery=v))),
           Padding(padding:const EdgeInsets.symmetric(horizontal:12,vertical:6),child:Wrap(spacing:8,children:[
             FilterChip(label:const Text('Points hauts'),selected:_showHighPoints,onSelected:(v)=>setState(()=>_showHighPoints=v)),
