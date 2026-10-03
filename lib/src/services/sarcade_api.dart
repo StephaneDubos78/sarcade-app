@@ -49,7 +49,7 @@ class SarcadeApi {
   Future<SarcadeSharedFile> uploadFile(String eventId,String senderId,String name,String mimeType,List<int> bytes) async {
     final req=http.MultipartRequest('POST',Uri.parse('$baseUrl/api/v0.1/events/$eventId/files'))
       ..fields['sender_id']=senderId
-      ..files.add(http.MultipartFile.fromBytes('file',bytes,filename:name,contentType:http.MediaType.parse(mimeType)));
+      ..files.add(http.MultipartFile.fromBytes('file',bytes,filename:name,contentType:null));
     final streamed=await _client.send(req); final body=await streamed.stream.bytesToString();
     if(streamed.statusCode!=201) throw Exception('file_upload_http_${streamed.statusCode}:$body');
     return SarcadeSharedFile.fromJson(jsonDecode(body));
