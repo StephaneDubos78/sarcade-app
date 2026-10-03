@@ -3,8 +3,8 @@ import 'package:flutter/foundation.dart';
 import 'package:hive_ce_flutter/hive_ce_flutter.dart';
 
 class LocalStore {
-  static const _positions='positions', _pois='pois', _messages='messages', _acks='acks', _outbox='outbox', _meta='meta';
-  late Box _positionBox, _poiBox, _messageBox, _ackBox, _outboxBox, _metaBox;
+  static const _positions='positions', _pois='pois', _messages='messages', _acks='acks', _references='references', _outbox='outbox', _meta='meta';
+  late Box _positionBox, _poiBox, _messageBox, _ackBox, _referenceBox, _outboxBox, _metaBox;
 
   Future<void> init() async {
     if(!kIsWeb && Platform.isWindows){
@@ -19,6 +19,7 @@ class LocalStore {
     _poiBox=await Hive.openBox(_pois);
     _messageBox=await Hive.openBox(_messages);
     _ackBox=await Hive.openBox(_acks);
+    _referenceBox=await Hive.openBox(_references);
     _outboxBox=await Hive.openBox(_outbox);
     _metaBox=await Hive.openBox(_meta);
   }
@@ -27,10 +28,12 @@ class LocalStore {
   Future<void> cachePoi(Map<String,dynamic> v)=>_poiBox.put(v['id'],v);
   Future<void> cacheMessage(Map<String,dynamic> v)=>_messageBox.put(v['id'],v);
   Future<void> cacheAck(Map<String,dynamic> v)=>_ackBox.put(v['id'],v);
+  Future<void> cacheReference(Map<String,dynamic> v)=>_referenceBox.put(v['id'],v);
   List<Map<String,dynamic>> positions()=>_positionBox.values.map((e)=>Map<String,dynamic>.from(e)).toList();
   List<Map<String,dynamic>> pois()=>_poiBox.values.map((e)=>Map<String,dynamic>.from(e)).toList();
   List<Map<String,dynamic>> messages()=>_messageBox.values.map((e)=>Map<String,dynamic>.from(e)).toList();
   List<Map<String,dynamic>> acks()=>_ackBox.values.map((e)=>Map<String,dynamic>.from(e)).toList();
+  List<Map<String,dynamic>> references()=>_referenceBox.values.map((e)=>Map<String,dynamic>.from(e)).toList();
 
   Future<void> enqueue(Map<String,dynamic> op)=>_outboxBox.put(op['operation_id'],op);
   List<Map<String,dynamic>> pending()=>_outboxBox.values.map((e)=>Map<String,dynamic>.from(e)).toList()
