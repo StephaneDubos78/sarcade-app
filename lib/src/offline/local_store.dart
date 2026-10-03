@@ -29,6 +29,7 @@ class LocalStore {
   Future<void> cacheMessage(Map<String,dynamic> v)=>_messageBox.put(v['id'],v);
   Future<void> cacheAck(Map<String,dynamic> v)=>_ackBox.put(v['id'],v);
   Future<void> cacheReference(Map<String,dynamic> v)=>_referenceBox.put(v['id'],v);
+  Future<void> replaceReferences(List<Map<String,dynamic>> values) async {await _referenceBox.clear();for(final v in values){await _referenceBox.put(v['id'],v);}}
   List<Map<String,dynamic>> positions()=>_positionBox.values.map((e)=>Map<String,dynamic>.from(e)).toList();
   List<Map<String,dynamic>> pois()=>_poiBox.values.map((e)=>Map<String,dynamic>.from(e)).toList();
   List<Map<String,dynamic>> messages()=>_messageBox.values.map((e)=>Map<String,dynamic>.from(e)).toList();
