@@ -4,6 +4,7 @@ import '../models/poi.dart';
 import '../models/position.dart';
 import '../models/message.dart';
 import '../models/shared_file.dart';
+import '../models/reference_site.dart';
 
 class SarcadeApi {
   final String baseUrl; final http.Client _client;
@@ -24,6 +25,16 @@ class SarcadeApi {
     if(r.statusCode!=200) throw Exception('pois_http_${r.statusCode}');
     return (jsonDecode(r.body) as List).map((e)=>SarcadePoi.fromJson(e)).toList();
   }
+  Future<List<ReferenceSite>> referenceSites({String? category,String? query}) async {
+    final params=<String,String>{};
+    if(category!=null&&category.isNotEmpty)params['category']=category;
+    if(query!=null&&query.trim().isNotEmpty)params['q']=query.trim();
+    final uri=Uri.parse('$baseUrl/api/v0.1/reference-sites').replace(queryParameters:params.isEmpty?null:params);
+    final r=await _client.get(uri);
+    if(r.statusCode!=200) throw Exception('reference_sites_http_${r.statusCode}');
+    return (jsonDecode(r.body) as List).map((e)=>ReferenceSite.fromJson(Map<String,dynamic>.from(e))).toList();
+  }
+
   Future<void> sendPosition(SarcadePosition p) async {
     final r=await _client.post(Uri.parse('$baseUrl/api/v0.1/positions'),headers:{'content-type':'application/json'},body:jsonEncode(p.toJson()));
     if(r.statusCode!=202) throw Exception('position_http_${r.statusCode}');
