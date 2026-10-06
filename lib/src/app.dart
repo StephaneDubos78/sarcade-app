@@ -1,47 +1,63 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'config/app_config.dart';
 import 'features/map/operational_map_page.dart';
+import 'features/settings/settings_page.dart';
 import 'services/sarcade_api.dart';
 import 'offline/local_store.dart';
 
-class SarcadeApp extends StatelessWidget {
+class SarcadeApp extends StatefulWidget {
   final LocalStore store;
   const SarcadeApp({super.key,required this.store});
-
-  @override
-  Widget build(BuildContext context){
-    final c=AppConfig.fromEnvironment();
-    return MaterialApp(
-      title:'SARCADE',
-      debugShowCheckedModeBanner:false,
-      theme:ThemeData(colorScheme:ColorScheme.fromSeed(seedColor:const Color(0xFF173A6A)),useMaterial3:true),
-      home:c.eventId.trim().isEmpty
-        ? _ConfigurationRequired(serverUrl:c.serverUrl)
-        : OperationalMapPage(api:SarcadeApi(baseUrl:c.serverUrl),eventId:c.eventId,deviceId:c.deviceId,store:store,tileUrl:c.tileUrl,tileAttribution:c.tileAttribution),
-    );
-  }
+  @override State<SarcadeApp> createState()=>_SarcadeAppState();
 }
 
-class _ConfigurationRequired extends StatelessWidget {
-  final String serverUrl;
-  const _ConfigurationRequired({required this.serverUrl});
+class _SarcadeAppState extends State<SarcadeApp> {
+  final _navigator=GlobalKey<NavigatorState>();
+  late AppConfig _config;
+  late bool _needsSetup;
+  SarcadeApi? _api;
+  String? _apiKey;
+
+  // One client per session: the map page closes it on dispose.
+  SarcadeApi _apiFor(AppConfig c){if(_apiKey!=c.sessionKey){_api=SarcadeApi(baseUrl:c.serverUrl);_apiKey=c.sessionKey;}return _api!;}
+
+  static bool get _isMobile=>!kIsWeb&&(defaultTargetPlatform==TargetPlatform.android||defaultTargetPlatform==TargetPlatform.iOS);
+
+  @override void initState(){
+    super.initState();
+    final env=AppConfig.fromEnvironment();
+    final stored=widget.store.storedConfig();
+    _config=stored==null?env:AppConfig.fromStored(stored,env);
+    // Desktop keeps the build-time configuration (run-windows-demo.ps1).
+    // A phone cannot be given --dart-define values per operator, so it asks once.
+    _needsSetup=!_config.isComplete||(_isMobile&&stored==null);
+  }
+
+  Future<void> _save(AppConfig c) async {
+    await widget.store.saveConfig(c.toStored());
+    final wasSetup=_needsSetup;
+    if(c.sessionKey==_config.sessionKey&&!wasSetup){_navigator.currentState?.pop();return;}
+    setState((){_config=c;_needsSetup=false;});
+    if(!wasSetup)_navigator.currentState?.pop();
+  }
+
+  void _openSettings()=>_navigator.currentState?.push(MaterialPageRoute(builder:(_)=>SettingsPage(initial:_config,onSave:_save)));
+
   @override
-  Widget build(BuildContext context)=>Scaffold(
-    appBar:AppBar(title:const Text('SARCADE')),
-    body:Center(child:ConstrainedBox(
-      constraints:const BoxConstraints(maxWidth:560),
-      child:Card(child:Padding(
-        padding:const EdgeInsets.all(24),
-        child:Column(mainAxisSize:MainAxisSize.min,children:[
-          const Icon(Icons.map_outlined,size:56),
-          const SizedBox(height:16),
-          Text('Aucun événement configuré',style:Theme.of(context).textTheme.headlineSmall),
-          const SizedBox(height:12),
-          const Text('Cette V0.1 de développement doit être lancée avec un identifiant d’événement. La sélection d’événement sera intégrée à l’écran d’accueil.'),
-          const SizedBox(height:12),
-          SelectableText('Serveur : $serverUrl'),
-        ]),
-      )),
-    )),
+  Widget build(BuildContext context)=>MaterialApp(
+    navigatorKey:_navigator,
+    title:'SARCADE',
+    debugShowCheckedModeBanner:false,
+    theme:ThemeData(colorScheme:ColorScheme.fromSeed(seedColor:const Color(0xFF173A6A)),useMaterial3:true),
+    home:_needsSetup
+      ? SettingsPage(initial:_config,onSave:_save,firstRun:true)
+      : OperationalMapPage(
+          key:ValueKey(_config.sessionKey),
+          api:_apiFor(_config),
+          eventId:_config.eventId,deviceId:_config.deviceId,store:widget.store,
+          tileUrl:_config.tileUrl,tileAttribution:_config.tileAttribution,
+          onSettings:_openSettings,
+        ),
   );
 }
