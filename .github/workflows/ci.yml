@@ -55,7 +55,18 @@ jobs:
           rm -f test/widget_test.dart
           python3 tool/patch_android.py
       - run: flutter pub get
-      - run: flutter build apk --release
+      - name: Build APK
+        shell: bash
+        run: |
+          set -o pipefail
+          flutter build apk --release 2>&1 | tee android-build.log
+      - name: Report Android build errors
+        if: failure()
+        shell: bash
+        run: |
+          # Surface the Gradle diagnosis as annotations, readable without the raw log.
+          grep -n -A12 -E "What went wrong|error:|Error:|FAILURE|requires|minSdk|compileSdk|incompatible" android-build.log \
+            | head -80 | sed 's/%/%25/g' | while IFS= read -r line; do echo "::error::${line}"; done || true
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
