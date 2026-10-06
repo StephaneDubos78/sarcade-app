@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -36,3 +37,56 @@ jobs:
       - run: flutter analyze
       - run: flutter test
       - run: flutter build windows --release
+
+  android-build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - name: Generate Android runner
+        run: |
+          if [ ! -d android ]; then flutter create --platforms=android --org org.sarcade --no-pub .; fi
+          rm -f test/widget_test.dart
+          python3 tool/patch_android.py
+      - run: flutter pub get
+      - name: Build APK
+        shell: bash
+        run: |
+          set -o pipefail
+          flutter build apk --release 2>&1 | tee android-build.log
+      - name: Report Android build errors
+        if: failure()
+        shell: bash
+        run: |
+          # Surface the Gradle diagnosis as annotations, readable without the raw log.
+          grep -n -A12 -E "What went wrong|error:|Error:|FAILURE|requires|minSdk|compileSdk|incompatible" android-build.log \
+            | head -80 | sed 's/%/%25/g' | while IFS= read -r line; do echo "::error::${line}"; done || true
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: sarcade-android-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
+          retention-days: 30
+      - name: Publish APK to the android-dev pre-release
+        # Stable download link for phones: the GitHub mobile app cannot fetch Actions artifacts.
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          cp build/app/outputs/flutter-apk/app-release.apk sarcade-dev.apk
+          if ! gh release view android-dev >/dev/null 2>&1; then
+            gh release create android-dev --prerelease --target "$GITHUB_SHA" \
+              --title "SARCADE Android (développement)" \
+              --notes "APK de développement V0.1, mis à jour automatiquement par la CI. Signé avec la clé de debug, réservé aux tests."
+          fi
+          gh release upload android-dev sarcade-dev.apk --clobber
