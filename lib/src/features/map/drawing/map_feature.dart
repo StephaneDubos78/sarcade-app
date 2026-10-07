@@ -50,14 +50,16 @@ class MapFeature {
   final double strokeWidth;
   final String label;
   final String? createdBy;
+  /// Author of the last change, tie-break of the conflict rule (ADR-001).
+  final String? updatedBy;
   final DateTime updatedAt;
 
-  const MapFeature({required this.id,required this.eventId,required this.kind,required this.points,this.radiusM,required this.color,required this.strokeWidth,this.label='',this.createdBy,required this.updatedAt});
+  const MapFeature({required this.id,required this.eventId,required this.kind,required this.points,this.radiusM,required this.color,required this.strokeWidth,this.label='',this.createdBy,this.updatedBy,required this.updatedAt});
 
-  MapFeature copyWith({List<LatLng>? points,double? radiusM,int? color,double? strokeWidth,String? label,String? id,DateTime? updatedAt})=>MapFeature(
+  MapFeature copyWith({List<LatLng>? points,double? radiusM,int? color,double? strokeWidth,String? label,String? id,String? updatedBy,DateTime? updatedAt})=>MapFeature(
     id:id??this.id,eventId:eventId,kind:kind,points:points??this.points,radiusM:radiusM??this.radiusM,
     color:color??this.color,strokeWidth:strokeWidth??this.strokeWidth,label:label??this.label,createdBy:createdBy,
-    updatedAt:updatedAt??DateTime.now().toUtc(),
+    updatedBy:updatedBy??this.updatedBy,updatedAt:updatedAt??DateTime.now().toUtc(),
   );
 
   /// Vertices of the polygon outline for closed shapes.
@@ -93,7 +95,7 @@ class MapFeature {
     'id':id,'event_id':eventId,'kind':kind.name,
     'points':points.map((p)=>[p.latitude,p.longitude]).toList(),
     'radius_m':radiusM,'color':color,'stroke_width':strokeWidth,'label':label,
-    'created_by':createdBy,'updated_at':updatedAt.toUtc().toIso8601String(),
+    'created_by':createdBy,'updated_by':updatedBy??createdBy,'updated_at':updatedAt.toUtc().toIso8601String(),
   };
 
   factory MapFeature.fromJson(Map<String,dynamic> j)=>MapFeature(
@@ -102,7 +104,7 @@ class MapFeature {
     points:(j['points'] as List).map((e){final l=e as List;return LatLng((l[0] as num).toDouble(),(l[1] as num).toDouble());}).toList(),
     radiusM:(j['radius_m'] as num?)?.toDouble(),
     color:(j['color'] as num).toInt(),strokeWidth:(j['stroke_width'] as num).toDouble(),
-    label:(j['label'] as String?)??'',createdBy:j['created_by'] as String?,
+    label:(j['label'] as String?)??'',createdBy:j['created_by'] as String?,updatedBy:j['updated_by'] as String?,
     updatedAt:DateTime.parse(j['updated_at'] as String),
   );
 

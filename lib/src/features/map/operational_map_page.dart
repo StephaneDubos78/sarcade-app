@@ -45,7 +45,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   static const _compactWidth=600.0;
   @override void didChangeDependencies(){super.didChangeDependencies();if(!_layoutInitialized){_layoutInitialized=true;if(MediaQuery.sizeOf(context).width<_compactWidth)_showPanel=false;}}
 
-  @override void initState(){super.initState();_notifications.initialize();_sync=OfflineSyncService(api:widget.api,store:widget.store,eventId:widget.eventId);_initDrawing();_loadLocal();_sync.start();_syncUiTimer=Timer.periodic(const Duration(seconds:2),(_){if(mounted)setState((){});});_start();}
+  @override void initState(){super.initState();_notifications.initialize();_sync=OfflineSyncService(api:widget.api,store:widget.store,eventId:widget.eventId,onRemoteChange:_onRemoteChange);_initDrawing();_loadLocal();_sync.start();_syncUiTimer=Timer.periodic(const Duration(seconds:2),(_){if(mounted)setState((){});});_start();}
   bool _validPosition(SarcadePosition p){
     final t=p.time.toUtc(), now=DateTime.now().toUtc();
     return t.isAfter(DateTime.utc(2020)) && t.isBefore(now.add(const Duration(days:1)));
@@ -66,6 +66,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     if(e.type=='position.updated'){final p=SarcadePosition.fromJson(e.data);if(_validPosition(p)){widget.store.cachePosition(p.toJson());if(mounted)setState((){_positions[p.deviceId]=p;if(_selectedDevice==p.deviceId)_trace.add(p);});}}
     if(e.type=='poi.created'){final p=SarcadePoi.fromJson(e.data);widget.store.cachePoi(e.data);setState(()=>_pois[p.id]=p);}
     if(e.type=='message.created'){_receiveMessage(e.data);}
+    if(e.type=='map_feature.upserted'||e.type=='map_feature.deleted'){_applyRemoteFeature(e.data,persist:true);}
     if(e.type=='ack.created'){widget.store.cacheAck(e.data);if(mounted)setState((){});}
   }
 
@@ -153,12 +154,49 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     }
     _drawing=DrawingController(
       eventId:widget.eventId,actorId:widget.deviceId,initial:initial,
-      onSaved:(f)=>widget.store.saveMapFeature(f.toJson()),
-      onDeleted:(id)=>widget.store.deleteMapFeature(id),
+      onChanged:_onLocalFeatureChanged,
+      onDeleted:_onLocalFeatureDeleted,
     );
     _drawing.addListener(_onDrawingChanged);
   }
   void _onDrawingChanged(){if(mounted)setState((){});}
+
+  // Local edits: stored at once, then sent through the Outbox (ADR-001).
+  void _onLocalFeatureChanged(MapFeature f,{required bool isNew}){
+    widget.store.saveMapFeature(f.toJson());
+    _sync.queue(objectId:f.id,objectType:'map_feature',action:isNew?'create':'update',payload:f.toJson());
+  }
+
+  void _onLocalFeatureDeleted(MapFeature f){
+    widget.store.deleteMapFeature(f.id);
+    _sync.queue(objectId:f.id,objectType:'map_feature',action:'delete',payload:{
+      'id':f.id,'event_id':widget.eventId,'updated_by':widget.deviceId,'updated_at':DateTime.now().toUtc().toIso8601String(),
+    });
+  }
+
+  void _onRemoteChange(String objectType,Map<String,dynamic> payload){
+    if(objectType=='map_feature')_applyRemoteFeature(payload);
+  }
+
+  /// Server state of a map object, from the change feed or realtime.
+  /// A local change still waiting in the Outbox keeps priority until the
+  /// server has ruled on it; the winning state then arrives through the feed.
+  void _applyRemoteFeature(Map<String,dynamic> p,{bool persist=false}){
+    final id=p['id'];
+    if(id is! String||p['event_id']!=widget.eventId||_sync.isPending(id))return;
+    if(p['deleted']==true){
+      DateTime? at;
+      try{at=DateTime.parse(p['updated_at'] as String);}catch(_){}
+      _drawing.removeRemote(id,at:at,by:p['updated_by'] as String?);
+      if(persist)widget.store.deleteMapFeature(id);
+      return;
+    }
+    try{
+      final f=MapFeature.fromJson(p);
+      _drawing.applyRemote(f);
+      if(persist&&identical(_drawing.feature(id),f))widget.store.saveMapFeature(p);
+    }catch(_){/* malformed or newer schema: ignored, the feed will resend */}
+  }
 
   LatLng _globalToLatLng(Offset global){
     final box=_mapKey.currentContext?.findRenderObject() as RenderBox?;
