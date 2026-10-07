@@ -114,14 +114,14 @@ ImportResult parseGpx(String text){
     out.add(FeatureKind.point,[p],label:_childText(w,'name'));
   }
   for(final r in _children(doc.rootElement,'rte')){
-    out.add(FeatureKind.line,[for(final p in _children(r,'rtept').map(pt))if(p!=null)p],label:_childText(r,'name'));
+    out.add(FeatureKind.line,[for(final p in _children(r,'rtept').map(pt))?p],label:_childText(r,'name'));
   }
   for(final t in _children(doc.rootElement,'trk')){
     final name=_childText(t,'name');
     final segs=_children(t,'trkseg').toList();
     for(var i=0;i<segs.length;i++){
       final label=segs.length>1&&name.isNotEmpty?'$name (${i+1})':name;
-      out.add(FeatureKind.line,[for(final p in _children(segs[i],'trkpt').map(pt))if(p!=null)p],label:label);
+      out.add(FeatureKind.line,[for(final p in _children(segs[i],'trkpt').map(pt))?p],label:label);
     }
   }
   return out.result();
@@ -210,7 +210,7 @@ ImportResult parseGeoJson(String text){
     if(c is! List||c.length<2||c[0] is! num||c[1] is! num)return null;
     return LatLng((c[1] as num).toDouble(),(c[0] as num).toDouble());
   }
-  List<LatLng> line(Object? c)=>c is List?[for(final p in c.map(pos))if(p!=null)p]:const [];
+  List<LatLng> line(Object? c)=>c is List?[for(final p in c.map(pos))?p]:const [];
 
   void geometry(Object? g,Map props){
     if(g is! Map){out.skipped++;return;}
