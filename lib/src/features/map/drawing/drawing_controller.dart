@@ -3,6 +3,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:uuid/uuid.dart';
 
 import 'geometry.dart';
+import 'import_formats.dart';
 import 'map_feature.dart';
 
 /// Operational palette, ARGB. Red first: it is the default for SAR annotations.
@@ -128,6 +129,25 @@ class DrawingController extends ChangeNotifier {
     _put(f,isNew:true);
     notifyListeners();
     return f;
+  }
+
+  /// Adds shapes read from a file as new objects, synchronised like drawn ones.
+  /// The whole import is one undo step. Returns the created objects.
+  List<MapFeature> importShapes(List<ImportedShape> shapes){
+    if(shapes.isEmpty)return const [];
+    final now=DateTime.now().toUtc();
+    final created=<MapFeature>[
+      for(final s in shapes)MapFeature(
+        id:_uuid.v7(),eventId:eventId,kind:s.kind,points:s.points,radiusM:s.radiusM,
+        color:s.color??color,strokeWidth:strokeWidth,label:s.label,
+        createdBy:actorId,updatedBy:actorId,updatedAt:now,
+      ),
+    ];
+    _tool=null;_draft.clear();_selectedId=null;
+    _record({for(final f in created)f.id:null},{for(final f in created)f.id:f});
+    for(final f in created){_put(f,isNew:true);}
+    notifyListeners();
+    return created;
   }
 
   void select(String? id){
