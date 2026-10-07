@@ -56,7 +56,7 @@ List<Widget> buildDrawingLayers(DrawingController c){
     )).toList()),
     if(lines.isNotEmpty)PolylineLayer(polylines:lines.map((f)=>Polyline(
       points:f.points,color:_c(f.color),strokeWidth:f.strokeWidth,
-      pattern:f.kind==FeatureKind.measure?const StrokePattern.dashed(segments:[12,8]):const StrokePattern.solid(),
+      pattern:f.kind==FeatureKind.measure?StrokePattern.dashed(segments:const [12,8]):const StrokePattern.solid(),
       borderColor:Colors.white,borderStrokeWidth:f.id==selectedId?3:1,
       strokeCap:StrokeCap.round,strokeJoin:StrokeJoin.round,
     )).toList()),
@@ -71,10 +71,10 @@ List<Widget> _draftLayers(DrawingController c){
   final color=_c(c.color);
   final vertices=MarkerLayer(markers:d.map((p)=>Marker(point:p,width:16,height:16,child:Container(decoration:BoxDecoration(color:Colors.white,shape:BoxShape.circle,border:Border.all(color:color,width:3))))).toList());
   if(t==FeatureKind.zone&&d.length>=3){
-    return [PolygonLayer(polygons:[Polygon(points:d,color:color.withAlpha(40),borderColor:color,borderStrokeWidth:c.strokeWidth,pattern:const StrokePattern.dashed(segments:[10,6]))]),vertices];
+    return [PolygonLayer(polygons:[Polygon(points:d,color:color.withAlpha(40),borderColor:color,borderStrokeWidth:c.strokeWidth,pattern:StrokePattern.dashed(segments:const [10,6]))]),vertices];
   }
   if(d.length>=2){
-    return [PolylineLayer(polylines:[Polyline(points:d,color:color,strokeWidth:c.strokeWidth,pattern:const StrokePattern.dashed(segments:[10,6]))]),vertices];
+    return [PolylineLayer(polylines:[Polyline(points:d,color:color,strokeWidth:c.strokeWidth,pattern:StrokePattern.dashed(segments:const [10,6]))]),vertices];
   }
   return [vertices];
 }

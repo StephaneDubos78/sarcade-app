@@ -1,5 +1,3 @@
-import 'dart:ui' show Offset;
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:sarcade_app/src/features/map/drawing/drawing_controller.dart';

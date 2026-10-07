@@ -24,6 +24,8 @@ jobs:
           set -o pipefail
           flutter analyze 2>&1 | tee analyze.log
       - name: Test
+        # Run even when analyze fails, to report both in one CI round.
+        if: success() || failure()
         shell: bash
         run: |
           set -o pipefail
