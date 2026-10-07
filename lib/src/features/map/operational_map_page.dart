@@ -1,7 +1,11 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
-import 'package:latlong2/latlong.dart';
+import 'package:latlong2/latlong.dart' hide Path;
+import 'package:open_filex/open_filex.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../models/poi.dart';
@@ -11,6 +15,12 @@ import '../../models/reference_site.dart';
 import '../messages/messages_page.dart';
 import '../logbook/logbook_page.dart';
 import '../files/files_page.dart';
+import 'drawing/drawing_controller.dart';
+import 'drawing/drawing_layers.dart';
+import 'drawing/drawing_toolbar.dart';
+import 'drawing/geometry.dart';
+import 'drawing/hit_test.dart';
+import 'drawing/map_feature.dart';
 import '../../services/notification_service.dart';
 import '../../services/location_service.dart';
 import '../../services/realtime_service.dart';
@@ -28,12 +38,14 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   final _map=MapController(); final _realtime=RealtimeService(); final _location=LocationService(); final _notifications=NotificationService(); final _uuid=const Uuid();
   final Map<String,SarcadePosition> _positions={}; final Map<String,SarcadePoi> _pois={}; final Map<String,ReferenceSite> _references={};
   StreamSubscription? _rtSub,_gpsSub; Timer? _syncUiTimer; String _status='Connexion…'; bool _tracking=false; bool _showPanel=true; bool _showReferencePanel=false; bool _showHighPoints=true; bool _showRelays=true; String _referenceQuery=''; String? _selectedDevice; ReferenceSite? _selectedReference; List<SarcadePosition> _trace=[]; bool _traceLoading=false; late final OfflineSyncService _sync; bool _layoutInitialized=false;
+  late final DrawingController _drawing; bool _drawingTools=false; final _mapKey=GlobalKey();
+  final List<Offset> _stroke=[];
 
   // Phones get the map full width: side panels start closed and open as overlays.
   static const _compactWidth=600.0;
   @override void didChangeDependencies(){super.didChangeDependencies();if(!_layoutInitialized){_layoutInitialized=true;if(MediaQuery.sizeOf(context).width<_compactWidth)_showPanel=false;}}
 
-  @override void initState(){super.initState();_notifications.initialize();_sync=OfflineSyncService(api:widget.api,store:widget.store,eventId:widget.eventId);_loadLocal();_sync.start();_syncUiTimer=Timer.periodic(const Duration(seconds:2),(_){if(mounted)setState((){});});_start();}
+  @override void initState(){super.initState();_notifications.initialize();_sync=OfflineSyncService(api:widget.api,store:widget.store,eventId:widget.eventId);_initDrawing();_loadLocal();_sync.start();_syncUiTimer=Timer.periodic(const Duration(seconds:2),(_){if(mounted)setState((){});});_start();}
   bool _validPosition(SarcadePosition p){
     final t=p.time.toUtc(), now=DateTime.now().toUtc();
     return t.isAfter(DateTime.utc(2020)) && t.isBefore(now.add(const Duration(days:1)));
@@ -134,7 +146,105 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     return segments;
   }
 
-  @override void dispose(){_rtSub?.cancel();_gpsSub?.cancel();_syncUiTimer?.cancel();_sync.dispose();_realtime.dispose();widget.api.close();super.dispose();}
+  void _initDrawing(){
+    final initial=<MapFeature>[];
+    for(final j in widget.store.mapFeatures(widget.eventId)){
+      try{initial.add(MapFeature.fromJson(j));}catch(_){/* skip an object saved by an incompatible build */}
+    }
+    _drawing=DrawingController(
+      eventId:widget.eventId,actorId:widget.deviceId,initial:initial,
+      onSaved:(f)=>widget.store.saveMapFeature(f.toJson()),
+      onDeleted:(id)=>widget.store.deleteMapFeature(id),
+    );
+    _drawing.addListener(_onDrawingChanged);
+  }
+  void _onDrawingChanged(){if(mounted)setState((){});}
+
+  LatLng _globalToLatLng(Offset global){
+    final box=_mapKey.currentContext?.findRenderObject() as RenderBox?;
+    final local=box==null?global:box.globalToLocal(global);
+    return _map.camera.screenOffsetToLatLng(local);
+  }
+
+  double _circleRadiusPx(MapFeature f){
+    final cam=_map.camera;
+    final center=cam.latLngToScreenOffset(f.points[0]);
+    final edge=cam.latLngToScreenOffset(destination(f.points[0],f.radiusM??0,90));
+    return (edge-center).distance;
+  }
+
+  Future<void> _onMapTap(TapPosition tap,LatLng point) async {
+    if(_drawing.isDrawing){
+      if(_drawing.tool==FeatureKind.text){
+        final text=await _askText(title:'Texte sur la carte',initial:'');
+        if(text==null||text.trim().isEmpty)return;
+        _drawing.tapAt(point,label:text.trim());
+      }else{
+        _drawing.tapAt(point);
+      }
+      return;
+    }
+    final cam=_map.camera;
+    final hit=hitTest(_drawing.features,tap.relative??cam.latLngToScreenOffset(point),cam.latLngToScreenOffset,radiusPx:_circleRadiusPx);
+    _drawing.select(hit?.id);
+  }
+
+  Future<String?> _askText({required String title,required String initial}){
+    final controller=TextEditingController(text:initial);
+    return showDialog<String>(context:context,builder:(context)=>AlertDialog(
+      title:Text(title),
+      content:TextField(controller:controller,autofocus:true,textCapitalization:TextCapitalization.sentences,maxLength:80,onSubmitted:(v)=>Navigator.pop(context,v)),
+      actions:[
+        TextButton(onPressed:()=>Navigator.pop(context),child:const Text('Annuler')),
+        FilledButton(onPressed:()=>Navigator.pop(context,controller.text),child:const Text('OK')),
+      ],
+    )).whenComplete(controller.dispose);
+  }
+
+  Future<void> _editSelectedLabel() async {
+    final f=_drawing.selected;
+    if(f==null)return;
+    final text=await _askText(title:f.kind==FeatureKind.text?'Modifier le texte':'Nom de l’objet',initial:f.label);
+    if(text!=null)_drawing.setLabel(text);
+  }
+
+  void _onFreehandStart(DragStartDetails d){setState((){_stroke..clear()..add(d.localPosition);});}
+  void _onFreehandUpdate(DragUpdateDetails d){
+    // Keep a point every 4 px: smooth enough on screen, light to store and sync.
+    if(_stroke.isEmpty||(d.localPosition-_stroke.last).distance>=4)setState(()=>_stroke.add(d.localPosition));
+  }
+  void _onFreehandEnd(DragEndDetails _){
+    final cam=_map.camera;
+    final pts=_stroke.map(cam.screenOffsetToLatLng).toList();
+    setState(()=>_stroke.clear());
+    _drawing.commitFreehand(pts);
+  }
+
+  /// Exports the event's drawn objects as GeoJSON: a local copy on the device,
+  /// and an upload to the event's shared files so the PCO receives it.
+  Future<void> _exportGeoJson() async {
+    final messenger=ScaffoldMessenger.of(context);
+    final stamp=DateTime.now().toIso8601String().substring(0,16).replaceAll(RegExp(r'[:T]'),'-');
+    final name='sarcade-objets-${widget.eventId}-$stamp.geojson'.replaceAll(RegExp(r'[\\/:*?"<>|]'),'_');
+    final bytes=utf8.encode(const JsonEncoder.withIndent('  ').convert(featureCollection(_drawing.features)));
+    String? localPath;
+    try{
+      final dir=await getApplicationDocumentsDirectory();
+      localPath='${dir.path}${Platform.pathSeparator}$name';
+      await File(localPath).writeAsBytes(bytes,flush:true);
+    }catch(_){localPath=null;}
+    var shared=false;
+    try{await widget.api.uploadFile(widget.eventId,widget.deviceId,name,'application/geo+json',bytes);shared=true;}catch(_){}
+    if(!mounted)return;
+    final count=_drawing.features.length;
+    messenger.showSnackBar(SnackBar(
+      duration:const Duration(seconds:6),
+      content:Text(shared?'$count objets exportés et partagés dans les fichiers de l’événement':localPath!=null?'$count objets exportés sur l’appareil, partage impossible hors connexion':'Export impossible'),
+      action:localPath==null?null:SnackBarAction(label:'Ouvrir',onPressed:()=>OpenFilex.open(localPath!)),
+    ));
+  }
+
+  @override void dispose(){_rtSub?.cancel();_gpsSub?.cancel();_syncUiTimer?.cancel();_sync.dispose();_realtime.dispose();_drawing.dispose();widget.api.close();super.dispose();}
 
   @override Widget build(BuildContext context){
     final sorted=_positions.values.toList()..sort((a,b)=>a.deviceId.compareTo(b.deviceId));
@@ -208,14 +318,46 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           Expanded(child:ListView(children:sorted.map((p)=>ListTile(selected:_selectedDevice==p.deviceId,leading:Icon(Icons.circle,size:13,color:DateTime.now().toUtc().difference(p.time.toUtc()).inMinutes<5?Colors.green:Colors.grey),title:Text(p.deviceId),subtitle:Text('Dernière position : ${_age(p.time)}'),onTap:()=>_select(p))).toList())),
           if(selected!=null)Container(padding:const EdgeInsets.all(14),decoration:BoxDecoration(border:Border(top:BorderSide(color:Theme.of(context).dividerColor))),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text(selected.deviceId,style:const TextStyle(fontWeight:FontWeight.bold)),const SizedBox(height:6),Text('Lat : ${selected.lat.toStringAsFixed(6)}'),Text('Lon : ${selected.lon.toStringAsFixed(6)}'),Text('Précision : ${selected.accuracyM?.toStringAsFixed(1)??'-'} m'),Text('Heure : ${selected.time.toLocal()}'),Text(_traceLoading?'Trace : chargement…':'Trace : ${_trace.length} points')]))
         ]))),
-        Expanded(child:FlutterMap(mapController:_map,options:const MapOptions(initialCenter:LatLng(48.8566,2.3522),initialZoom:11,maxZoom:20),children:[
+        Expanded(child:Stack(key:_mapKey,children:[FlutterMap(mapController:_map,options:MapOptions(
+          initialCenter:const LatLng(48.8566,2.3522),initialZoom:11,maxZoom:20,onTap:_onMapTap,
+          // Rotation off: drawn arrows and handles assume north up.
+          // Drag off while editing so handle and freehand gestures reach the shapes.
+          interactionOptions:InteractionOptions(flags:InteractiveFlag.all&~InteractiveFlag.rotate&(_drawing.locksMapDrag?~InteractiveFlag.drag:~0)),
+        ),children:[
           TileLayer(urlTemplate:widget.tileUrl,userAgentPackageName:'org.sarcade.app',maxZoom:19),
           if(_trace.length>1)PolylineLayer(polylines:_traceSegments().map((segment)=>Polyline(points:segment.map((p)=>LatLng(p.lat,p.lon)).toList(),strokeWidth:4,color:Colors.deepPurple)).toList()),
+          ...buildDrawingLayers(_drawing),
           MarkerLayer(markers:markers),
+          buildHandleLayer(_drawing,_globalToLatLng),
           RichAttributionWidget(attributions:[TextSourceAttribution(widget.tileAttribution)]),
-        ]))
+        ]),
+        if(_drawing.tool==FeatureKind.freehand)Positioned.fill(child:GestureDetector(
+          behavior:HitTestBehavior.opaque,
+          onPanStart:_onFreehandStart,onPanUpdate:_onFreehandUpdate,onPanEnd:_onFreehandEnd,
+          child:CustomPaint(painter:_StrokePainter(_stroke,Color(_drawing.color),_drawing.strokeWidth)),
+        )),
+        Positioned(top:8,left:8,right:8,child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+          if(_drawingTools)DrawingToolbar(controller:_drawing,onExport:_exportGeoJson,onClose:(){_drawing.selectTool(null);setState(()=>_drawingTools=false);})
+          else FloatingActionButton.small(heroTag:'drawing-tools',tooltip:'Dessiner sur la carte',onPressed:()=>setState(()=>_drawingTools=true),child:const Icon(Icons.draw_outlined)),
+          if(_drawing.isDrawing)Padding(padding:const EdgeInsets.only(top:8),child:DraftBar(controller:_drawing)),
+          if(_drawing.selected!=null)Padding(padding:const EdgeInsets.only(top:8),child:SelectionBar(controller:_drawing,onEditLabel:_editSelectedLabel)),
+        ])),
+      ]))
       ]),
       floatingActionButton:FloatingActionButton.extended(onPressed:_toggleTracking,icon:Icon(_tracking?Icons.location_off:Icons.my_location),label:Text(_tracking?'Arrêter GPS':'Partager position')),
     );
   }
+}
+
+/// Live preview of the freehand stroke, in screen space, while the finger moves.
+class _StrokePainter extends CustomPainter {
+  final List<Offset> points; final Color color; final double width;
+  _StrokePainter(this.points,this.color,this.width);
+  @override void paint(Canvas canvas,Size size){
+    if(points.length<2)return;
+    final path=Path()..moveTo(points.first.dx,points.first.dy);
+    for(final p in points.skip(1)){path.lineTo(p.dx,p.dy);}
+    canvas.drawPath(path,Paint()..color=color..strokeWidth=width..style=PaintingStyle.stroke..strokeCap=StrokeCap.round..strokeJoin=StrokeJoin.round);
+  }
+  @override bool shouldRepaint(_StrokePainter old)=>true;
 }
