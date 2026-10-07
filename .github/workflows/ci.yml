@@ -110,3 +110,30 @@ jobs:
               --notes "APK de développement V0.1, mis à jour automatiquement par la CI. Signé avec la clé de debug, réservé aux tests."
           fi
           gh release upload android-dev sarcade-dev.apk --clobber
+
+  ios-build:
+    # Unsigned build: proves the app compiles for iPhone. Signing and the
+    # TestFlight upload are added once the Apple Developer account exists.
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - name: Generate iOS runner
+        run: |
+          if [ ! -d ios ]; then flutter create --platforms=ios --org org.sarcade --no-pub .; fi
+          rm -f test/widget_test.dart
+          python3 tool/patch_ios.py
+      - run: flutter pub get
+      - name: Build iOS (no code signing)
+        shell: bash
+        run: |
+          set -o pipefail
+          flutter build ios --release --no-codesign 2>&1 | tee ios-build.log
+      - name: Report iOS build errors
+        if: failure()
+        shell: bash
+        run: |
+          grep -n -A8 -E "error:|Error:|FAILED|requires|deployment target" ios-build.log \
+            | head -80 | sed 's/%/%25/g' | while IFS= read -r line; do echo "::error::${line}"; done || true
