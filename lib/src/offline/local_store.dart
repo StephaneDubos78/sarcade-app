@@ -3,8 +3,8 @@ import 'package:flutter/foundation.dart';
 import 'package:hive_ce_flutter/hive_ce_flutter.dart';
 
 class LocalStore {
-  static const _positions='positions', _pois='pois', _messages='messages', _acks='acks', _references='references', _outbox='outbox', _meta='meta';
-  late Box _positionBox, _poiBox, _messageBox, _ackBox, _referenceBox, _outboxBox, _metaBox;
+  static const _positions='positions', _pois='pois', _messages='messages', _acks='acks', _references='references', _outbox='outbox', _meta='meta', _features='map_features';
+  late Box _positionBox, _poiBox, _messageBox, _ackBox, _referenceBox, _outboxBox, _metaBox, _featureBox;
 
   Future<void> init() async {
     if(!kIsWeb && Platform.isWindows){
@@ -22,6 +22,7 @@ class LocalStore {
     _referenceBox=await Hive.openBox(_references);
     _outboxBox=await Hive.openBox(_outbox);
     _metaBox=await Hive.openBox(_meta);
+    _featureBox=await Hive.openBox(_features);
   }
 
   Future<void> cachePosition(Map<String,dynamic> v)=>_positionBox.put(v['id'],v);
@@ -41,6 +42,11 @@ class LocalStore {
     ..sort((a,b)=>(a['client_time'] as String).compareTo(b['client_time'] as String));
   Future<void> acknowledge(String operationId)=>_outboxBox.delete(operationId);
   int pendingCount()=>_outboxBox.length;
+
+  // Drawn map objects, kept locally until the server exposes a map object API.
+  List<Map<String,dynamic>> mapFeatures(String eventId)=>_featureBox.values.map((e)=>Map<String,dynamic>.from(e as Map)).where((j)=>j['event_id']==eventId).toList();
+  Future<void> saveMapFeature(Map<String,dynamic> v)=>_featureBox.put(v['id'],v);
+  Future<void> deleteMapFeature(String id)=>_featureBox.delete(id);
 
   Map<String,dynamic>? storedConfig(){final v=_metaBox.get('config');return v==null?null:Map<String,dynamic>.from(v as Map);}
   Future<void> saveConfig(Map<String,dynamic> v)=>_metaBox.put('config',v);
