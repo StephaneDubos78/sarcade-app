@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:latlong2/latlong.dart' hide Path;
 import 'package:open_filex/open_filex.dart';
 import 'package:path_provider/path_provider.dart';
@@ -20,6 +21,7 @@ import 'drawing/drawing_layers.dart';
 import 'drawing/drawing_toolbar.dart';
 import 'drawing/geometry.dart';
 import 'drawing/hit_test.dart';
+import 'drawing/import_formats.dart';
 import 'drawing/map_feature.dart';
 import '../../services/notification_service.dart';
 import '../../services/location_service.dart';
@@ -258,6 +260,35 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     _drawing.commitFreehand(pts);
   }
 
+  /// Imports a GPX, KML, KMZ or GeoJSON file as map objects, then frames them.
+  Future<void> _importFile() async {
+    final messenger=ScaffoldMessenger.of(context);
+    // FileType.any: Android cannot filter on extensions such as .gpx or .geojson
+    // that have no registered MIME type. The extension is checked after picking.
+    final picked=await FilePicker.platform.pickFiles(withData:true);
+    if(picked==null||picked.files.isEmpty)return;
+    final file=picked.files.single;
+    try{
+      final bytes=file.bytes??(file.path==null?null:await File(file.path!).readAsBytes());
+      if(bytes==null)throw const ImportFormatException('Fichier illisible');
+      final result=parseMapFile(file.name,bytes);
+      final created=_drawing.importShapes(result.shapes);
+      _fitPoints([for(final f in created)...f.points]);
+      final skipped=result.skipped>0?', ${result.skipped} ignorés':'';
+      messenger.showSnackBar(SnackBar(content:Text('${created.length} objets importés depuis ${file.name}$skipped')));
+    }on ImportFormatException catch(e){
+      messenger.showSnackBar(SnackBar(content:Text(e.message)));
+    }catch(e){
+      messenger.showSnackBar(SnackBar(content:Text('Import impossible : $e')));
+    }
+  }
+
+  void _fitPoints(List<LatLng> pts){
+    if(pts.isEmpty)return;
+    if(pts.length==1){_map.move(pts.first,15);return;}
+    _map.fitCamera(CameraFit.coordinates(coordinates:pts,padding:const EdgeInsets.all(60),maxZoom:17));
+  }
+
   /// Exports the event's drawn objects as GeoJSON: a local copy on the device,
   /// and an upload to the event's shared files so the PCO receives it.
   Future<void> _exportGeoJson() async {
@@ -375,7 +406,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           child:CustomPaint(painter:_StrokePainter(_stroke,Color(_drawing.color),_drawing.strokeWidth)),
         )),
         Positioned(top:8,left:8,right:8,child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-          if(_drawingTools)DrawingToolbar(controller:_drawing,onExport:_exportGeoJson,onClose:(){_drawing.selectTool(null);setState(()=>_drawingTools=false);})
+          if(_drawingTools)DrawingToolbar(controller:_drawing,onExport:_exportGeoJson,onImport:_importFile,onClose:(){_drawing.selectTool(null);setState(()=>_drawingTools=false);})
           else FloatingActionButton.small(heroTag:'drawing-tools',tooltip:'Dessiner sur la carte',onPressed:()=>setState(()=>_drawingTools=true),child:const Icon(Icons.draw_outlined)),
           if(_drawing.isDrawing)Padding(padding:const EdgeInsets.only(top:8),child:DraftBar(controller:_drawing)),
           if(_drawing.selected!=null)Padding(padding:const EdgeInsets.only(top:8),child:SelectionBar(controller:_drawing,onEditLabel:_editSelectedLabel)),

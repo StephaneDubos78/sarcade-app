@@ -29,8 +29,8 @@ String toolHint(FeatureKind k)=>switch(k){
 /// Compact drawing toolbar: the nine tools, undo/redo, export and close.
 class DrawingToolbar extends StatelessWidget {
   final DrawingController controller;
-  final VoidCallback onClose, onExport;
-  const DrawingToolbar({super.key,required this.controller,required this.onClose,required this.onExport});
+  final VoidCallback onClose, onExport, onImport;
+  const DrawingToolbar({super.key,required this.controller,required this.onClose,required this.onExport,required this.onImport});
 
   @override
   Widget build(BuildContext context){
@@ -49,6 +49,7 @@ class DrawingToolbar extends StatelessWidget {
           const SizedBox(height:40,child:VerticalDivider(width:12)),
           IconButton(tooltip:'Annuler',onPressed:c.canUndo?c.undo:null,icon:const Icon(Icons.undo)),
           IconButton(tooltip:'Rétablir',onPressed:c.canRedo?c.redo:null,icon:const Icon(Icons.redo)),
+          IconButton(tooltip:'Importer GPX, KML ou GeoJSON',onPressed:onImport,icon:const Icon(Icons.file_upload_outlined)),
           IconButton(tooltip:'Exporter en GeoJSON',onPressed:c.features.isEmpty?null:onExport,icon:const Icon(Icons.file_download_outlined)),
           IconButton(tooltip:'Fermer les outils',onPressed:onClose,icon:const Icon(Icons.close)),
         ]),
