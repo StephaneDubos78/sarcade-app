@@ -42,6 +42,9 @@ class LocalStore {
   Future<void> acknowledge(String operationId)=>_outboxBox.delete(operationId);
   int pendingCount()=>_outboxBox.length;
 
+  Map<String,dynamic>? storedConfig(){final v=_metaBox.get('config');return v==null?null:Map<String,dynamic>.from(v as Map);}
+  Future<void> saveConfig(Map<String,dynamic> v)=>_metaBox.put('config',v);
+
   String cursor(String eventId)=>_metaBox.get('cursor:$eventId',defaultValue:'0') as String;
   Future<void> setCursor(String eventId,String cursor)=>_metaBox.put('cursor:$eventId',cursor);
 }
