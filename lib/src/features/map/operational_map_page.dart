@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:latlong2/latlong.dart' hide Path;
@@ -313,6 +314,37 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     ));
   }
 
+  /// PowerPoint-like keyboard shortcuts for keyboards and mice: Chromebook,
+  /// Windows and Linux. Ignored while a text field has the focus, so typing
+  /// in the search field never deletes or undoes a map object.
+  Widget _withDrawingShortcuts(Widget child)=>Focus(
+    autofocus:true,
+    onKeyEvent:(node,event){
+      if(event is! KeyDownEvent&&event is! KeyRepeatEvent)return KeyEventResult.ignored;
+      final focused=FocusManager.instance.primaryFocus?.context;
+      if(focused!=null&&(focused.widget is EditableText||focused.findAncestorWidgetOfExactType<EditableText>()!=null)){
+        return KeyEventResult.ignored;
+      }
+      final keys=HardwareKeyboard.instance;
+      final ctrl=keys.isControlPressed||keys.isMetaPressed;
+      final key=event.logicalKey;
+      bool run(VoidCallback action){action();return true;}
+      final handled=switch(key){
+        LogicalKeyboardKey.delete||LogicalKeyboardKey.backspace when _drawing.selected!=null=>run(_drawing.deleteSelected),
+        LogicalKeyboardKey.keyZ when ctrl&&keys.isShiftPressed=>run(_drawing.redo),
+        LogicalKeyboardKey.keyZ when ctrl=>run(_drawing.undo),
+        LogicalKeyboardKey.keyY when ctrl=>run(_drawing.redo),
+        LogicalKeyboardKey.keyD when ctrl&&_drawing.selected!=null=>run(()=>_drawing.duplicateSelected()),
+        LogicalKeyboardKey.enter||LogicalKeyboardKey.numpadEnter when _drawing.canFinish=>run(()=>_drawing.finish()),
+        LogicalKeyboardKey.escape when _drawing.isDrawing=>run(()=>_drawing.selectTool(null)),
+        LogicalKeyboardKey.escape when _drawing.selected!=null=>run(()=>_drawing.select(null)),
+        _=>false,
+      };
+      return handled?KeyEventResult.handled:KeyEventResult.ignored;
+    },
+    child:child,
+  );
+
   @override void dispose(){_rtSub?.cancel();_gpsSub?.cancel();_syncUiTimer?.cancel();_sync.dispose();_realtime.dispose();_drawing.dispose();widget.api.close();super.dispose();}
 
   @override Widget build(BuildContext context){
@@ -358,7 +390,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
               ),
             ])
         : AppBar(title:const Text('SARCADE'),actions:[syncButton,IconButton(tooltip:'Cadrer les opérateurs',onPressed:_fitOperators,icon:const Icon(Icons.center_focus_strong)),IconButton(tooltip:'Opérateurs',onPressed:toggleOperators,icon:const Icon(Icons.groups)),IconButton(tooltip:'Référentiel radio',onPressed:toggleReferences,icon:const Icon(Icons.cell_tower)),messagesButton,IconButton(tooltip:'Fichiers',onPressed:openFiles,icon:const Icon(Icons.folder_copy_outlined)),IconButton(tooltip:'Main courante',onPressed:openLogbook,icon:const Icon(Icons.receipt_long)),if(widget.onSettings!=null)IconButton(tooltip:'Paramètres',onPressed:widget.onSettings,icon:const Icon(Icons.settings)),Padding(padding:const EdgeInsets.symmetric(horizontal:12),child:Center(child:Text('$_status · ${widget.store.pendingCount()} attente')))]),
-      body:Row(children:[
+      body:_withDrawingShortcuts(Row(children:[
         if(_showReferencePanel)SizedBox(width:panelWidth(355),child:Material(elevation:3,child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
           Padding(padding:const EdgeInsets.fromLTRB(14,8,6,0),child:Row(children:[Expanded(child:Text('Référentiel radio (${_filteredReferences().length})',style:Theme.of(context).textTheme.titleMedium)),IconButton(tooltip:'Actualiser le référentiel',onPressed:()=>_refreshReferences(),icon:const Icon(Icons.refresh))])),
           Padding(padding:const EdgeInsets.symmetric(horizontal:12,vertical:4),child:TextField(decoration:const InputDecoration(prefixIcon:Icon(Icons.search),hintText:'Nom, indicatif, fréquence, mode…',isDense:true,border:OutlineInputBorder()),onChanged:(v)=>setState(()=>_referenceQuery=v))),
@@ -412,7 +444,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           if(_drawing.selected!=null)Padding(padding:const EdgeInsets.only(top:8),child:SelectionBar(controller:_drawing,onEditLabel:_editSelectedLabel)),
         ])),
       ]))
-      ]),
+      ])),
       floatingActionButton:FloatingActionButton.extended(onPressed:_toggleTracking,icon:Icon(_tracking?Icons.location_off:Icons.my_location),label:Text(_tracking?'Arrêter GPS':'Partager position')),
     );
   }
