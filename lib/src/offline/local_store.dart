@@ -86,6 +86,12 @@ class LocalStore {
   }
   Future<void> saveTrackingPrefs(String eventId,bool enabled,int intervalS)=>_metaBox.put('tracking:$eventId',{'enabled':enabled,'interval_s':intervalS});
 
+  // Small server answers kept for offline use (weather, base map catalog).
+  Map<String,dynamic>? cachedJson(String key){final v=_metaBox.get('cache:$key');return v==null?null:Map<String,dynamic>.from(v as Map);}
+  Future<void> cacheJson(String key,Map<String,dynamic> v)=>_metaBox.put('cache:$key',v);
+  String? preference(String key)=>_metaBox.get('pref:$key') as String?;
+  Future<void> setPreference(String key,String? v)=>v==null?_metaBox.delete('pref:$key'):_metaBox.put('pref:$key',v);
+
   String cursor(String eventId)=>_metaBox.get('cursor:$eventId',defaultValue:'0') as String;
   Future<void> setCursor(String eventId,String cursor)=>_metaBox.put('cursor:$eventId',cursor);
 }
