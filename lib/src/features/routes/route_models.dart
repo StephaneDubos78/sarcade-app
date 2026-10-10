@@ -137,7 +137,9 @@ class Itinerary {
   final List<LatLng> geometry; final double lengthM; final double durationS;
   final List<({String instruction,double lengthM,int beginIndex})> maneuvers;
   final bool straight;
-  const Itinerary({required this.geometry,required this.lengthM,required this.durationS,this.maneuvers=const [],this.straight=false});
+  /// Computed on the device from the road graph (server unreachable).
+  final bool onDevice;
+  const Itinerary({required this.geometry,required this.lengthM,required this.durationS,this.maneuvers=const [],this.straight=false,this.onDevice=false});
 
   factory Itinerary.fromJson(Map<String,dynamic> j)=>Itinerary(
     geometry:_line(j['geometry']),

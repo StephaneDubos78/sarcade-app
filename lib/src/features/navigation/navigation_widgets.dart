@@ -42,7 +42,7 @@ class NavigationCard extends StatelessWidget {
         IconButton(tooltip:S.t('nav.stop'),onPressed:nav.cancel,icon:const Icon(Icons.close)),
       ]),
       if(instruction!=null)Padding(padding:const EdgeInsets.only(top:6),child:Text(instruction,style:theme.textTheme.bodyLarge)),
-      if(nav.notice!=null)Padding(padding:const EdgeInsets.only(top:6),child:Text(S.t('nav.notice.${nav.notice}'),style:theme.textTheme.bodySmall?.copyWith(color:theme.colorScheme.error))),
+      if(nav.notice!=null)Padding(padding:const EdgeInsets.only(top:6),child:Text(S.t('nav.notice.${nav.notice}'),style:theme.textTheme.bodySmall?.copyWith(color:nav.notice=='on_device'?null:theme.colorScheme.error))),
       if(nav.state==NavState.active)Padding(padding:const EdgeInsets.only(top:4),child:Text(S.t('nav.shared'),style:theme.textTheme.bodySmall)),
     ])));
   }
