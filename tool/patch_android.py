@@ -7,6 +7,9 @@ CI generates android/ and this script applies the SARCADE-specific settings:
 - INTERNET permission (the Flutter template only declares it for debug builds)
 - foreground location permissions used by geolocator
 - cleartext HTTP/WS, needed while the V0.1 server is reached as http://IP:8000 on a LAN
+  (to remove once every server is in HTTPS, docs of sarcade-server https-v0.1.md)
+- network security configuration trusting the certification authorities
+  installed by the user: option B of the server HTTPS (local CA)
 - application label "SARCADE"
 - hardware features declared optional (touchscreen, GPS, location), so the
   Play Store also offers the app on Chromebooks without touch screen or GPS:
@@ -47,6 +50,19 @@ PERMISSIONS = [
     "android.permission.RECEIVE_BOOT_COMPLETED",
     "android.permission.ACCESS_NOTIFICATION_POLICY",
 ]
+NETWORK_CONFIG = Path("android/app/src/main/res/xml/network_security_config.xml")
+NETWORK_CONFIG_XML = """<?xml version="1.0" encoding="utf-8"?>
+<!-- SARCADE: system and user certification authorities (local CA of the
+     server, option B of HTTPS); plain HTTP still allowed during the switch. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="user" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>
+"""
 RECEIVERS = """
         <receiver android:exported="false" android:name="com.dexterous.flutterlocalnotifications.ActionBroadcastReceiver" />
         <receiver android:exported="false" android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver" />
@@ -112,6 +128,8 @@ def main() -> int:
         tag = re.sub(r'android:label="[^"]*"', 'android:label="SARCADE"', tag)
         if "android:usesCleartextTraffic" not in tag:
             tag = tag.replace("<application", '<application\n        android:usesCleartextTraffic="true"', 1)
+        if "android:networkSecurityConfig" not in tag:
+            tag = tag.replace("<application", '<application\n        android:networkSecurityConfig="@xml/network_security_config"', 1)
         return tag
 
     xml, n = re.subn(r"<application\b[^>]*>", patch_application, xml, count=1)
@@ -125,6 +143,8 @@ def main() -> int:
             print("error: </application> not found", file=sys.stderr)
             return 1
 
+    NETWORK_CONFIG.parent.mkdir(parents=True, exist_ok=True)
+    NETWORK_CONFIG.write_text(NETWORK_CONFIG_XML, encoding="utf-8")
     MANIFEST.write_text(xml, encoding="utf-8")
     print(f"patched {MANIFEST}")
     return 0 if patch_gradle() else 1

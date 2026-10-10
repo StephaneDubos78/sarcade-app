@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'config/app_config.dart';
 import 'features/map/operational_map_page.dart';
 import 'features/settings/settings_page.dart';
@@ -56,6 +57,24 @@ class _SarcadeAppState extends State<SarcadeApp> {
     if(!wasSetup)_navigator.currentState?.pop();
   }
 
+  final _httpsTried=<String>{};
+
+  /// Switch to the HTTPS address announced by the server, kept when it
+  /// answers (certificate valid, local DNS in place); otherwise the device
+  /// stays on plain HTTP and tries again at the next start.
+  Future<void> _tryHttps(String url) async {
+    if(!_httpsTried.add(url))return;
+    try{
+      final r=await http.get(Uri.parse('$url/health')).timeout(const Duration(seconds:8));
+      if(r.statusCode!=200||!mounted)return;
+      final c=_config.copyWith(serverUrl:url);
+      await widget.store.saveConfig(c.toStored());
+      setState(()=>_config=c);
+    }catch(e){
+      debugPrint('SARCADE HTTPS address not reachable yet ($url): $e');
+    }
+  }
+
   void _openSettings()=>_navigator.currentState?.push(MaterialPageRoute(builder:(_)=>SettingsPage(initial:_config,onSave:_save)));
 
   @override
@@ -73,6 +92,7 @@ class _SarcadeAppState extends State<SarcadeApp> {
           tileUrl:_config.tileUrl,tileAttribution:_config.tileAttribution,
           onSettings:_openSettings,
           callsign:_config.callsign,aprsTxConsent:_config.aprsTxConsent,platform:_platform,
+          onHttpsAvailable:_tryHttps,
         ),
   );
 }
