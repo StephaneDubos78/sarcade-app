@@ -3,8 +3,8 @@ import 'package:hive_ce_flutter/hive_ce_flutter.dart';
 import '../platform/platform_services.dart';
 
 class LocalStore {
-  static const _positions='positions', _pois='pois', _messages='messages', _acks='acks', _references='references', _outbox='outbox', _meta='meta', _features='map_features', _uploads='uploads', _attachments='attachments', _groups='comm_groups';
-  late Box _positionBox, _poiBox, _messageBox, _ackBox, _referenceBox, _outboxBox, _metaBox, _featureBox, _uploadBox, _groupBox;
+  static const _positions='positions', _pois='pois', _messages='messages', _acks='acks', _references='references', _outbox='outbox', _meta='meta', _features='map_features', _uploads='uploads', _attachments='attachments', _groups='comm_groups', _routeObjects='route_objects';
+  late Box _positionBox, _poiBox, _messageBox, _ackBox, _referenceBox, _outboxBox, _metaBox, _featureBox, _uploadBox, _groupBox, _routeBox;
   // Photo bytes are read on demand, never all kept in memory.
   late LazyBox _attachmentBox;
 
@@ -20,6 +20,7 @@ class LocalStore {
     _featureBox=await Hive.openBox(_features);
     _uploadBox=await Hive.openBox(_uploads);
     _groupBox=await Hive.openBox(_groups);
+    _routeBox=await Hive.openBox(_routeObjects);
     _attachmentBox=await Hive.openLazyBox(_attachments);
   }
 
@@ -50,6 +51,11 @@ class LocalStore {
   List<Map<String,dynamic>> groups(String eventId)=>_groupBox.values.map((e)=>Map<String,dynamic>.from(e as Map)).where((j)=>j['event_id']==eventId).toList();
   Future<void> saveGroup(Map<String,dynamic> v)=>_groupBox.put(v['id'],v);
   Future<void> deleteGroup(String id)=>_groupBox.delete(id);
+
+  // Routes, waypoints, passages, road closures and itineraries of the events.
+  List<Map<String,dynamic>> routeObjects(String eventId)=>_routeBox.values.map((e)=>Map<String,dynamic>.from(e as Map)).where((j)=>j['event_id']==eventId).toList();
+  Future<void> saveRouteObject(Map<String,dynamic> v)=>_routeBox.put(v['id'],v);
+  Future<void> deleteRouteObject(String id)=>_routeBox.delete(id);
 
   // Photos of messages: bytes cached by file id, and the uploads still to do.
   Future<void> saveAttachment(String fileId,Uint8List bytes)=>_attachmentBox.put(fileId,bytes);
