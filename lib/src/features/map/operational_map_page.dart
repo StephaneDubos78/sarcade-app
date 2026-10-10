@@ -1,13 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:latlong2/latlong.dart' hide Path;
-import 'package:open_filex/open_filex.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../models/poi.dart';
@@ -30,6 +27,7 @@ import '../../services/realtime_service.dart';
 import '../../services/sarcade_api.dart';
 import '../../offline/local_store.dart';
 import '../../offline/sync_service.dart';
+import '../../platform/platform_services.dart';
 
 class OperationalMapPage extends StatefulWidget {
   final SarcadeApi api; final String eventId,deviceId,tileUrl,tileAttribution; final LocalStore store; final VoidCallback? onSettings;
@@ -270,7 +268,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     if(picked==null||picked.files.isEmpty)return;
     final file=picked.files.single;
     try{
-      final bytes=file.bytes??(file.path==null?null:await File(file.path!).readAsBytes());
+      final bytes=await readPickedFile(file);
       if(bytes==null)throw const ImportFormatException('Fichier illisible');
       final result=parseMapFile(file.name,bytes);
       final created=_drawing.importShapes(result.shapes);
@@ -298,11 +296,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     final name='sarcade-objets-${widget.eventId}-$stamp.geojson'.replaceAll(RegExp(r'[\\/:*?"<>|]'),'_');
     final bytes=utf8.encode(const JsonEncoder.withIndent('  ').convert(featureCollection(_drawing.features)));
     String? localPath;
-    try{
-      final dir=await getApplicationDocumentsDirectory();
-      localPath='${dir.path}${Platform.pathSeparator}$name';
-      await File(localPath).writeAsBytes(bytes,flush:true);
-    }catch(_){localPath=null;}
+    try{localPath=await saveFile(name,bytes,mimeType:'application/geo+json');}catch(_){localPath=null;}
     var shared=false;
     try{await widget.api.uploadFile(widget.eventId,widget.deviceId,name,'application/geo+json',bytes);shared=true;}catch(_){}
     if(!mounted)return;
@@ -310,7 +304,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     messenger.showSnackBar(SnackBar(
       duration:const Duration(seconds:6),
       content:Text(shared?'$count objets exportés et partagés dans les fichiers de l’événement':localPath!=null?'$count objets exportés sur l’appareil, partage impossible hors connexion':'Export impossible'),
-      action:localPath==null?null:SnackBarAction(label:'Ouvrir',onPressed:()=>OpenFilex.open(localPath!)),
+      action:localPath==null||!canOpenSavedFiles?null:SnackBarAction(label:'Ouvrir',onPressed:()=>openSavedFile(localPath!)),
     ));
   }
 
