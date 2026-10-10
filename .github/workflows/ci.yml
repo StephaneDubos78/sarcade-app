@@ -56,7 +56,17 @@ jobs:
       - run: flutter pub get
       - run: flutter analyze
       - run: flutter test
-      - run: flutter build windows --release
+      - name: Build Windows
+        shell: bash
+        run: |
+          set -o pipefail
+          flutter build windows --release 2>&1 | tee windows-build.log
+      - name: Report Windows build errors
+        if: failure()
+        shell: bash
+        run: |
+          grep -n -B2 -A6 -E "error|Error|FAILED|fatal" windows-build.log \
+            | head -80 | sed 's/%/%25/g' | while IFS= read -r line; do echo "::error::${line}"; done || true
 
   android-build:
     runs-on: ubuntu-latest
