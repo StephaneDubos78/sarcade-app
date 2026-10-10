@@ -72,6 +72,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   bool _showAprs=true;
   late final MeasureController _measure; bool _pickingOrigin=false;
   CoordFormat get _coordFormat=>coordFormatFrom(widget.store.preference('coord_format'));
+  int get _mgrsDigits=>widget.store.preference('mgrs_digits')=='5'?5:4;
   bool _showRoutesPanel=false; String? _selectedRouteId, _drawingRouteId; bool _drawingClosure=false; final List<LatLng> _closureDraft=[];
   final List<Offset> _stroke=[];
 
@@ -181,7 +182,42 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
 
   void _initMeasure(){
     _measure=MeasureController(location:_location);
+    // Manual declination: setting of this device, kept offline.
+    _measure.declinationOverride=parseDeclination(widget.store.preference('declination_manual')??'');
     _measure.addListener(_onRoutesChanged);
+  }
+
+  Future<void> _editDeclination() async {
+    final fr=S.lang=='fr';
+    String decl(double d)=>formatDeclination(d,decimal:fr?',':'.',west:fr?'O':'W');
+    final ctrl=TextEditingController(text:_measure.declinationOverride==null?'':decl(_measure.declinationOverride!));
+    var manual=_measure.manualDeclination;
+    String? error;
+    final result=await showDialog<String>(context:context,builder:(c)=>StatefulBuilder(builder:(c,set)=>AlertDialog(
+      title:Text(S.t('measure.decl.title')),
+      content:Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.start,children:[
+        Text(S.t('measure.decl.wmm',{'v':decl(_measure.wmmDeclination)})),
+        if(MeasureController.wmmExpired())Text(S.t('measure.wmmExpired'),style:TextStyle(color:Theme.of(c).colorScheme.error)),
+        SwitchListTile(contentPadding:EdgeInsets.zero,title:Text(S.t('measure.decl.manual')),value:manual,onChanged:(v)=>set(()=>manual=v)),
+        if(manual)TextField(controller:ctrl,autofocus:true,decoration:InputDecoration(hintText:S.t('measure.decl.hint'),errorText:error)),
+        const SizedBox(height:8),
+        Text(S.t('measure.decl.help'),style:Theme.of(c).textTheme.bodySmall),
+      ]),
+      actions:[
+        TextButton(onPressed:()=>Navigator.pop(c),child:Text(S.t('common.cancel'))),
+        FilledButton(onPressed:(){
+          if(!manual){Navigator.pop(c,'');return;}
+          final v=parseDeclination(ctrl.text);
+          if(v==null){set(()=>error=S.t('measure.decl.invalid'));return;}
+          Navigator.pop(c,v.toString());
+        },child:Text(S.t('common.save'))),
+      ],
+    )));
+    ctrl.dispose();
+    if(result==null)return;
+    await widget.store.setPreference('declination_manual',result.isEmpty?null:result);
+    _measure.declinationOverride=result.isEmpty?null:double.parse(result);
+    if(mounted)setState((){});
   }
 
   Future<void> _measureTo(LatLng point,String label) async {
@@ -216,7 +252,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   }
 
   void _sendMeasure()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>MessagesPage(api:widget.api,eventId:widget.eventId,
-    actorId:widget.deviceId,sync:_sync,store:widget.store,initialText:measureMessage(_measure,_coordFormat))));
+    actorId:widget.deviceId,sync:_sync,store:widget.store,initialText:measureMessage(_measure,_coordFormat,mgrsDigits:_mgrsDigits))));
 
   /// « Open in… » with the navigation app chosen by the organisation.
   Future<void> _openElsewhere(LatLng p,String label)=>openInOtherApp(context,p,label,
@@ -716,7 +752,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           MeasureCard(m:_measure,format:_coordFormat,onSavePoi:_savePoi,onSendMessage:_sendMeasure,
             onFit:(){final o=_measure.origin,t=_measure.target;if(t!=null)_fitPoints([?o?.point,t]);},
             onOpenElsewhere:(){final t=_measure.target;if(t!=null)_openElsewhere(t,_measure.targetLabel);},
-            onChooseOrigin:_chooseOrigin,
+            onChooseOrigin:_chooseOrigin,onDeclination:_editDeclination,mgrsDigits:_mgrsDigits,
+            onMgrsDigits:(d) async {await widget.store.setPreference('mgrs_digits','$d');if(mounted)setState((){});},
             onFormat:(f) async {await widget.store.setPreference('coord_format',f.name);if(mounted)setState((){});}),
           NavigationCard(nav:_nav),
         ])))),
