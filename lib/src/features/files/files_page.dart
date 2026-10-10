@@ -1,8 +1,6 @@
-import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:open_filex/open_filex.dart';
-import 'package:path_provider/path_provider.dart';
+import '../../platform/platform_services.dart';
 import '../../models/shared_file.dart';
 import '../../services/sarcade_api.dart';
 
@@ -18,7 +16,7 @@ class _FilesPageState extends State<FilesPage>{
   Future<void> _upload() async {
     final picked=await FilePicker.platform.pickFiles(withData:true);
     if(picked==null)return; final f=picked.files.single;
-    final bytes=f.bytes??(f.path==null?null:await File(f.path!).readAsBytes());
+    final bytes=await readPickedFile(f);
     if(bytes==null)return;
     if(bytes.length>25*1024*1024){if(mounted)ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Fichier limité à 25 Mo en V0.1')));return;}
     setState(()=>uploading=true);
@@ -29,8 +27,9 @@ class _FilesPageState extends State<FilesPage>{
   Future<void> _open(SarcadeSharedFile f) async {
     try{
       final bytes=await widget.api.downloadFile(widget.eventId,f.id);
-      final dir=await getTemporaryDirectory(); final safe=f.name.replaceAll(RegExp(r'[\\/:*?"<>|]'),'_');
-      final path='${dir.path}${Platform.pathSeparator}$safe'; await File(path).writeAsBytes(bytes,flush:true); await OpenFilex.open(path);
+      // Installed apps open the file; the web app hands it to the browser as a download.
+      final path=await saveFile(f.name,bytes,temporary:true,mimeType:f.mimeType);
+      if(canOpenSavedFiles)await openSavedFile(path);
     }catch(e){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('Échec téléchargement : $e')));}
   }
   String _size(int n)=>n<1024?'$n o':n<1024*1024?'${(n/1024).toStringAsFixed(1)} Ko':'${(n/1024/1024).toStringAsFixed(1)} Mo';

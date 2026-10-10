@@ -174,3 +174,39 @@ jobs:
           name: sarcade-linux-x64
           path: sarcade-linux-x64.tar.gz
           retention-days: 30
+
+  web-build:
+    # Installable web app (PWA): main SARCADE channel on ChromeOS. Served by
+    # the SARCADE server itself, so it also works on a LAN without Internet:
+    # --no-web-resources-cdn bundles the rendering engine instead of
+    # downloading it from a Google CDN at startup.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - name: Generate web runner
+        run: |
+          if [ ! -d web ]; then flutter create --platforms=web --org org.sarcade --no-pub .; fi
+          rm -f test/widget_test.dart
+          python3 tool/patch_web.py
+      - run: flutter pub get
+      - name: Build web
+        shell: bash
+        run: |
+          set -o pipefail
+          flutter build web --release --no-web-resources-cdn 2>&1 | tee web-build.log
+      - name: Report web build errors
+        if: failure()
+        shell: bash
+        run: |
+          grep -n -A8 -E "Error:|error:|FAILED|not available on this platform|Target dart2js failed" web-build.log \
+            | head -80 | sed 's/%/%25/g' | while IFS= read -r line; do echo "::error::${line}"; done || true
+      - name: Package
+        run: tar -czf sarcade-web.tar.gz -C build/web .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sarcade-web
+          path: sarcade-web.tar.gz
+          retention-days: 30
