@@ -99,8 +99,10 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     if(e.type=='weather.alert'){
       final text='${e.data['summary']??e.data['color']??''}';
       _notifications.message(title:'SARCADE · ${S.t('weather.menu')}',body:S.t('weather.alert',{'text':text}),priority:'urgent');
-      if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(duration:const Duration(seconds:10),content:Text(S.t('weather.alert',{'text':text})),
-        action:SnackBarAction(label:S.t('weather.menu'),onPressed:()=>_openWeather())));
+      if(mounted){
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(duration:const Duration(seconds:10),content:Text(S.t('weather.alert',{'text':text})),
+          action:SnackBarAction(label:S.t('weather.menu'),onPressed:()=>_openWeather())));
+      }
     }
     if(e.type=='group.deleted'){widget.store.deleteGroup('${e.data['id']}');}
     // PCO settings changed or event closed: the heartbeat brings the new state.
