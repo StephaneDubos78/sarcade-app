@@ -53,6 +53,8 @@ jobs:
         run: |
           if (-not (Test-Path ".\windows")) { flutter create --platforms=windows --no-pub . }
           if (Test-Path ".\test\widget_test.dart") { Remove-Item ".\test\widget_test.dart" -Force }
+          python tool/patch_windows.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - run: flutter pub get
       - run: flutter analyze
       - run: flutter test
