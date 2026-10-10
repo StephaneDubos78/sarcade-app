@@ -55,10 +55,12 @@ class OperationalMapPage extends StatefulWidget {
   final SarcadeApi api; final String eventId,deviceId,tileUrl,tileAttribution; final LocalStore store; final VoidCallback? onSettings;
   /// Operator settings sent with the heartbeat (APRS callsign and consent).
   final String callsign; final bool aprsTxConsent;
+  /// The server announced its HTTPS address (the application tries it).
+  final void Function(String httpsUrl)? onHttpsAvailable;
   /// Platform name sent to the server (« windows », « android », « web »…).
   final String platform;
   const OperationalMapPage({super.key,required this.api,required this.eventId,required this.deviceId,required this.store,required this.tileUrl,required this.tileAttribution,this.onSettings,
-    this.callsign='',this.aprsTxConsent=false,this.platform='unknown'});
+    this.callsign='',this.aprsTxConsent=false,this.platform='unknown',this.onHttpsAvailable});
   @override State<OperationalMapPage> createState()=>_OperationalMapPageState();
 }
 
@@ -433,7 +435,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     _ops=OperationsService(api:widget.api,store:widget.store,sync:_sync,eventId:widget.eventId,deviceId:widget.deviceId,
       platform:widget.platform,
       tracking:()=>(enabled:_tracking.enabled,intervalS:_tracking.intervalS),
-      operator:()=>(callsign:widget.callsign,aprsTxConsent:widget.aprsTxConsent));
+      operator:()=>(callsign:widget.callsign,aprsTxConsent:widget.aprsTxConsent),
+      onHttpsAvailable:widget.onHttpsAvailable);
     _tracking.setInterval(_ops.settings.clampInterval(prefs?.intervalS??_ops.settings.trackingDefaultS));
     _tracking.addListener(_onOperationsChanged);
     _ops.addListener(_onOperationsChanged);
