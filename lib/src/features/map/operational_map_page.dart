@@ -35,6 +35,9 @@ import '../../operations/operations_service.dart';
 import '../../operations/operations_widgets.dart';
 import '../../operations/tracking_service.dart';
 import '../navigation/navigation_controller.dart';
+import '../basemaps/basemap_models.dart';
+import '../basemaps/basemap_sheet.dart';
+import '../weather/weather_page.dart';
 import '../navigation/navigation_widgets.dart';
 import '../routes/route_models.dart';
 import '../routes/routes_controller.dart';
@@ -59,6 +62,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   late final DrawingController _drawing; bool _drawingTools=false; final _mapKey=GlobalKey();
   late final TrackingService _tracking; late final OperationsService _ops; bool _updatePageShown=false;
   late final RoutesController _routes; late final NavigationController _nav;
+  List<Basemap> _catalog=builtInBasemaps;
   bool _showRoutesPanel=false; String? _selectedRouteId, _drawingRouteId; bool _drawingClosure=false; final List<LatLng> _closureDraft=[];
   final List<Offset> _stroke=[];
 
@@ -66,7 +70,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   static const _compactWidth=600.0;
   @override void didChangeDependencies(){super.didChangeDependencies();if(!_layoutInitialized){_layoutInitialized=true;if(MediaQuery.sizeOf(context).width<_compactWidth)_showPanel=false;}}
 
-  @override void initState(){super.initState();_notifications.initialize();_sync=OfflineSyncService(api:widget.api,store:widget.store,eventId:widget.eventId,onRemoteChange:_onRemoteChange);_initDrawing();_loadLocal();_initRoutes();_sync.start();_initOperations();_syncUiTimer=Timer.periodic(const Duration(seconds:2),(_){if(mounted)setState((){});});_start();}
+  @override void initState(){super.initState();_notifications.initialize();_sync=OfflineSyncService(api:widget.api,store:widget.store,eventId:widget.eventId,onRemoteChange:_onRemoteChange);_initDrawing();_loadLocal();_initRoutes();_sync.start();_initOperations();_loadBasemaps();_syncUiTimer=Timer.periodic(const Duration(seconds:2),(_){if(mounted)setState((){});});_start();}
   bool _validPosition(SarcadePosition p){
     final t=p.time.toUtc(), now=DateTime.now().toUtc();
     return t.isAfter(DateTime.utc(2020)) && t.isBefore(now.add(const Duration(days:1)));
@@ -92,6 +96,14 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     if(e.type=='group.upserted'&&!_sync.isPending('${e.data['id']}')){widget.store.saveGroup(e.data);}
     final kind=e.type.split('.').first;
     if(routeObjectKinds.contains(kind)&&(e.type.endsWith('.upserted')||e.type.endsWith('.deleted'))){_routes.applyRemote(kind,e.data);}
+    if(e.type=='weather.alert'){
+      final text='${e.data['summary']??e.data['color']??''}';
+      _notifications.message(title:'SARCADE · ${S.t('weather.menu')}',body:S.t('weather.alert',{'text':text}),priority:'urgent');
+      if(mounted){
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(duration:const Duration(seconds:10),content:Text(S.t('weather.alert',{'text':text})),
+          action:SnackBarAction(label:S.t('weather.menu'),onPressed:()=>_openWeather())));
+      }
+    }
     if(e.type=='group.deleted'){widget.store.deleteGroup('${e.data['id']}');}
     // PCO settings changed or event closed: the heartbeat brings the new state.
     if(e.type=='event.settings.updated'||e.type=='event.closed'){unawaited(_ops.beat());}
@@ -112,6 +124,46 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       await _notifications.message(title:'SARCADE · ${m.priority}',body:m.body,priority:m.priority);
     }
     if(mounted)setState((){});
+  }
+
+  /// Base map catalog: cached, then from the server (custom layers, offline packages).
+  Future<void> _loadBasemaps() async {
+    final cached=widget.store.cachedJson('basemaps');
+    if(cached!=null&&cached['items'] is List){
+      _catalog=mergeCatalog([for(final j in cached['items'] as List) if(j is Map) Basemap.fromJson(Map<String,dynamic>.from(j))]);
+    }
+    try{
+      final list=await widget.api.basemaps();
+      await widget.store.cacheJson('basemaps',{'items':list});
+      if(mounted)setState(()=>_catalog=mergeCatalog(list.map(Basemap.fromJson).toList()));
+    }catch(_){/* offline: cached or built-in catalog */}
+  }
+
+  Basemap get _basemap=>pickBasemap(_catalog,operatorChoice:widget.store.preference('basemap:${widget.eventId}'),eventDefault:_ops.settings.basemap);
+  bool get _preferOffline=>widget.store.preference('basemap_offline')=='1';
+  String get _tileUrl=>_basemap.tileUrl(widget.api.baseUrl,preferOffline:_preferOffline)??widget.tileUrl;
+
+  void _chooseBasemap()=>showBasemapSheet(context,catalog:_catalog,current:_basemap,eventDefault:_ops.settings.basemap,
+    preferOffline:_preferOffline,
+    onChoose:(id) async {await widget.store.setPreference('basemap:${widget.eventId}',id);if(mounted)setState((){});},
+    onPreferOffline:(v) async {await widget.store.setPreference('basemap_offline',v?'1':null);if(mounted)setState((){});});
+
+  void _openWeather({({double lat,double lon,String label})? point}){
+    final mine=_positions[widget.deviceId];
+    Navigator.push(context,MaterialPageRoute(builder:(_)=>WeatherPage(api:widget.api,store:widget.store,eventId:widget.eventId,
+      actorId:widget.deviceId,lowBandwidth:_ops.settings.lowBandwidth,point:point,
+      fallback:mine==null?null:(lat:mine.lat,lon:mine.lon))));
+  }
+
+  /// Long press on the map: navigate to the point or see its weather.
+  Future<void> _onLongPress(LatLng point) async {
+    final label=S.t('nav.point');
+    final choice=await showModalBottomSheet<String>(context:context,showDragHandle:true,builder:(c)=>SafeArea(child:Column(mainAxisSize:MainAxisSize.min,children:[
+      ListTile(leading:const Icon(Icons.directions),title:Text(S.t('nav.goHere')),onTap:()=>Navigator.pop(c,'nav')),
+      ListTile(leading:const Icon(Icons.cloud_outlined),title:Text(S.t('weather.here')),onTap:()=>Navigator.pop(c,'weather')),
+    ])));
+    if(choice=='nav')await _navigateTo(point,label);
+    if(choice=='weather')_openWeather(point:(lat:point.latitude,lon:point.longitude,label:label));
   }
 
   void _initRoutes(){
@@ -482,10 +534,12 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
               messagesButton,
               PopupMenuButton<String>(
                 tooltip:S.t('map.menu'),
-                onSelected:(v){switch(v){case 'fit':_fitOperators();case 'operators':toggleOperators();case 'references':toggleReferences();case 'routes':toggleRoutes();case 'files':openFiles();case 'logbook':openLogbook();case 'settings':widget.onSettings?.call();}},
+                onSelected:(v){switch(v){case 'fit':_fitOperators();case 'operators':toggleOperators();case 'references':toggleReferences();case 'routes':toggleRoutes();case 'weather':_openWeather();case 'basemap':_chooseBasemap();case 'files':openFiles();case 'logbook':openLogbook();case 'settings':widget.onSettings?.call();}},
                 itemBuilder:(_)=>[
                   PopupMenuItem(value:'fit',child:ListTile(leading:const Icon(Icons.center_focus_strong),title:Text(S.t('map.fit')))),
                   PopupMenuItem(value:'operators',child:ListTile(leading:const Icon(Icons.groups),title:Text(S.t('map.operators')))),
+                  PopupMenuItem(value:'weather',child:ListTile(leading:const Icon(Icons.cloud_outlined),title:Text(S.t('weather.menu')))),
+                  PopupMenuItem(value:'basemap',child:ListTile(leading:const Icon(Icons.layers_outlined),title:Text(S.t('basemap.menu')))),
                   PopupMenuItem(value:'routes',child:ListTile(leading:const Icon(Icons.route),title:Text(S.t('routes.menu')))),
                   PopupMenuItem(value:'references',child:ListTile(leading:const Icon(Icons.cell_tower),title:Text(S.t('map.references')))),
                   PopupMenuItem(value:'files',child:ListTile(leading:const Icon(Icons.folder_copy_outlined),title:Text(S.t('map.files')))),
@@ -494,7 +548,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
                 ],
               ),
             ])
-        : AppBar(title:const Text('SARCADE'),actions:[syncButton,IconButton(tooltip:S.t('map.fit'),onPressed:_fitOperators,icon:const Icon(Icons.center_focus_strong)),IconButton(tooltip:S.t('map.operators'),onPressed:toggleOperators,icon:const Icon(Icons.groups)),IconButton(tooltip:S.t('map.references'),onPressed:toggleReferences,icon:const Icon(Icons.cell_tower)),IconButton(tooltip:S.t('routes.menu'),onPressed:toggleRoutes,icon:const Icon(Icons.route)),messagesButton,IconButton(tooltip:S.t('map.files'),onPressed:openFiles,icon:const Icon(Icons.folder_copy_outlined)),IconButton(tooltip:S.t('map.logbook'),onPressed:openLogbook,icon:const Icon(Icons.receipt_long)),if(widget.onSettings!=null)IconButton(tooltip:S.t('map.settings'),onPressed:widget.onSettings,icon:const Icon(Icons.settings)),Padding(padding:const EdgeInsets.symmetric(horizontal:12),child:Center(child:Text('$_status · ${S.t('status.pending',{'n':widget.store.pendingCount()})}')))]),
+        : AppBar(title:const Text('SARCADE'),actions:[syncButton,IconButton(tooltip:S.t('map.fit'),onPressed:_fitOperators,icon:const Icon(Icons.center_focus_strong)),IconButton(tooltip:S.t('map.operators'),onPressed:toggleOperators,icon:const Icon(Icons.groups)),IconButton(tooltip:S.t('map.references'),onPressed:toggleReferences,icon:const Icon(Icons.cell_tower)),IconButton(tooltip:S.t('routes.menu'),onPressed:toggleRoutes,icon:const Icon(Icons.route)),IconButton(tooltip:S.t('weather.menu'),onPressed:()=>_openWeather(),icon:const Icon(Icons.cloud_outlined)),IconButton(tooltip:S.t('basemap.menu'),onPressed:_chooseBasemap,icon:const Icon(Icons.layers_outlined)),messagesButton,IconButton(tooltip:S.t('map.files'),onPressed:openFiles,icon:const Icon(Icons.folder_copy_outlined)),IconButton(tooltip:S.t('map.logbook'),onPressed:openLogbook,icon:const Icon(Icons.receipt_long)),if(widget.onSettings!=null)IconButton(tooltip:S.t('map.settings'),onPressed:widget.onSettings,icon:const Icon(Icons.settings)),Padding(padding:const EdgeInsets.symmetric(horizontal:12),child:Center(child:Text('$_status · ${S.t('status.pending',{'n':widget.store.pendingCount()})}')))]),
       body:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
         OperationsBanners(settings:_ops.settings,update:_ops.update,
           alert:syncAlert(widget.store.pending(),DateTime.now(),_ops.settings.syncAlertMinutes),
@@ -541,19 +595,19 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         ]))),
         Expanded(child:Stack(key:_mapKey,children:[FlutterMap(mapController:_map,options:MapOptions(
           initialCenter:const LatLng(48.8566,2.3522),initialZoom:11,maxZoom:20,onTap:_onMapTap,
-          onLongPress:(_,point)=>_navigateTo(point,S.t('nav.point')),
+          onLongPress:(_,point)=>_onLongPress(point),
           // Rotation off: drawn arrows and handles assume north up.
           // Drag off while editing so handle and freehand gestures reach the shapes.
           interactionOptions:InteractionOptions(flags:InteractiveFlag.all&~InteractiveFlag.rotate&(_drawing.locksMapDrag?~InteractiveFlag.drag:~0)),
         ),children:[
-          TileLayer(urlTemplate:widget.tileUrl,userAgentPackageName:'org.sarcade.app',maxZoom:19),
+          TileLayer(key:ValueKey(_tileUrl),urlTemplate:_tileUrl,userAgentPackageName:'org.sarcade.app',maxZoom:_basemap.maxZoom.toDouble()),
           if(_trace.length>1)PolylineLayer(polylines:_traceSegments().map((segment)=>Polyline(points:segment.map((p)=>LatLng(p.lat,p.lon)).toList(),strokeWidth:4,color:Colors.deepPurple)).toList()),
           ...buildDrawingLayers(_drawing),
           ...buildRouteLayers(_routes,selectedRouteId:_selectedRouteId,itinerary:_nav.itinerary?.geometry??const [],draftClosure:_closureDraft,
             onWaypointTap:(w)=>setState((){_showRoutesPanel=true;_showPanel=false;_showReferencePanel=false;_selectedRouteId=w.routeId;})),
           MarkerLayer(markers:markers),
           buildHandleLayer(_drawing,_globalToLatLng),
-          RichAttributionWidget(attributions:[TextSourceAttribution(widget.tileAttribution)]),
+          RichAttributionWidget(attributions:[TextSourceAttribution(_basemap.attribution.isEmpty?widget.tileAttribution:_basemap.attribution)]),
         ]),
         if(_drawing.tool==FeatureKind.freehand)Positioned.fill(child:GestureDetector(
           behavior:HitTestBehavior.opaque,

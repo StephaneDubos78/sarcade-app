@@ -129,6 +129,34 @@ class SarcadeApi {
       body:jsonEncode({'actor_id':actorId,'waypoint_id':waypointId,'reason':reason}));
     if(r.statusCode!=201) throw SarcadeHttpException('report',r.statusCode,r.body);
   }
+  /// Last forecast of the event, kept by the server for offline use.
+  Future<Map<String,dynamic>> eventWeather(String eventId,{bool compact=false}) async {
+    final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/events/$eventId/weather${compact?'?compact=true':''}'));
+    if(r.statusCode!=200) throw SarcadeHttpException('weather',r.statusCode);
+    return Map<String,dynamic>.from(jsonDecode(r.body) as Map);
+  }
+  Future<void> refreshWeather(String eventId) async {
+    final r=await _client.post(Uri.parse('$baseUrl/api/v0.1/events/$eventId/weather/refresh'));
+    if(r.statusCode!=200) throw SarcadeHttpException('weather_refresh',r.statusCode,r.body);
+  }
+  Future<String> weatherBulletin(String eventId) async {
+    final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/events/$eventId/weather/bulletin'));
+    if(r.statusCode!=200) throw SarcadeHttpException('bulletin',r.statusCode);
+    final j=jsonDecode(r.body);
+    return j is Map?'${j['text']??j['bulletin']??''}':'$j';
+  }
+  /// Forecast of a designated point.
+  Future<Map<String,dynamic>> pointWeather(double lat,double lon) async {
+    final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/weather?lat=$lat&lon=$lon'));
+    if(r.statusCode!=200) throw SarcadeHttpException('point_weather',r.statusCode);
+    return Map<String,dynamic>.from(jsonDecode(r.body) as Map);
+  }
+  /// Base maps: built-in, custom, and offline packages of the server.
+  Future<List<Map<String,dynamic>>> basemaps() async {
+    final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/basemaps'));
+    if(r.statusCode!=200) throw SarcadeHttpException('basemaps',r.statusCode);
+    return (jsonDecode(r.body) as List).map((e)=>Map<String,dynamic>.from(e as Map)).toList();
+  }
   /// Periodic contact of the device: the answer carries the PCO settings
   /// (low-bandwidth mode, tracking policy), the end of the event and the
   /// minimal client version.
