@@ -6,5 +6,7 @@
 /// Notification API.
 library;
 
+/// Actions on the notifications of messages (Accept, Refuse, Read, Open) and
+/// reminders of the immediate messages: see notification_actions.dart.
 export 'notification_service_io.dart'
     if (dart.library.js_interop) 'notification_service_web.dart';

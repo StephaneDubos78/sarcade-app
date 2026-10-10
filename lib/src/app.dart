@@ -7,6 +7,7 @@ import 'services/sarcade_api.dart';
 import 'offline/local_store.dart';
 import 'l10n/strings.dart';
 import 'operations/event_settings.dart';
+import 'services/notification_service.dart';
 
 class SarcadeApp extends StatefulWidget {
   final LocalStore store;
@@ -39,8 +40,10 @@ class _SarcadeAppState extends State<SarcadeApp> {
     _applyLanguage();
   }
 
-  void _applyLanguage()=>S.setLanguage(_config.language,
-    systemLanguage:WidgetsBinding.instance.platformDispatcher.locale.languageCode);
+  void _applyLanguage(){
+    S.setLanguage(_config.language,systemLanguage:WidgetsBinding.instance.platformDispatcher.locale.languageCode);
+    NotificationService().bypassDnd=_config.immediateBypassDnd;
+  }
 
   static String get _platform=>platformName(isWeb:kIsWeb,targetPlatform:defaultTargetPlatform.name);
 

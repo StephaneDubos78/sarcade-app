@@ -80,7 +80,40 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   static const _compactWidth=600.0;
   @override void didChangeDependencies(){super.didChangeDependencies();if(!_layoutInitialized){_layoutInitialized=true;if(MediaQuery.sizeOf(context).width<_compactWidth)_showPanel=false;}}
 
-  @override void initState(){super.initState();_notifications.initialize();_sync=OfflineSyncService(api:widget.api,store:widget.store,eventId:widget.eventId,onRemoteChange:_onRemoteChange);_initDrawing();_loadLocal();_initRoutes();_initMeasure();_sync.start();_initOperations();_loadBasemaps();_syncUiTimer=Timer.periodic(const Duration(seconds:2),(_){if(mounted)setState((){});});_start();}
+  StreamSubscription<String>? _opensSub; StreamSubscription<void>? _answersSub; bool _drainingAnswers=false;
+
+  /// Notification actions: Open shows the messages; an answer (Accept,
+  /// Refuse, Read) given from the notification, even application closed,
+  /// becomes an acknowledgement queued in the Outbox.
+  void _initNotificationActions(){
+    _opensSub=_notifications.opens.listen((_){if(mounted)_openMessages();});
+    _answersSub=_notifications.answers.listen((_)=>_drainAnswers());
+    _notifications.initialize().then((_)=>_drainAnswers());
+  }
+
+  Future<void> _drainAnswers() async {
+    if(_drainingAnswers)return;
+    _drainingAnswers=true;
+    try{
+      final answers=await takePendingAnswers();
+      for(final a in answers){
+        final ack=a.toAck();
+        await widget.store.cacheAck(ack);
+        await _sync.queue(objectId:a.id,objectType:'ack',payload:ack);
+        await _notifications.answered(a.messageId,a.status);
+      }
+      if(answers.isNotEmpty&&mounted)setState((){});
+    }catch(e){
+      debugPrint('SARCADE notification answers not queued yet: $e');
+    }finally{
+      _drainingAnswers=false;
+    }
+  }
+
+  void _openMessages()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>MessagesPage(api:widget.api,eventId:widget.eventId,
+    actorId:widget.deviceId,sync:_sync,store:widget.store)));
+
+  @override void initState(){super.initState();_initNotificationActions();_sync=OfflineSyncService(api:widget.api,store:widget.store,eventId:widget.eventId,onRemoteChange:_onRemoteChange);_initDrawing();_loadLocal();_initRoutes();_initMeasure();_sync.start();_initOperations();_loadBasemaps();_syncUiTimer=Timer.periodic(const Duration(seconds:2),(t){if(t.tick%3==0)_drainAnswers();if(mounted)setState((){});});_start();}
   bool _validPosition(SarcadePosition p){
     final t=p.time.toUtc(), now=DateTime.now().toUtc();
     return t.isAfter(DateTime.utc(2020)) && t.isBefore(now.add(const Duration(days:1)));
@@ -131,7 +164,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         await widget.store.cacheAck(ack.toJson());
         await _sync.queue(objectId:ack.id,objectType:'ack',payload:ack.toJson());
       }
-      await _notifications.message(title:'SARCADE · ${S.t('priority.${m.priority}')} · ${m.senderId}',body:m.body,priority:m.priority);
+      await _notifications.message(title:'SARCADE · ${S.t('priority.${m.priority}')} · ${m.senderId}',body:m.body,priority:m.priority,
+        payload:NotificationPayload(eventId:widget.eventId,messageId:m.id,deviceId:widget.deviceId,priority:m.priority));
     }
     if(mounted)setState((){});
   }
@@ -611,7 +645,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     child:child,
   );
 
-  @override void dispose(){_rtSub?.cancel();_tracking.removeListener(_onOperationsChanged);_ops.removeListener(_onOperationsChanged);_tracking.dispose();_ops.dispose();_routes.removeListener(_onRoutesChanged);_nav.removeListener(_onRoutesChanged);_routes.dispose();_nav.dispose();_graphs.removeListener(_onRoutesChanged);_graphs.dispose();_measure.removeListener(_onRoutesChanged);_measure.dispose();_syncUiTimer?.cancel();_sync.dispose();_realtime.dispose();_drawing.dispose();widget.api.close();super.dispose();}
+  @override void dispose(){_opensSub?.cancel();_answersSub?.cancel();_rtSub?.cancel();_tracking.removeListener(_onOperationsChanged);_ops.removeListener(_onOperationsChanged);_tracking.dispose();_ops.dispose();_routes.removeListener(_onRoutesChanged);_nav.removeListener(_onRoutesChanged);_routes.dispose();_nav.dispose();_graphs.removeListener(_onRoutesChanged);_graphs.dispose();_measure.removeListener(_onRoutesChanged);_measure.dispose();_syncUiTimer?.cancel();_sync.dispose();_realtime.dispose();_drawing.dispose();widget.api.close();super.dispose();}
 
   @override Widget build(BuildContext context){
     final sorted=_positions.values.where((p)=>_showAprs||!p.isAprs).toList()..sort((a,b)=>a.deviceId.compareTo(b.deviceId));
@@ -634,7 +668,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     void openFiles()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>FilesPage(api:widget.api,eventId:widget.eventId,actorId:widget.deviceId)));
     void openLogbook()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>LogbookPage(api:widget.api,eventId:widget.eventId)));
     final syncButton=IconButton(tooltip:S.t('map.sync'),onPressed:() async {await _sync.syncNow();if(mounted)setState((){});},icon:const Icon(Icons.sync));
-    final messagesButton=IconButton(tooltip:S.t('map.messages'),onPressed:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>MessagesPage(api:widget.api,eventId:widget.eventId,actorId:widget.deviceId,sync:_sync,store:widget.store))),icon:Badge(label:Text('${widget.store.pendingCount()}'),child:const Icon(Icons.message)));
+    final messagesButton=IconButton(tooltip:S.t('map.messages'),onPressed:_openMessages,icon:Badge(label:Text('${widget.store.pendingCount()}'),child:const Icon(Icons.message)));
     return Scaffold(
       appBar:compact
         ? AppBar(
