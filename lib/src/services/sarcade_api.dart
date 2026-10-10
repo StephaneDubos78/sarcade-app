@@ -94,6 +94,12 @@ class SarcadeApi {
     if(r.statusCode!=200) throw Exception('logbook_http_${r.statusCode}');
     return (jsonDecode(r.body) as List).map((e)=>LogbookEntry.fromJson(e)).toList();
   }
+  /// Every group of the event, archived included (the PCO sees everything).
+  Future<List<Map<String,dynamic>>> groups(String eventId) async {
+    final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/events/$eventId/groups'));
+    if(r.statusCode!=200) throw SarcadeHttpException('groups',r.statusCode);
+    return (jsonDecode(r.body) as List).map((e)=>Map<String,dynamic>.from(e as Map)).toList();
+  }
   /// Periodic contact of the device: the answer carries the PCO settings
   /// (low-bandwidth mode, tracking policy), the end of the event and the
   /// minimal client version.

@@ -80,6 +80,10 @@ class OfflineSyncService {
           if(p['deleted']==true){await store.deleteMapFeature(c['object_id'] as String);}
           else{await store.saveMapFeature(p);}
         }
+        if(c['object_type']=='comm_group'&&!isPending(c['object_id'] as String)){
+          if(p['deleted']==true){await store.deleteGroup(c['object_id'] as String);}
+          else{await store.saveGroup(p);}
+        }
         onRemoteChange?.call(c['object_type'] as String,p);
       }
       await store.setCursor(eventId,feed.nextCursor);

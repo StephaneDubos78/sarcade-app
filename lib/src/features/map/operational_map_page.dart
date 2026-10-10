@@ -7,6 +7,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:latlong2/latlong.dart' hide Path;
 import 'package:uuid/uuid.dart';
 
+import '../../models/comm_group.dart';
 import '../../models/poi.dart';
 import '../../models/message.dart';
 import '../../models/position.dart';
@@ -80,6 +81,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     if(e.type=='message.created'){_receiveMessage(e.data);}
     if(e.type=='map_feature.upserted'||e.type=='map_feature.deleted'){_applyRemoteFeature(e.data,persist:true);}
     if(e.type=='ack.created'){widget.store.cacheAck(e.data);if(mounted)setState((){});}
+    if(e.type=='group.upserted'&&!_sync.isPending('${e.data['id']}')){widget.store.saveGroup(e.data);}
+    if(e.type=='group.deleted'){widget.store.deleteGroup('${e.data['id']}');}
     // PCO settings changed or event closed: the heartbeat brings the new state.
     if(e.type=='event.settings.updated'||e.type=='event.closed'){unawaited(_ops.beat());}
   }
@@ -87,7 +90,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   Future<void> _receiveMessage(Map<String,dynamic> data) async {
     final m=SarcadeMessage.fromJson(data);
     await widget.store.cacheMessage(data);
-    final addressed=m.recipientIds.isEmpty||m.recipientIds.contains('user:${widget.deviceId}')||m.recipientIds.contains(widget.deviceId);
+    final groups={for(final j in widget.store.groups(widget.eventId)) j['id'] as String:CommGroup.fromJson(j)};
+    final addressed=addressedTo(m.recipientIds,widget.deviceId,groups);
     if(addressed && m.senderId!=widget.deviceId){
       final existing=widget.store.acks().map(SarcadeAck.fromJson).any((a)=>a.messageId==m.id&&a.actorId==widget.deviceId&&a.status=='received');
       if(!existing){
