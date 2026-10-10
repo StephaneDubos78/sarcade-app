@@ -23,6 +23,8 @@ dependencies:
   xml: '>=6.3.0 <8.0.0'
   archive: ^4.0.0
   web: ^1.1.0
+  # System notifications (Android, iOS, Windows, Linux, macOS).
+  flutter_local_notifications: ^19.4.0
 dev_dependencies:
   flutter_test:
     sdk: flutter

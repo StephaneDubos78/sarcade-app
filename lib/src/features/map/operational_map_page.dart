@@ -123,7 +123,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         await widget.store.cacheAck(ack.toJson());
         await _sync.queue(objectId:ack.id,objectType:'ack',payload:ack.toJson());
       }
-      await _notifications.message(title:'SARCADE · ${m.priority}',body:m.body,priority:m.priority);
+      await _notifications.message(title:'SARCADE · ${S.t('priority.${m.priority}')} · ${m.senderId}',body:m.body,priority:m.priority);
     }
     if(mounted)setState((){});
   }

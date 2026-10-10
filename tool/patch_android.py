@@ -11,6 +11,8 @@ CI generates android/ and this script applies the SARCADE-specific settings:
 - hardware features declared optional (touchscreen, GPS, location), so the
   Play Store also offers the app on Chromebooks without touch screen or GPS:
   a location permission otherwise implies a required GPS feature
+- notifications (POST_NOTIFICATIONS, Android 13+) and core library
+  desugaring in the Gradle build, required by flutter_local_notifications
 
 The script is idempotent and fails loudly if the template changed shape.
 """
@@ -30,7 +32,38 @@ PERMISSIONS = [
     "android.permission.ACCESS_NETWORK_STATE",
     "android.permission.ACCESS_FINE_LOCATION",
     "android.permission.ACCESS_COARSE_LOCATION",
+    "android.permission.POST_NOTIFICATIONS",
 ]
+GRADLE_KTS = Path("android/app/build.gradle.kts")
+GRADLE = Path("android/app/build.gradle")
+DESUGAR = "com.android.tools:desugar_jdk_libs:2.1.5"
+
+
+def patch_gradle() -> bool:
+    """Core library desugaring (Java 8+ APIs on older Android versions)."""
+    if GRADLE_KTS.exists():
+        path, kts = GRADLE_KTS, True
+    elif GRADLE.exists():
+        path, kts = GRADLE, False
+    else:
+        print("error: android/app/build.gradle(.kts) not found", file=sys.stderr)
+        return False
+    text = path.read_text(encoding="utf-8")
+    flag = "isCoreLibraryDesugaringEnabled = true" if kts else "coreLibraryDesugaringEnabled true"
+    if flag not in text:
+        text, n = re.subn(r"(compileOptions\s*\{)", r"\1\n        " + flag, text, count=1)
+        if n != 1:
+            print("error: compileOptions block not found", file=sys.stderr)
+            return False
+    dep = f'coreLibraryDesugaring("{DESUGAR}")' if kts else f"coreLibraryDesugaring '{DESUGAR}'"
+    if "coreLibraryDesugaring(" not in text and "coreLibraryDesugaring '" not in text:
+        if re.search(r"^dependencies\s*\{", text, flags=re.M):
+            text = re.sub(r"^dependencies\s*\{", "dependencies {\n    " + dep, text, count=1, flags=re.M)
+        else:
+            text += "\ndependencies {\n    " + dep + "\n}\n"
+    path.write_text(text, encoding="utf-8")
+    print(f"patched {path}")
+    return True
 
 
 def main() -> int:
@@ -63,7 +96,7 @@ def main() -> int:
 
     MANIFEST.write_text(xml, encoding="utf-8")
     print(f"patched {MANIFEST}")
-    return 0
+    return 0 if patch_gradle() else 1
 
 
 if __name__ == "__main__":
