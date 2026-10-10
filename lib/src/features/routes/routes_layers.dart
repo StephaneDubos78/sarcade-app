@@ -21,8 +21,9 @@ List<Widget> buildRouteLayers(RoutesController c,{String? selectedRouteId,List<L
     if(line.length>1)lines.add(Polyline(points:line,strokeWidth:selected?6:4,color:Color(r.color).withValues(alpha:selected?1:0.75)));
     // Legs waiting for the server computation are drawn dotted.
     for(var i=1;i<ordered.length;i++){
-      if(ordered[i].legNeedsRouting)lines.add(Polyline(points:[ordered[i-1].point,ordered[i].point],strokeWidth:2,
-        color:Colors.black54,pattern:StrokePattern.dotted()));
+      if(ordered[i].legNeedsRouting){
+        lines.add(Polyline(points:[ordered[i-1].point,ordered[i].point],strokeWidth:2,color:Colors.black54,pattern:StrokePattern.dotted()));
+      }
     }
     final passed=passedWaypoints(c.passages,r.id);
     for(final w in ordered){
@@ -41,8 +42,10 @@ List<Widget> buildRouteLayers(RoutesController c,{String? selectedRouteId,List<L
     if(cl.points.length<2)continue;
     lines.add(Polyline(points:cl.points,strokeWidth:6,color:cl.active?Colors.red.shade700:Colors.grey,
       pattern:StrokePattern.dashed(segments:const [12,8])));
-    if(cl.active)markers.add(Marker(point:cl.points[cl.points.length~/2],width:28,height:28,
-      child:Tooltip(message:cl.label,child:const Icon(Icons.block,color:Colors.red,size:24))));
+    if(cl.active){
+      markers.add(Marker(point:cl.points[cl.points.length~/2],width:28,height:28,
+        child:Tooltip(message:cl.label,child:const Icon(Icons.block,color:Colors.red,size:24))));
+    }
   }
   if(draftClosure.length>1)lines.add(Polyline(points:draftClosure,strokeWidth:5,color:Colors.red,pattern:StrokePattern.dashed(segments:const [6,6])));
   if(itinerary.length>1)lines.add(Polyline(points:itinerary,strokeWidth:6,color:Colors.teal.shade600,borderStrokeWidth:2,borderColor:Colors.white));
