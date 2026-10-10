@@ -7,6 +7,8 @@ class LocalStore {
   late Box _positionBox, _poiBox, _messageBox, _ackBox, _referenceBox, _outboxBox, _metaBox, _featureBox, _uploadBox, _groupBox, _routeBox;
   // Photo bytes are read on demand, never all kept in memory.
   late LazyBox _attachmentBox;
+  // Road graph of navigation on the device (tens of MB), read on demand.
+  late LazyBox _graphBox;
 
   Future<void> init() async {
     await initHiveStorage();
@@ -22,6 +24,7 @@ class LocalStore {
     _groupBox=await Hive.openBox(_groups);
     _routeBox=await Hive.openBox(_routeObjects);
     _attachmentBox=await Hive.openLazyBox(_attachments);
+    _graphBox=await Hive.openLazyBox('road_graph');
   }
 
   Future<void> cachePosition(Map<String,dynamic> v)=>_positionBox.put(v['id'],v);
@@ -85,6 +88,15 @@ class LocalStore {
     return (enabled:v['enabled']==true,intervalS:(v['interval_s'] as num?)?.toInt()??30);
   }
   Future<void> saveTrackingPrefs(String eventId,bool enabled,int intervalS)=>_metaBox.put('tracking:$eventId',{'enabled':enabled,'interval_s':intervalS});
+
+  Future<void> saveRoadGraph(Uint8List bytes,Map<String,dynamic> info) async {await _graphBox.put('graph',bytes);await _metaBox.put('road_graph_info',info);}
+  Future<Uint8List?> roadGraph() async {
+    final v=await _graphBox.get('graph');
+    if(v is Uint8List)return v;
+    if(v is List)return Uint8List.fromList(v.cast<int>());
+    return null;
+  }
+  Map<String,dynamic>? roadGraphInfo(){final v=_metaBox.get('road_graph_info');return v==null?null:Map<String,dynamic>.from(v as Map);}
 
   // Small server answers kept for offline use (weather, base map catalog).
   Map<String,dynamic>? cachedJson(String key){final v=_metaBox.get('cache:$key');return v==null?null:Map<String,dynamic>.from(v as Map);}

@@ -35,6 +35,7 @@ import '../../operations/operations_service.dart';
 import '../../operations/operations_widgets.dart';
 import '../../operations/tracking_service.dart';
 import '../navigation/navigation_controller.dart';
+import '../navigation/road_graph_service.dart';
 import '../basemaps/basemap_models.dart';
 import '../basemaps/basemap_sheet.dart';
 import '../weather/weather_page.dart';
@@ -65,7 +66,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   StreamSubscription? _rtSub; Timer? _syncUiTimer; String _status=S.t('status.connecting'); bool _showPanel=true; bool _showReferencePanel=false; bool _showHighPoints=true; bool _showRelays=true; String _referenceQuery=''; String? _selectedDevice; ReferenceSite? _selectedReference; List<SarcadePosition> _trace=[]; bool _traceLoading=false; late final OfflineSyncService _sync; bool _layoutInitialized=false;
   late final DrawingController _drawing; bool _drawingTools=false; final _mapKey=GlobalKey();
   late final TrackingService _tracking; late final OperationsService _ops; bool _updatePageShown=false;
-  late final RoutesController _routes; late final NavigationController _nav;
+  late final RoutesController _routes; late final NavigationController _nav; late final RoadGraphService _graphs;
   List<Basemap> _catalog=builtInBasemaps;
   /// APRS stations followed by the event (the server only sends those).
   bool _showAprs=true;
@@ -173,7 +174,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       ListTile(leading:const Icon(Icons.cloud_outlined),title:Text(S.t('weather.here')),onTap:()=>Navigator.pop(c,'weather')),
     ])));
     if(choice=='measure')await _measureTo(point,label);
-    if(choice=='ext'&&mounted)await openInOtherApp(context,point,label);
+    if(choice=='ext'&&mounted)await _openElsewhere(point,label);
     if(choice=='nav')await _navigateTo(point,label);
     if(choice=='weather')_openWeather(point:(lat:point.latitude,lon:point.longitude,label:label));
   }
@@ -217,6 +218,10 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   void _sendMeasure()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>MessagesPage(api:widget.api,eventId:widget.eventId,
     actorId:widget.deviceId,sync:_sync,store:widget.store,initialText:measureMessage(_measure,_coordFormat))));
 
+  /// « Open in… » with the navigation app chosen by the organisation.
+  Future<void> _openElsewhere(LatLng p,String label)=>openInOtherApp(context,p,label,
+    app:widget.store.preference('nav_app')??'operator',hideTracking:widget.store.preference('nav_hide_tracking')=='1');
+
   Future<void> _gotoCoordinates() async {
     final controller=TextEditingController();
     final text=await showDialog<String>(context:context,builder:(c)=>AlertDialog(
@@ -234,7 +239,10 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
 
   void _initRoutes(){
     _routes=RoutesController(api:widget.api,store:widget.store,sync:_sync,eventId:widget.eventId,actorId:widget.deviceId);
-    _nav=NavigationController(api:widget.api,routes:_routes,location:_location,eventId:widget.eventId);
+    _graphs=RoadGraphService(api:widget.api,store:widget.store);
+    _graphs.addListener(_onRoutesChanged);
+    _graphs.start();
+    _nav=NavigationController(api:widget.api,routes:_routes,location:_location,eventId:widget.eventId,graphs:_graphs);
     _routes.addListener(_onRoutesChanged);
     _nav.addListener(_onRoutesChanged);
     _routes.refresh();
@@ -567,7 +575,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     child:child,
   );
 
-  @override void dispose(){_rtSub?.cancel();_tracking.removeListener(_onOperationsChanged);_ops.removeListener(_onOperationsChanged);_tracking.dispose();_ops.dispose();_routes.removeListener(_onRoutesChanged);_nav.removeListener(_onRoutesChanged);_routes.dispose();_nav.dispose();_measure.removeListener(_onRoutesChanged);_measure.dispose();_syncUiTimer?.cancel();_sync.dispose();_realtime.dispose();_drawing.dispose();widget.api.close();super.dispose();}
+  @override void dispose(){_rtSub?.cancel();_tracking.removeListener(_onOperationsChanged);_ops.removeListener(_onOperationsChanged);_tracking.dispose();_ops.dispose();_routes.removeListener(_onRoutesChanged);_nav.removeListener(_onRoutesChanged);_routes.dispose();_nav.dispose();_graphs.removeListener(_onRoutesChanged);_graphs.dispose();_measure.removeListener(_onRoutesChanged);_measure.dispose();_syncUiTimer?.cancel();_sync.dispose();_realtime.dispose();_drawing.dispose();widget.api.close();super.dispose();}
 
   @override Widget build(BuildContext context){
     final sorted=_positions.values.where((p)=>_showAprs||!p.isAprs).toList()..sort((a,b)=>a.deviceId.compareTo(b.deviceId));
@@ -623,6 +631,12 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           heldPhotos:_sync.lowBandwidth?widget.store.pendingUploads().length:0,
           onSyncNow:() async {await _sync.syncNow();if(mounted)setState((){});},
           onUpdate:()=>downloadUpdate(context,widget.api,_ops.update)),
+        if(_graphs.pendingMobileBytes!=null&&!_graphs.downloading)Material(color:Theme.of(context).colorScheme.secondaryContainer,child:Padding(
+          padding:const EdgeInsets.symmetric(horizontal:12,vertical:4),
+          child:Row(children:[const Icon(Icons.alt_route,size:18),const SizedBox(width:8),
+            Expanded(child:Text(S.t('graph.mobile',{'mb':(_graphs.pendingMobileBytes!/1048576).toStringAsFixed(1)}),style:Theme.of(context).textTheme.bodySmall)),
+            TextButton(onPressed:()=>_graphs.check(allowMobile:true),child:Text(S.t('graph.download'))),
+          ]))),
         Expanded(child:_withDrawingShortcuts(Row(children:[
         if(_showRoutesPanel)SizedBox(width:panelWidth(360),child:Material(elevation:3,child:RoutesPanel(
           controller:_routes,api:widget.api,actorId:widget.deviceId,selectedRouteId:_selectedRouteId,drawingRouteId:_drawingRouteId,
@@ -701,7 +715,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         Positioned(left:0,right:0,bottom:72,child:Center(child:ConstrainedBox(constraints:const BoxConstraints(maxWidth:520),child:Column(mainAxisSize:MainAxisSize.min,children:[
           MeasureCard(m:_measure,format:_coordFormat,onSavePoi:_savePoi,onSendMessage:_sendMeasure,
             onFit:(){final o=_measure.origin,t=_measure.target;if(t!=null)_fitPoints([?o?.point,t]);},
-            onOpenElsewhere:(){final t=_measure.target;if(t!=null)openInOtherApp(context,t,_measure.targetLabel);},
+            onOpenElsewhere:(){final t=_measure.target;if(t!=null)_openElsewhere(t,_measure.targetLabel);},
             onChooseOrigin:_chooseOrigin,
             onFormat:(f) async {await widget.store.setPreference('coord_format',f.name);if(mounted)setState((){});}),
           NavigationCard(nav:_nav),

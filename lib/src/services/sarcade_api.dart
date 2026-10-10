@@ -157,6 +157,18 @@ class SarcadeApi {
     if(r.statusCode!=200) throw SarcadeHttpException('basemaps',r.statusCode);
     return (jsonDecode(r.body) as List).map((e)=>Map<String,dynamic>.from(e as Map)).toList();
   }
+  /// Version of the road graph for navigation on the device.
+  Future<Map<String,dynamic>> roadGraphInfo() async {
+    final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/routing/graph/info'));
+    if(r.statusCode!=200) throw SarcadeHttpException('graph_info',r.statusCode);
+    return Map<String,dynamic>.from(jsonDecode(r.body) as Map);
+  }
+  /// Settings of the organisation applied by the clients (navigation app).
+  Future<Map<String,dynamic>> clientConfig() async {
+    final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/clients/config'));
+    if(r.statusCode!=200) throw SarcadeHttpException('client_config',r.statusCode);
+    return Map<String,dynamic>.from(jsonDecode(r.body) as Map);
+  }
   /// Periodic contact of the device: the answer carries the PCO settings
   /// (low-bandwidth mode, tracking policy), the end of the event and the
   /// minimal client version.
