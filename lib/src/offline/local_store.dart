@@ -62,6 +62,18 @@ class LocalStore {
   Map<String,dynamic>? storedConfig(){final v=_metaBox.get('config');return v==null?null:Map<String,dynamic>.from(v as Map);}
   Future<void> saveConfig(Map<String,dynamic> v)=>_metaBox.put('config',v);
 
+  // Last event settings received from the server, kept for offline starts.
+  Map<String,dynamic>? eventSettings(String eventId){final v=_metaBox.get('settings:$eventId');return v==null?null:Map<String,dynamic>.from(v as Map);}
+  Future<void> saveEventSettings(String eventId,Map<String,dynamic> v)=>_metaBox.put('settings:$eventId',v);
+
+  // Position tracking (Beacon) chosen by the operator for an event.
+  ({bool enabled,int intervalS})? trackingPrefs(String eventId){
+    final v=_metaBox.get('tracking:$eventId');
+    if(v is! Map)return null;
+    return (enabled:v['enabled']==true,intervalS:(v['interval_s'] as num?)?.toInt()??30);
+  }
+  Future<void> saveTrackingPrefs(String eventId,bool enabled,int intervalS)=>_metaBox.put('tracking:$eventId',{'enabled':enabled,'interval_s':intervalS});
+
   String cursor(String eventId)=>_metaBox.get('cursor:$eventId',defaultValue:'0') as String;
   Future<void> setCursor(String eventId,String cursor)=>_metaBox.put('cursor:$eventId',cursor);
 }

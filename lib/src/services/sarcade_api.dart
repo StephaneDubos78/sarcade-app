@@ -94,6 +94,28 @@ class SarcadeApi {
     if(r.statusCode!=200) throw Exception('logbook_http_${r.statusCode}');
     return (jsonDecode(r.body) as List).map((e)=>LogbookEntry.fromJson(e)).toList();
   }
+  /// Periodic contact of the device: the answer carries the PCO settings
+  /// (low-bandwidth mode, tracking policy), the end of the event and the
+  /// minimal client version.
+  Future<Map<String,dynamic>> heartbeat(String eventId,String deviceId,Map<String,dynamic> body) async {
+    final r=await _client.post(Uri.parse('$baseUrl/api/v0.1/events/$eventId/devices/${Uri.encodeComponent(deviceId)}/heartbeat'),
+      headers:{'content-type':'application/json'},body:jsonEncode(body));
+    if(r.statusCode!=200) throw SarcadeHttpException('heartbeat',r.statusCode,r.body);
+    return Map<String,dynamic>.from(jsonDecode(r.body) as Map);
+  }
+  /// Minimal client version, asked at start (note « Mises à jour et sécurité »).
+  Future<Map<String,dynamic>> clientCheck(String deviceId,String platform,String appVersion) async {
+    final r=await _client.post(Uri.parse('$baseUrl/api/v0.1/clients/check'),headers:{'content-type':'application/json'},
+      body:jsonEncode({'device_id':deviceId,'platform':platform,'app_version':appVersion}));
+    if(r.statusCode!=200) throw SarcadeHttpException('client_check',r.statusCode,r.body);
+    return Map<String,dynamic>.from(jsonDecode(r.body) as Map);
+  }
+  /// Bytes of a path of the server (client package, offline map package).
+  Future<List<int>> download(String path) async {
+    final r=await _client.get(Uri.parse('$baseUrl$path'));
+    if(r.statusCode!=200) throw SarcadeHttpException('download',r.statusCode);
+    return r.bodyBytes;
+  }
   Uri websocketUri(String eventId){final u=Uri.parse(baseUrl);return u.replace(scheme:u.scheme=='https'?'wss':'ws',path:'/api/v0.1/events/$eventId/ws');}
   void close()=>_client.close();
 }

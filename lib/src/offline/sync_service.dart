@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:uuid/uuid.dart';
 import '../features/messages/photo_attachment.dart';
+import '../operations/event_settings.dart';
 import '../services/sarcade_api.dart';
 import 'local_store.dart';
 import 'sync_operation.dart';
@@ -16,6 +17,7 @@ class OfflineSyncService {
   /// Called for every change of the feed, after it is cached locally.
   final void Function(String objectType,Map<String,dynamic> payload)? onRemoteChange;
   final _uuid=const Uuid(); StreamSubscription? _network; bool _syncing=false, _again=false;
+  Timer? _batch; bool _lowBandwidth=false; int _batchSeconds=60;
   OfflineSyncService({required this.api,required this.store,required this.eventId,this.onRemoteChange});
 
   void start(){
@@ -23,10 +25,26 @@ class OfflineSyncService {
     syncNow();
   }
 
+  /// Low-bandwidth mode imposed by the PCO: grouped sending every
+  /// [intervalS] seconds, photos kept on the device until the mode is lifted,
+  /// urgent and immediate messages still sent at once.
+  bool get lowBandwidth=>_lowBandwidth;
+  void setLowBandwidth(bool on,{int intervalS=60}){
+    if(on==_lowBandwidth&&intervalS==_batchSeconds)return;
+    final lifted=_lowBandwidth&&!on;
+    _lowBandwidth=on; _batchSeconds=intervalS;
+    _batch?.cancel(); _batch=null;
+    if(on){_batch=Timer.periodic(Duration(seconds:intervalS),(_){syncNow();});}
+    // Lifting the mode sends at once what waited, photos included.
+    if(lifted)syncNow();
+  }
+
   Future<void> queue({required String objectId,required String objectType,required Map<String,dynamic> payload,String action='create'}) async {
     final op=SyncOperation(operationId:_uuid.v4(),eventId:eventId,objectId:objectId,objectType:objectType,action:action,clientTime:DateTime.now().toUtc(),payload:payload);
-    await store.enqueue(op.toJson());
-    await syncNow();
+    final json=op.toJson();
+    await store.enqueue(json);
+    // In low-bandwidth mode only urgent and immediate messages leave at once.
+    if(!_lowBandwidth||isUrgentOperation(json))await syncNow();
   }
 
   /// True while a local change of this object waits in the Outbox.
@@ -38,8 +56,10 @@ class OfflineSyncService {
     _syncing=true;
     try {
       // Photos first: a message is only sent once its photos are on the server.
-      await _uploadPending();
-      final waiting=store.pendingUploads().map((u)=>u['file_id'] as String).toSet();
+      // In low-bandwidth mode photos stay on the device and messages leave
+      // without waiting for them (the photos follow when the mode is lifted).
+      if(!_lowBandwidth)await _uploadPending();
+      final waiting=_lowBandwidth?<String>{}:store.pendingUploads().map((u)=>u['file_id'] as String).toSet();
       final pending=readyOperations(store.pending(),waiting);
       if(pending.isNotEmpty){
         final results=await api.sync(pending);
@@ -87,5 +107,5 @@ class OfflineSyncService {
     }
   }
 
-  Future<void> dispose() async => _network?.cancel();
+  Future<void> dispose() async {_batch?.cancel();await _network?.cancel();}
 }
