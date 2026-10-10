@@ -113,9 +113,9 @@ class SarcadeApi {
   }
   /// Itinerary computed by the server (Valhalla), avoiding closed roads.
   /// 422: no itinerary possible; 503: engine unavailable.
-  Future<Map<String,dynamic>> routing(String eventId,List<List<double>> points,String mode) async {
+  Future<Map<String,dynamic>> routing(String eventId,List<List<double>> points,String mode,{int alternatives=0}) async {
     final r=await _client.post(Uri.parse('$baseUrl/api/v0.1/routing'),headers:{'content-type':'application/json'},
-      body:jsonEncode({'event_id':eventId,'points':points,'mode':mode}));
+      body:jsonEncode({'event_id':eventId,'points':points,'mode':mode,if(alternatives>0)'alternatives':alternatives}));
     if(r.statusCode!=200) throw SarcadeHttpException('routing',r.statusCode,r.body);
     return Map<String,dynamic>.from(jsonDecode(r.body) as Map);
   }

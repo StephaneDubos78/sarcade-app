@@ -43,3 +43,27 @@ Client side of server PRs #11 (routes) and #13 (navigation).
   Store link, then the usual chooser. Google warning kept; Google Maps and
   Waze hidden from the iPhone list when the organisation hides them (the
   Android system chooser cannot be filtered).
+
+## Variants and follow mode (decisions of 10 Oct 2026)
+
+- **Up to two variants**, drawn in grey under the itinerary, with a chip
+  each in the navigation card (« Variant 1 · +4 min · 12.3 km »); a tap on
+  the grey line or on the chip makes it the itinerary followed (shared again
+  with the PCO).
+- From the server (Valhalla alternates, between two points), or computed on
+  the device by **penalty**: the edges of the itineraries already found cost
+  1.8 times more, then the variants nearly identical (85 % of their length
+  within 30 m) or much longer (over 1.6 times the time) are dropped. No
+  variants after an automatic re-route.
+- **Follow mode**: the map stays centred on the operator and turns in the
+  direction of travel, by the GPS course when moving (over 5 km/h), by the
+  compass when stationary (true north, WMM declination).
+  - **Phones and tablets**: automatic at the start of the navigation; when
+    variants are shown, it starts as soon as the operator moves off (25 m)
+    or taps a variant.
+  - **Computers**: north up by default, « Turn in the direction of travel »
+    option in the navigation card (kept on the device).
+  - A gesture on the map (drag, pinch, wheel, keyboard) leaves the mode;
+    **« Re-centre »** in the card comes back to it.
+  - Drawing is off in follow mode (drawn shapes assume north up); the map
+    comes back north up when the mode ends.

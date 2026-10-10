@@ -3,6 +3,7 @@
 /// without Flutter. Objects are kept as JSON maps, the format of the server.
 library;
 
+import 'dart:math' as math;
 import 'package:latlong2/latlong.dart';
 import '../../models/comm_group.dart' show isPco;
 import '../map/drawing/geometry.dart';
@@ -157,6 +158,59 @@ class Itinerary {
     final speed=mode=='foot'?1.2:(mode=='offroad'?6.0:11.0);
     return Itinerary(geometry:[from,to],lengthM:d,durationS:d/speed,straight:true);
   }
+}
+
+/// Variants of the server itinerary (« alternatives », at most two).
+List<Itinerary> alternativesFromJson(Map<String,dynamic> j)=>[
+  for(final a in (j['alternatives'] as List?)??const []) if(a is Map) Itinerary.fromJson(Map<String,dynamic>.from(a))];
+
+/// Share of [candidate]'s length lying within [withinM] of [reference],
+/// sampled every [stepM] (same rule as the server).
+double sharedShare(List<LatLng> candidate,List<LatLng> reference,{double withinM=30,double stepM=25}){
+  if(candidate.length<2||reference.length<2)return 0;
+  final lat0=candidate.first.latitude*math.pi/180;
+  final kx=111320*math.cos(lat0), ky=110540.0;
+  final ref=[for(final p in reference)(p.longitude*kx,p.latitude*ky)];
+  double toRef(double x,double y){
+    var best=double.infinity;
+    for(var i=1;i<ref.length;i++){
+      final (ax,ay)=ref[i-1]; final (bx,by)=ref[i];
+      final dx=bx-ax, dy=by-ay; final len2=dx*dx+dy*dy;
+      var t=len2==0?0.0:((x-ax)*dx+(y-ay)*dy)/len2;
+      t=t.clamp(0.0,1.0);
+      final ex=ax+t*dx-x, ey=ay+t*dy-y;
+      final d=math.sqrt(ex*ex+ey*ey);
+      if(d<best)best=d;
+    }
+    return best;
+  }
+  var total=0.0, near=0.0;
+  for(var i=1;i<candidate.length;i++){
+    final ax=candidate[i-1].longitude*kx, ay=candidate[i-1].latitude*ky;
+    final bx=candidate[i].longitude*kx, by=candidate[i].latitude*ky;
+    final seg=math.sqrt((bx-ax)*(bx-ax)+(by-ay)*(by-ay));
+    final n=math.max(1,(seg/stepM).floor());
+    for(var k=0;k<n;k++){
+      final t=(k+0.5)/n;
+      total+=seg/n;
+      if(toRef(ax+(bx-ax)*t,ay+(by-ay)*t)<=withinM)near+=seg/n;
+    }
+  }
+  return total==0?0:near/total;
+}
+
+/// At most [max] variants, without those that are nearly the same road as
+/// the main itinerary or a variant already kept, nor those much longer.
+List<Itinerary> distinctAlternatives(Itinerary main,List<Itinerary> candidates,{int max=2,double sameShare=0.85,double maxRatio=1.6}){
+  final kept=<Itinerary>[];
+  for(final c in candidates){
+    if(c.geometry.length<2)continue;
+    if(main.durationS>0&&c.durationS>main.durationS*maxRatio)continue;
+    if([main,...kept].any((o)=>sharedShare(c.geometry,o.geometry,withinM:30)>=sameShare))continue;
+    kept.add(c);
+    if(kept.length==max)break;
+  }
+  return kept;
 }
 
 /// Remaining distance along the itinerary from the closest point of the line.
