@@ -45,7 +45,7 @@ class _Banner extends StatelessWidget {
   const _Banner({required this.icon,required this.color,required this.text,this.action});
   @override Widget build(BuildContext context)=>Material(color:color,child:Padding(
     padding:const EdgeInsets.symmetric(horizontal:12,vertical:6),
-    child:Row(children:[Icon(icon,size:18),const SizedBox(width:8),Expanded(child:Text(text,style:Theme.of(context).textTheme.bodySmall)),if(action!=null)action!]),
+    child:Row(children:[Icon(icon,size:18),const SizedBox(width:8),Expanded(child:Text(text,style:Theme.of(context).textTheme.bodySmall)),?action]),
   ));
 }
 

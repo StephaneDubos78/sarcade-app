@@ -19,7 +19,7 @@ class TrackingService extends ChangeNotifier {
   StreamSubscription<Position>? _gps; Timer? _timer;
   Position? _last; DateTime? _lastSentFix;
 
-  TrackingService({required this.eventId,required this.deviceId,required this.location,required this.onPosition,int intervalS=30}):_intervalS=intervalS;
+  TrackingService({required this.eventId,required this.deviceId,required this.location,required this.onPosition,this._intervalS=30});
 
   bool get enabled=>_enabled;
   int get intervalS=>_intervalS;
