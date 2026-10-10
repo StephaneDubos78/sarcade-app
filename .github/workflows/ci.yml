@@ -176,11 +176,13 @@ jobs:
           retention-days: 30
 
   web-build:
-    # Installable web app (PWA): main SARCADE channel on ChromeOS. Served by
-    # the SARCADE server itself, so it also works on a LAN without Internet:
-    # --no-web-resources-cdn bundles the rendering engine instead of
+    # Web client, opened in any browser and installable (PWA) on ChromeOS.
+    # Served by the SARCADE server itself, so it also works on a LAN without
+    # Internet: --no-web-resources-cdn bundles the rendering engine instead of
     # downloading it from a Google CDN at startup.
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
@@ -210,3 +212,16 @@ jobs:
           name: sarcade-web
           path: sarcade-web.tar.gz
           retention-days: 30
+      - name: Publish to the web-dev pre-release
+        # Stable link used by the sarcade-server Docker image to embed the web client.
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          if ! gh release view web-dev >/dev/null 2>&1; then
+            gh release create web-dev --prerelease --target "$GITHUB_SHA" \
+              --title "SARCADE Web (développement)" \
+              --notes "Client Web V0.1, mis à jour automatiquement par la CI. Intégré à l'image Docker de sarcade-server."
+          fi
+          gh release upload web-dev sarcade-web.tar.gz --clobber
