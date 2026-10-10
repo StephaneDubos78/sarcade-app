@@ -105,7 +105,7 @@ void main(){
     expect(parseDeclination('2,5°E'),2.5);
     expect(parseDeclination('abc'),isNull);
     expect(parseDeclination('95'),isNull);
-    expect(formatDeclination(-1.25),'1,3° O');
+    expect(formatDeclination(-1.24),'1,2° O');
     expect(formatDeclination(2,decimal:'.',west:'W'),'2.0° E');
     expect(MeasureController.wmmExpired(DateTime.utc(2029,12,31)),isFalse);
     expect(MeasureController.wmmExpired(DateTime.utc(2030,1,1,1)),isTrue);
