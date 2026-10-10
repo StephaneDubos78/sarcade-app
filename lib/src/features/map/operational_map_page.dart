@@ -38,6 +38,10 @@ import '../navigation/navigation_controller.dart';
 import '../basemaps/basemap_models.dart';
 import '../basemaps/basemap_sheet.dart';
 import '../weather/weather_page.dart';
+import '../measure/coordinates.dart';
+import '../measure/external_maps.dart';
+import '../measure/measure_controller.dart';
+import '../measure/measure_widgets.dart';
 import '../navigation/navigation_widgets.dart';
 import '../routes/route_models.dart';
 import '../routes/routes_controller.dart';
@@ -65,6 +69,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   List<Basemap> _catalog=builtInBasemaps;
   /// APRS stations followed by the event (the server only sends those).
   bool _showAprs=true;
+  late final MeasureController _measure; bool _pickingOrigin=false;
+  CoordFormat get _coordFormat=>coordFormatFrom(widget.store.preference('coord_format'));
   bool _showRoutesPanel=false; String? _selectedRouteId, _drawingRouteId; bool _drawingClosure=false; final List<LatLng> _closureDraft=[];
   final List<Offset> _stroke=[];
 
@@ -72,7 +78,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   static const _compactWidth=600.0;
   @override void didChangeDependencies(){super.didChangeDependencies();if(!_layoutInitialized){_layoutInitialized=true;if(MediaQuery.sizeOf(context).width<_compactWidth)_showPanel=false;}}
 
-  @override void initState(){super.initState();_notifications.initialize();_sync=OfflineSyncService(api:widget.api,store:widget.store,eventId:widget.eventId,onRemoteChange:_onRemoteChange);_initDrawing();_loadLocal();_initRoutes();_sync.start();_initOperations();_loadBasemaps();_syncUiTimer=Timer.periodic(const Duration(seconds:2),(_){if(mounted)setState((){});});_start();}
+  @override void initState(){super.initState();_notifications.initialize();_sync=OfflineSyncService(api:widget.api,store:widget.store,eventId:widget.eventId,onRemoteChange:_onRemoteChange);_initDrawing();_loadLocal();_initRoutes();_initMeasure();_sync.start();_initOperations();_loadBasemaps();_syncUiTimer=Timer.periodic(const Duration(seconds:2),(_){if(mounted)setState((){});});_start();}
   bool _validPosition(SarcadePosition p){
     final t=p.time.toUtc(), now=DateTime.now().toUtc();
     return t.isAfter(DateTime.utc(2020)) && t.isBefore(now.add(const Duration(days:1)));
@@ -161,11 +167,69 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   Future<void> _onLongPress(LatLng point) async {
     final label=S.t('nav.point');
     final choice=await showModalBottomSheet<String>(context:context,showDragHandle:true,builder:(c)=>SafeArea(child:Column(mainAxisSize:MainAxisSize.min,children:[
+      ListTile(leading:const Icon(Icons.straighten),title:Text(S.t('measure.here')),onTap:()=>Navigator.pop(c,'measure')),
       ListTile(leading:const Icon(Icons.directions),title:Text(S.t('nav.goHere')),onTap:()=>Navigator.pop(c,'nav')),
+      ListTile(leading:const Icon(Icons.open_in_new),title:Text(S.t('ext.open')),onTap:()=>Navigator.pop(c,'ext')),
       ListTile(leading:const Icon(Icons.cloud_outlined),title:Text(S.t('weather.here')),onTap:()=>Navigator.pop(c,'weather')),
     ])));
+    if(choice=='measure')await _measureTo(point,label);
+    if(choice=='ext'&&mounted)await openInOtherApp(context,point,label);
     if(choice=='nav')await _navigateTo(point,label);
     if(choice=='weather')_openWeather(point:(lat:point.latitude,lon:point.longitude,label:label));
+  }
+
+  void _initMeasure(){
+    _measure=MeasureController(location:_location);
+    _measure.addListener(_onRoutesChanged);
+  }
+
+  Future<void> _measureTo(LatLng point,String label) async {
+    await _measure.start(point,label);
+    _measure.startCompass();
+  }
+
+  Future<void> _chooseOrigin() async {
+    final others=_positions.values.where((p)=>p.deviceId!=widget.deviceId).toList()..sort((a,b)=>a.label.compareTo(b.label));
+    final choice=await showDialog<String>(context:context,builder:(c)=>SimpleDialog(title:Text(S.t('measure.chooseOrigin')),children:[
+      SimpleDialogOption(onPressed:()=>Navigator.pop(c,'mine'),child:Text(S.t('measure.originMine'))),
+      SimpleDialogOption(onPressed:()=>Navigator.pop(c,'point'),child:Text(S.t('measure.originPoint'))),
+      for(final p in others)SimpleDialogOption(onPressed:()=>Navigator.pop(c,'dev:${p.deviceId}'),child:Text(p.label)),
+    ]));
+    if(choice==null||!mounted)return;
+    if(choice=='mine'){final t=_measure.target;if(t!=null)await _measure.start(t,_measure.targetLabel);return;}
+    if(choice=='point'){setState(()=>_pickingOrigin=true);ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(S.t('measure.pickOrigin'))));return;}
+    final p=_positions[choice.substring(4)];
+    if(p!=null)_measure.setOrigin(MeasureOrigin(point:LatLng(p.lat,p.lon),label:p.label,accuracyM:p.accuracyM,time:p.time));
+  }
+
+  Future<void> _savePoi() async {
+    final t=_measure.target;
+    if(t==null)return;
+    final now=DateTime.now().toUtc();
+    final poi={'id':_uuid.v4(),'event_id':widget.eventId,'kind':'designated','label':_measure.targetLabel,
+      'lat':t.latitude,'lon':t.longitude,'created_at':now.toIso8601String()};
+    await widget.store.cachePoi(poi);
+    setState(()=>_pois[poi['id'] as String]=SarcadePoi.fromJson(poi));
+    await _sync.queue(objectId:poi['id'] as String,objectType:'poi',payload:poi);
+    if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(S.t('measure.poiSaved'))));
+  }
+
+  void _sendMeasure()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>MessagesPage(api:widget.api,eventId:widget.eventId,
+    actorId:widget.deviceId,sync:_sync,store:widget.store,initialText:measureMessage(_measure,_coordFormat))));
+
+  Future<void> _gotoCoordinates() async {
+    final controller=TextEditingController();
+    final text=await showDialog<String>(context:context,builder:(c)=>AlertDialog(
+      title:Text(S.t('measure.goto')),
+      content:TextField(controller:controller,autofocus:true,decoration:InputDecoration(hintText:S.t('measure.gotoHint'))),
+      actions:[TextButton(onPressed:()=>Navigator.pop(c),child:Text(S.t('common.cancel'))),
+        FilledButton(onPressed:()=>Navigator.pop(c,controller.text),child:Text(S.t('common.ok')))],
+    ));
+    if(text==null||!mounted)return;
+    final p=parseCoordinates(text);
+    if(p==null){ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(S.t('measure.gotoInvalid'))));return;}
+    _map.move(p,15);
+    await _measureTo(p,S.t('measure.coordinates'));
   }
 
   void _initRoutes(){
@@ -373,6 +437,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   }
 
   Future<void> _onMapTap(TapPosition tap,LatLng point) async {
+    if(_pickingOrigin){setState(()=>_pickingOrigin=false);_measure.setOrigin(MeasureOrigin(point:point,label:S.t('measure.originPoint')));return;}
     final drawingRoute=_drawingRouteId==null?null:_routes.route(_drawingRouteId!);
     if(drawingRoute!=null){await _routes.addWaypoint(drawingRoute,point);return;}
     if(_drawingClosure){setState(()=>_closureDraft.add(point));return;}
@@ -502,7 +567,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     child:child,
   );
 
-  @override void dispose(){_rtSub?.cancel();_tracking.removeListener(_onOperationsChanged);_ops.removeListener(_onOperationsChanged);_tracking.dispose();_ops.dispose();_routes.removeListener(_onRoutesChanged);_nav.removeListener(_onRoutesChanged);_routes.dispose();_nav.dispose();_syncUiTimer?.cancel();_sync.dispose();_realtime.dispose();_drawing.dispose();widget.api.close();super.dispose();}
+  @override void dispose(){_rtSub?.cancel();_tracking.removeListener(_onOperationsChanged);_ops.removeListener(_onOperationsChanged);_tracking.dispose();_ops.dispose();_routes.removeListener(_onRoutesChanged);_nav.removeListener(_onRoutesChanged);_routes.dispose();_nav.dispose();_measure.removeListener(_onRoutesChanged);_measure.dispose();_syncUiTimer?.cancel();_sync.dispose();_realtime.dispose();_drawing.dispose();widget.api.close();super.dispose();}
 
   @override Widget build(BuildContext context){
     final sorted=_positions.values.where((p)=>_showAprs||!p.isAprs).toList()..sort((a,b)=>a.deviceId.compareTo(b.deviceId));
@@ -536,10 +601,11 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
               messagesButton,
               PopupMenuButton<String>(
                 tooltip:S.t('map.menu'),
-                onSelected:(v){switch(v){case 'fit':_fitOperators();case 'operators':toggleOperators();case 'references':toggleReferences();case 'routes':toggleRoutes();case 'weather':_openWeather();case 'basemap':_chooseBasemap();case 'files':openFiles();case 'logbook':openLogbook();case 'settings':widget.onSettings?.call();}},
+                onSelected:(v){switch(v){case 'fit':_fitOperators();case 'operators':toggleOperators();case 'references':toggleReferences();case 'routes':toggleRoutes();case 'weather':_openWeather();case 'goto':_gotoCoordinates();case 'basemap':_chooseBasemap();case 'files':openFiles();case 'logbook':openLogbook();case 'settings':widget.onSettings?.call();}},
                 itemBuilder:(_)=>[
                   PopupMenuItem(value:'fit',child:ListTile(leading:const Icon(Icons.center_focus_strong),title:Text(S.t('map.fit')))),
                   PopupMenuItem(value:'operators',child:ListTile(leading:const Icon(Icons.groups),title:Text(S.t('map.operators')))),
+                  PopupMenuItem(value:'goto',child:ListTile(leading:const Icon(Icons.pin_drop_outlined),title:Text(S.t('measure.goto')))),
                   PopupMenuItem(value:'weather',child:ListTile(leading:const Icon(Icons.cloud_outlined),title:Text(S.t('weather.menu')))),
                   PopupMenuItem(value:'basemap',child:ListTile(leading:const Icon(Icons.layers_outlined),title:Text(S.t('basemap.menu')))),
                   PopupMenuItem(value:'routes',child:ListTile(leading:const Icon(Icons.route),title:Text(S.t('routes.menu')))),
@@ -550,7 +616,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
                 ],
               ),
             ])
-        : AppBar(title:const Text('SARCADE'),actions:[syncButton,IconButton(tooltip:S.t('map.fit'),onPressed:_fitOperators,icon:const Icon(Icons.center_focus_strong)),IconButton(tooltip:S.t('map.operators'),onPressed:toggleOperators,icon:const Icon(Icons.groups)),IconButton(tooltip:S.t('map.references'),onPressed:toggleReferences,icon:const Icon(Icons.cell_tower)),IconButton(tooltip:S.t('routes.menu'),onPressed:toggleRoutes,icon:const Icon(Icons.route)),IconButton(tooltip:S.t('weather.menu'),onPressed:()=>_openWeather(),icon:const Icon(Icons.cloud_outlined)),IconButton(tooltip:S.t('basemap.menu'),onPressed:_chooseBasemap,icon:const Icon(Icons.layers_outlined)),messagesButton,IconButton(tooltip:S.t('map.files'),onPressed:openFiles,icon:const Icon(Icons.folder_copy_outlined)),IconButton(tooltip:S.t('map.logbook'),onPressed:openLogbook,icon:const Icon(Icons.receipt_long)),if(widget.onSettings!=null)IconButton(tooltip:S.t('map.settings'),onPressed:widget.onSettings,icon:const Icon(Icons.settings)),Padding(padding:const EdgeInsets.symmetric(horizontal:12),child:Center(child:Text('$_status · ${S.t('status.pending',{'n':widget.store.pendingCount()})}')))]),
+        : AppBar(title:const Text('SARCADE'),actions:[syncButton,IconButton(tooltip:S.t('map.fit'),onPressed:_fitOperators,icon:const Icon(Icons.center_focus_strong)),IconButton(tooltip:S.t('map.operators'),onPressed:toggleOperators,icon:const Icon(Icons.groups)),IconButton(tooltip:S.t('map.references'),onPressed:toggleReferences,icon:const Icon(Icons.cell_tower)),IconButton(tooltip:S.t('routes.menu'),onPressed:toggleRoutes,icon:const Icon(Icons.route)),IconButton(tooltip:S.t('weather.menu'),onPressed:()=>_openWeather(),icon:const Icon(Icons.cloud_outlined)),IconButton(tooltip:S.t('measure.goto'),onPressed:_gotoCoordinates,icon:const Icon(Icons.pin_drop_outlined)),IconButton(tooltip:S.t('basemap.menu'),onPressed:_chooseBasemap,icon:const Icon(Icons.layers_outlined)),messagesButton,IconButton(tooltip:S.t('map.files'),onPressed:openFiles,icon:const Icon(Icons.folder_copy_outlined)),IconButton(tooltip:S.t('map.logbook'),onPressed:openLogbook,icon:const Icon(Icons.receipt_long)),if(widget.onSettings!=null)IconButton(tooltip:S.t('map.settings'),onPressed:widget.onSettings,icon:const Icon(Icons.settings)),Padding(padding:const EdgeInsets.symmetric(horizontal:12),child:Center(child:Text('$_status · ${S.t('status.pending',{'n':widget.store.pendingCount()})}')))]),
       body:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
         OperationsBanners(settings:_ops.settings,update:_ops.update,
           alert:syncAlert(widget.store.pending(),DateTime.now(),_ops.settings.syncAlertMinutes),
@@ -600,6 +666,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         Expanded(child:Stack(key:_mapKey,children:[FlutterMap(mapController:_map,options:MapOptions(
           initialCenter:const LatLng(48.8566,2.3522),initialZoom:11,maxZoom:20,onTap:_onMapTap,
           onLongPress:(_,point)=>_onLongPress(point),
+          onSecondaryTap:(_,point)=>_onLongPress(point),
           // Rotation off: drawn arrows and handles assume north up.
           // Drag off while editing so handle and freehand gestures reach the shapes.
           interactionOptions:InteractionOptions(flags:InteractiveFlag.all&~InteractiveFlag.rotate&(_drawing.locksMapDrag?~InteractiveFlag.drag:~0)),
@@ -609,6 +676,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           ...buildDrawingLayers(_drawing),
           ...buildRouteLayers(_routes,selectedRouteId:_selectedRouteId,itinerary:_nav.itinerary?.geometry??const [],draftClosure:_closureDraft,
             onWaypointTap:(w)=>setState((){_showRoutesPanel=true;_showPanel=false;_showReferencePanel=false;_selectedRouteId=w.routeId;})),
+          ...buildMeasureLayers(_measure,_coordFormat),
           MarkerLayer(markers:markers),
           buildHandleLayer(_drawing,_globalToLatLng),
           RichAttributionWidget(attributions:[TextSourceAttribution(_basemap.attribution.isEmpty?widget.tileAttribution:_basemap.attribution)]),
@@ -630,7 +698,14 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
             FilledButton(onPressed:_finishClosure,child:Text(S.t('closures.finish'))),
           ])))),
         ])),
-        Positioned(left:0,right:0,bottom:72,child:Center(child:ConstrainedBox(constraints:const BoxConstraints(maxWidth:520),child:NavigationCard(nav:_nav)))),
+        Positioned(left:0,right:0,bottom:72,child:Center(child:ConstrainedBox(constraints:const BoxConstraints(maxWidth:520),child:Column(mainAxisSize:MainAxisSize.min,children:[
+          MeasureCard(m:_measure,format:_coordFormat,onSavePoi:_savePoi,onSendMessage:_sendMeasure,
+            onFit:(){final o=_measure.origin,t=_measure.target;if(t!=null)_fitPoints([?o?.point,t]);},
+            onOpenElsewhere:(){final t=_measure.target;if(t!=null)openInOtherApp(context,t,_measure.targetLabel);},
+            onChooseOrigin:_chooseOrigin,
+            onFormat:(f) async {await widget.store.setPreference('coord_format',f.name);if(mounted)setState((){});}),
+          NavigationCard(nav:_nav),
+        ])))),
       ]))
       ]))),
       ]),
