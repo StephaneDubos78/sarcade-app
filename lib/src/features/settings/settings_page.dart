@@ -3,6 +3,7 @@ import '../../config/app_config.dart';
 import '../../config/version.dart';
 import '../../l10n/strings.dart';
 import '../../operations/event_settings.dart';
+import '../../services/notification_service.dart';
 
 /// Operator settings: server address, event and terminal identifier,
 /// language, radio callsign. Lets one APK serve every field operator
@@ -23,6 +24,7 @@ class _SettingsPageState extends State<SettingsPage> {
   late final TextEditingController _callsign=TextEditingController(text:widget.initial.callsign);
   late String _language=widget.initial.language;
   late bool _aprsConsent=widget.initial.aprsTxConsent;
+  late bool _bypassDnd=widget.initial.immediateBypassDnd;
   bool _saving=false;
 
   @override void dispose(){_server.dispose();_event.dispose();_device.dispose();_callsign.dispose();super.dispose();}
@@ -45,7 +47,8 @@ class _SettingsPageState extends State<SettingsPage> {
     var server=_server.text.trim();
     while(server.endsWith('/')){server=server.substring(0,server.length-1);}
     await widget.onSave(widget.initial.copyWith(serverUrl:server,eventId:_event.text.trim(),deviceId:_device.text.trim(),
-      language:_language,callsign:_callsign.text.trim().toUpperCase(),aprsTxConsent:_aprsConsent));
+      language:_language,callsign:_callsign.text.trim().toUpperCase(),aprsTxConsent:_aprsConsent,
+      immediateBypassDnd:_bypassDnd));
     if(mounted)setState(()=>_saving=false);
   }
 
@@ -97,6 +100,19 @@ class _SettingsPageState extends State<SettingsPage> {
           contentPadding:EdgeInsets.zero,
           value:_aprsConsent,onChanged:(v)=>setState(()=>_aprsConsent=v),
           title:Text(S.t('settings.aprsConsent')),subtitle:Text(S.t('settings.aprsConsentHelp')),
+        ),
+        if(NotificationService.supportsDndBypass)SwitchListTile(
+          contentPadding:EdgeInsets.zero,
+          value:_bypassDnd,
+          onChanged:(v) async {
+            setState(()=>_bypassDnd=v);
+            if(!v)return;
+            final granted=await NotificationService().enableDndBypass();
+            if(!granted&&context.mounted){
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(S.t('settings.dndPending'))));
+            }
+          },
+          title:Text(S.t('settings.dndBypass')),subtitle:Text(S.t('settings.dndBypassHelp')),
         ),
         const SizedBox(height:24),
         FilledButton.icon(onPressed:_saving?null:_save,icon:const Icon(Icons.check),label:Text(S.t('common.save'))),
