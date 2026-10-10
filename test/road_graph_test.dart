@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:sarcade_app/src/features/navigation/road_graph.dart';
+import 'package:sarcade_app/src/features/routes/route_models.dart';
 import 'package:sarcade_app/src/l10n/strings.dart';
 
 /// Package built by sarcade-server from demo/osm/sample.osm (tests of the
@@ -65,5 +66,20 @@ void main(){
     expect(it.maneuvers.map((m)=>m.instruction).any((i)=>i.contains('Rue B')),isTrue);
     expect(g.route(const LatLng(48.80,2.10),const LatLng(48.81,2.10),'car'),isNotNull,
       reason:'nearest vertex reachable by car is used');
+  });
+
+  test('variants on the device: penalty on the edges already used, distinct ones only',(){
+    final g=sample();
+    final direct=g.shortestPath(2,3,'car')!;
+    final penalty={for(final code in direct) code>>1:100.0};
+    expect(vertices(g,2,g.shortestPath(2,3,'car',penalty:penalty)!),[2,1,3]);
+    final from=g.vertex(2), to=g.vertex(3);
+    final both=g.routeWithAlternatives(from,to,'car')!;
+    expect(both.main.geometry,g.route(from,to,'car')!.geometry);
+    expect(both.alternatives.length,lessThanOrEqualTo(2));
+    for(final a in both.alternatives){
+      expect(sharedShare(a.geometry,both.main.geometry),lessThan(0.85));
+      expect(a.onDevice,isTrue);
+    }
   });
 }
