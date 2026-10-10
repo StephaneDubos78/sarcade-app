@@ -5,6 +5,8 @@ import 'features/map/operational_map_page.dart';
 import 'features/settings/settings_page.dart';
 import 'services/sarcade_api.dart';
 import 'offline/local_store.dart';
+import 'l10n/strings.dart';
+import 'operations/event_settings.dart';
 
 class SarcadeApp extends StatefulWidget {
   final LocalStore store;
@@ -34,13 +36,20 @@ class _SarcadeAppState extends State<SarcadeApp> {
     // Desktop keeps the build-time configuration (run-windows-demo.ps1).
     // A phone cannot be given --dart-define values per operator, so it asks once.
     _needsSetup=!_config.isComplete||(_asksSettings&&stored==null);
+    _applyLanguage();
   }
+
+  void _applyLanguage()=>S.setLanguage(_config.language,
+    systemLanguage:WidgetsBinding.instance.platformDispatcher.locale.languageCode);
+
+  static String get _platform=>platformName(isWeb:kIsWeb,targetPlatform:defaultTargetPlatform.name);
 
   Future<void> _save(AppConfig c) async {
     await widget.store.saveConfig(c.toStored());
     final wasSetup=_needsSetup;
-    if(c.sessionKey==_config.sessionKey&&!wasSetup){_navigator.currentState?.pop();return;}
-    setState((){_config=c;_needsSetup=false;});
+    // Same session: language or operator settings changed, the map stays.
+    if(c.sessionKey==_config.sessionKey&&!wasSetup){setState((){_config=c;_applyLanguage();});_navigator.currentState?.pop();return;}
+    setState((){_config=c;_needsSetup=false;_applyLanguage();});
     if(!wasSetup)_navigator.currentState?.pop();
   }
 
@@ -60,6 +69,7 @@ class _SarcadeAppState extends State<SarcadeApp> {
           eventId:_config.eventId,deviceId:_config.deviceId,store:widget.store,
           tileUrl:_config.tileUrl,tileAttribution:_config.tileAttribution,
           onSettings:_openSettings,
+          callsign:_config.callsign,aprsTxConsent:_config.aprsTxConsent,platform:_platform,
         ),
   );
 }
