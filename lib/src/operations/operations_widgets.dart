@@ -89,7 +89,7 @@ Future<void> downloadUpdate(BuildContext context,SarcadeApi api,ClientUpdate upd
   }
 }
 
-String _extension(String platform)=>switch(platform){'windows'=>'.msix','appimage'=>'.AppImage','apk'=>'.apk',_=>''};
+String _extension(String platform)=>switch(platform){'windows'=>'.exe','appimage'=>'.AppImage','apk'=>'.apk',_=>''};
 
 /// Sheet to start or stop the Beacon and choose its interval.
 Future<void> showTrackingSheet(BuildContext context,{required TrackingService tracking,required EventSettings settings,

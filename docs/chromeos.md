@@ -19,7 +19,7 @@ Chrome n'autorise la géolocalisation et l'installation d'une PWA que sur une pa
 
 ### Étapes suivantes
 1. Serveur en HTTPS, y compris sur un réseau local sans Internet (certificat d'un domaine `sarcade.org` ou autorité locale déployée sur les appareils).
-2. Service worker SARCADE pour démarrer l'application sans réseau (le service worker généré par Flutter est déclaré obsolète) et polices embarquées.
+2. ~~Service worker SARCADE pour démarrer l'application sans réseau~~ : fait (`web/sarcade_sw.js`, écrit par `tool/patch_web.py`) ; reste les polices embarquées.
 3. Ouverture directe des fichiers GPX, KML et GeoJSON depuis l'application Fichiers de ChromeOS (`file_handlers` du manifeste).
 
 ## Canal de repli : l'application Android

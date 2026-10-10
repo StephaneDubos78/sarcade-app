@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 
 class LocationService {
@@ -20,5 +21,15 @@ class LocationService {
     catch(_){try{return await Geolocator.getLastKnownPosition();}catch(_){return null;}}
   }
 
-  Stream<Position> positions()=>Geolocator.getPositionStream(locationSettings:const LocationSettings(accuracy:LocationAccuracy.high,distanceFilter:5));
+  /// Positions while the app runs. With [background] (Beacon), Android keeps
+  /// sending from a foreground service with a permanent notification, so
+  /// that positions keep reaching the PCO screen off or app in background.
+  Stream<Position> positions({bool background=false,String? title,String? text}){
+    if(background&&!kIsWeb&&defaultTargetPlatform==TargetPlatform.android){
+      return Geolocator.getPositionStream(locationSettings:AndroidSettings(accuracy:LocationAccuracy.high,distanceFilter:5,
+        foregroundNotificationConfig:ForegroundNotificationConfig(notificationTitle:title??'SARCADE',
+          notificationText:text??'Suivi de position actif',enableWakeLock:true,setOngoing:true)));
+    }
+    return Geolocator.getPositionStream(locationSettings:const LocationSettings(accuracy:LocationAccuracy.high,distanceFilter:5));
+  }
 }

@@ -50,6 +50,7 @@ const Texts _fr={
   'tracking.permission':'Localisation non autorisée ou indisponible','tracking.everySeconds':'{n} s',
   'tracking.everyMinutes':'{n} min','tracking.on':'Suivi actif · {interval}','tracking.off':'Suivi arrêté',
   'tracking.requiredLocked':'Le PCO demande le suivi de position pendant cet événement.',
+  'tracking.notification':'Position envoyée au PCO',
   // Client updates
   'update.invited':'Nouvelle version {version} : mise à jour à faire avant {deadline}',
   'update.deferred':'Mise à jour obligatoire vers {version} à la fin de l’événement',
@@ -174,6 +175,7 @@ const Texts _en={
   'tracking.permission':'Location not allowed or unavailable','tracking.everySeconds':'{n} s',
   'tracking.everyMinutes':'{n} min','tracking.on':'Beacon on · {interval}','tracking.off':'Beacon off',
   'tracking.requiredLocked':'The command post requires the beacon during this event.',
+  'tracking.notification':'Position sent to the command post',
   'update.invited':'New version {version}: update before {deadline}',
   'update.deferred':'Update to {version} required at the end of the event',
   'update.required':'Update required','update.requiredDetail':'This version ({current}) is no longer accepted by the server. Install version {version} to reconnect.',
