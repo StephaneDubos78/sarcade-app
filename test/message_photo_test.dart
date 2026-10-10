@@ -4,7 +4,7 @@ import 'package:sarcade_app/src/models/message.dart';
 
 Map<String,dynamic> _op(String type,{List<Map<String,dynamic>>? attachments})=>{
   'operation_id':'op-$type','object_type':type,'object_id':'o1',
-  'payload':<dynamic,dynamic>{'id':'o1',if(attachments!=null)'attachments':attachments},
+  'payload':<dynamic,dynamic>{'id':'o1','attachments':?attachments},
 };
 
 void main(){
