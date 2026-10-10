@@ -11,6 +11,7 @@ CI generates android/ and this script applies the SARCADE-specific settings:
 - hardware features declared optional (touchscreen, GPS, location), so the
   Play Store also offers the app on Chromebooks without touch screen or GPS:
   a location permission otherwise implies a required GPS feature
+- foreground service of location for the Beacon (positions screen off)
 - notifications (POST_NOTIFICATIONS, Android 13+) and core library
   desugaring in the Gradle build, required by flutter_local_notifications
 
@@ -33,6 +34,10 @@ PERMISSIONS = [
     "android.permission.ACCESS_FINE_LOCATION",
     "android.permission.ACCESS_COARSE_LOCATION",
     "android.permission.POST_NOTIFICATIONS",
+    # Beacon: positions keep going screen off, from a location foreground service.
+    "android.permission.FOREGROUND_SERVICE",
+    "android.permission.FOREGROUND_SERVICE_LOCATION",
+    "android.permission.WAKE_LOCK",
 ]
 GRADLE_KTS = Path("android/app/build.gradle.kts")
 GRADLE = Path("android/app/build.gradle")

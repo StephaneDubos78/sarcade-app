@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:uuid/uuid.dart';
 import '../models/position.dart';
+import '../l10n/strings.dart';
 import '../services/location_service.dart';
 
 /// Position tracking (« Suivi de position », Beacon in English): when on,
@@ -29,7 +30,7 @@ class TrackingService extends ChangeNotifier {
   Future<bool> start() async {
     if(_enabled)return true;
     if(!await location.ensurePermission())return false;
-    _gps=location.positions().listen((p){
+    _gps=location.positions(background:true,title:S.t('tracking.title'),text:S.t('tracking.notification')).listen((p){
       final first=_last==null;
       _last=p;
       if(first)_send();
