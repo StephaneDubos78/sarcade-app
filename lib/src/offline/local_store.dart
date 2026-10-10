@@ -3,8 +3,8 @@ import 'package:hive_ce_flutter/hive_ce_flutter.dart';
 import '../platform/platform_services.dart';
 
 class LocalStore {
-  static const _positions='positions', _pois='pois', _messages='messages', _acks='acks', _references='references', _outbox='outbox', _meta='meta', _features='map_features', _uploads='uploads', _attachments='attachments';
-  late Box _positionBox, _poiBox, _messageBox, _ackBox, _referenceBox, _outboxBox, _metaBox, _featureBox, _uploadBox;
+  static const _positions='positions', _pois='pois', _messages='messages', _acks='acks', _references='references', _outbox='outbox', _meta='meta', _features='map_features', _uploads='uploads', _attachments='attachments', _groups='comm_groups';
+  late Box _positionBox, _poiBox, _messageBox, _ackBox, _referenceBox, _outboxBox, _metaBox, _featureBox, _uploadBox, _groupBox;
   // Photo bytes are read on demand, never all kept in memory.
   late LazyBox _attachmentBox;
 
@@ -19,6 +19,7 @@ class LocalStore {
     _metaBox=await Hive.openBox(_meta);
     _featureBox=await Hive.openBox(_features);
     _uploadBox=await Hive.openBox(_uploads);
+    _groupBox=await Hive.openBox(_groups);
     _attachmentBox=await Hive.openLazyBox(_attachments);
   }
 
@@ -44,6 +45,11 @@ class LocalStore {
   List<Map<String,dynamic>> mapFeatures(String eventId)=>_featureBox.values.map((e)=>Map<String,dynamic>.from(e as Map)).where((j)=>j['event_id']==eventId).toList();
   Future<void> saveMapFeature(Map<String,dynamic> v)=>_featureBox.put(v['id'],v);
   Future<void> deleteMapFeature(String id)=>_featureBox.delete(id);
+
+  // Communication groups of the events, from the change feed and the list.
+  List<Map<String,dynamic>> groups(String eventId)=>_groupBox.values.map((e)=>Map<String,dynamic>.from(e as Map)).where((j)=>j['event_id']==eventId).toList();
+  Future<void> saveGroup(Map<String,dynamic> v)=>_groupBox.put(v['id'],v);
+  Future<void> deleteGroup(String id)=>_groupBox.delete(id);
 
   // Photos of messages: bytes cached by file id, and the uploads still to do.
   Future<void> saveAttachment(String fileId,Uint8List bytes)=>_attachmentBox.put(fileId,bytes);

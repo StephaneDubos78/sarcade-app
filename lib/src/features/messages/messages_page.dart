@@ -2,7 +2,10 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:uuid/uuid.dart';
+import '../../l10n/strings.dart';
+import '../../models/comm_group.dart';
 import '../../models/message.dart';
+import '../groups/group_editor_page.dart';
 import '../../models/recipient.dart';
 import '../../offline/local_store.dart';
 import '../../offline/sync_service.dart';
@@ -16,9 +19,34 @@ class MessagesPage extends StatefulWidget {
  @override State<MessagesPage> createState()=>_MessagesPageState();
 }
 class _MessagesPageState extends State<MessagesPage>{
- final _text=TextEditingController(); final _recipient=TextEditingController(); final _uuid=const Uuid(); String _priority='routine'; String _recipientType='team';
+ final _text=TextEditingController(); final _recipient=TextEditingController(); final _uuid=const Uuid(); String _priority='routine';
  bool _picking=false;
- List<SarcadeMessage> get _messages=>(widget.store.messages().map(SarcadeMessage.fromJson).toList()..sort((a,b)=>a.createdAt.compareTo(b.createdAt)));
+ /// Conversation shown: a group, or every message when null.
+ String? _groupId;
+ /// Target when no group is selected: general broadcast or a direct recipient.
+ bool _direct=false; String _recipientType='user';
+
+ @override void initState(){super.initState();_refreshGroups();}
+
+ List<CommGroup> get _groups=>widget.store.groups(widget.eventId).map(CommGroup.fromJson).toList();
+ CommGroup? get _group{if(_groupId==null)return null;for(final g in _groups){if(g.id==_groupId)return g;}return null;}
+
+ Future<void> _refreshGroups() async {
+   try{
+     final list=await widget.api.groups(widget.eventId);
+     for(final g in list){
+       if(widget.sync.isPending(g['id'] as String))continue;
+       if(g['deleted']==true){await widget.store.deleteGroup(g['id'] as String);}else{await widget.store.saveGroup(g);}
+     }
+     if(mounted)setState((){});
+   }catch(_){/* offline: groups known on the device */}
+ }
+
+ List<SarcadeMessage> get _messages{
+   final all=widget.store.messages().map(SarcadeMessage.fromJson).where((m)=>m.eventId==widget.eventId);
+   final shown=_groupId==null?all:all.where((m)=>messageInGroup(m.recipientIds,_groupId!));
+   return shown.toList()..sort((a,b)=>a.createdAt.compareTo(b.createdAt));
+ }
  Map<String,List<SarcadeAck>> get _acks {
    final out=<String,List<SarcadeAck>>{};
    for(final j in widget.store.acks()){final a=SarcadeAck.fromJson(j);(out[a.messageId]??=[]).add(a);}
@@ -29,10 +57,21 @@ class _MessagesPageState extends State<MessagesPage>{
 
  void _snack(String text){if(!mounted)return;ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(text)));}
 
- Future<void> _post(String body,{List<SarcadeAttachment> attachments=const []}) async {
+ /// Recipients frozen at sending: the group, a direct recipient, or nobody
+ /// (general broadcast).
+ List<String> _recipients(){
+   final g=_group;
+   if(g!=null)return [g.recipientId];
    final raw=_recipient.text.trim();
-   final recipients=raw.isEmpty?<String>[]:[SarcadeRecipient(id:raw,label:raw,type:_recipientType).protocolId];
-   final m=SarcadeMessage(id:_uuid.v4(),eventId:widget.eventId,senderId:widget.actorId,recipientIds:recipients,priority:_priority,body:body,createdAt:DateTime.now().toUtc(),attachments:attachments);
+   if(!_direct||raw.isEmpty)return <String>[];
+   return [SarcadeRecipient(id:raw,label:raw,type:_recipientType).protocolId];
+ }
+
+ bool get _canWrite=>_group?.canSend(widget.actorId)??true;
+
+ Future<void> _post(String body,{List<SarcadeAttachment> attachments=const []}) async {
+   if(!_canWrite)return;
+   final m=SarcadeMessage(id:_uuid.v4(),eventId:widget.eventId,senderId:widget.actorId,recipientIds:_recipients(),priority:_priority,body:body,createdAt:DateTime.now().toUtc(),attachments:attachments);
    await widget.store.cacheMessage(m.toJson());
    await widget.sync.queue(objectId:m.id,objectType:'message',payload:m.toJson());
    if(mounted)setState((){}); _text.clear();
@@ -47,8 +86,8 @@ class _MessagesPageState extends State<MessagesPage>{
    var source=ImageSource.gallery;
    if(_hasCamera){
      final chosen=await showModalBottomSheet<ImageSource>(context:context,builder:(c)=>SafeArea(child:Column(mainAxisSize:MainAxisSize.min,children:[
-       ListTile(leading:const Icon(Icons.photo_camera),title:const Text('Prendre une photo'),onTap:()=>Navigator.pop(c,ImageSource.camera)),
-       ListTile(leading:const Icon(Icons.photo_library),title:const Text('Choisir une image'),onTap:()=>Navigator.pop(c,ImageSource.gallery)),
+       ListTile(leading:const Icon(Icons.photo_camera),title:Text(S.t('messages.takePhoto')),onTap:()=>Navigator.pop(c,ImageSource.camera)),
+       ListTile(leading:const Icon(Icons.photo_library),title:Text(S.t('messages.pickImage')),onTap:()=>Navigator.pop(c,ImageSource.gallery)),
      ])));
      if(chosen==null)return;
      source=chosen;
@@ -59,7 +98,7 @@ class _MessagesPageState extends State<MessagesPage>{
      final shot=await ImagePicker().pickImage(source:source,maxWidth:1920,maxHeight:1920,imageQuality:80);
      if(shot==null)return;
      final bytes=await shot.readAsBytes();
-     if(bytes.length>maxPhotoBytes){_snack('Photo trop lourde (10 Mo au maximum)');return;}
+     if(bytes.length>maxPhotoBytes){_snack(S.t('messages.photoTooLarge'));return;}
      if(!mounted)return;
      final caption=await showDialog<String>(context:context,builder:(_)=>_PhotoPreviewDialog(bytes:bytes,initialCaption:_text.text.trim()));
      if(caption==null)return;
@@ -70,9 +109,9 @@ class _MessagesPageState extends State<MessagesPage>{
      // Kept locally first: the photo survives a network loss and is sent before its message.
      await widget.store.saveAttachment(fileId,bytes);
      await widget.store.queueUpload({'file_id':fileId,'event_id':widget.eventId,'sender_id':widget.actorId,'name':name,'mime_type':mime,'created_at':now.toIso8601String()});
-     await _post(caption.isEmpty?'Photo':caption,attachments:[SarcadeAttachment(fileId:fileId,name:name,mimeType:mime,sizeBytes:bytes.length)]);
+     await _post(caption.isEmpty?S.t('messages.photoDefault'):caption,attachments:[SarcadeAttachment(fileId:fileId,name:name,mimeType:mime,sizeBytes:bytes.length)]);
    }catch(e){
-     _snack('Photo impossible : $e');
+     _snack(S.t('messages.photoFailed',{'error':e}));
    }finally{
      if(mounted)setState(()=>_picking=false);
    }
@@ -84,11 +123,53 @@ class _MessagesPageState extends State<MessagesPage>{
    await widget.sync.queue(objectId:a.id,objectType:'ack',payload:a.toJson());
    if(mounted)setState((){});
  }
+
+ Future<void> _editGroup(CommGroup? initial) async {
+   final edit=await Navigator.push<GroupEdit>(context,MaterialPageRoute(builder:(_)=>GroupEditorPage(eventId:widget.eventId,actorId:widget.actorId,initial:initial)));
+   if(edit==null)return;
+   final g=edit.group;
+   if(edit.deleted){
+     await widget.store.deleteGroup(g.id);
+     await widget.sync.queue(objectId:g.id,objectType:'comm_group',action:'delete',payload:{
+       'id':g.id,'event_id':widget.eventId,'updated_by':widget.actorId,'updated_at':DateTime.now().toUtc().toIso8601String()});
+     if(mounted)setState(()=>_groupId=null);
+     return;
+   }
+   await widget.store.saveGroup(g.toJson());
+   await widget.sync.queue(objectId:g.id,objectType:'comm_group',action:initial==null?'create':'update',payload:g.toJson());
+   if(mounted)setState(()=>_groupId=g.archived?null:g.id);
+ }
+
+ String _recipientLabel(List<String> ids,Map<String,CommGroup> groups){
+   if(ids.isEmpty)return S.t('messages.broadcast');
+   return ids.map((r)=>r.startsWith('group:')?(groups[r.substring(6)]?.name??r):r.replaceFirst(RegExp(r'^(user|team):'),'')).join(', ');
+ }
+
  @override void dispose(){_text.dispose();_recipient.dispose();super.dispose();}
+
  @override Widget build(BuildContext context){
    final messages=_messages,acks=_acks;
-   return Scaffold(appBar:AppBar(title:Text('Messages · ${widget.store.pendingCount()} en attente')),body:Column(children:[
-    Expanded(child:ListView.builder(itemCount:messages.length,itemBuilder:(c,i){
+   final groups=sortedGroups(_groups);
+   final byId={for(final g in _groups)g.id:g};
+   final group=_group;
+   return Scaffold(
+    appBar:AppBar(title:Text(S.t('messages.title',{'n':widget.store.pendingCount()})),actions:[
+      if(group!=null&&group.canManage(widget.actorId))IconButton(tooltip:S.t('groups.edit'),onPressed:()=>_editGroup(group),icon:const Icon(Icons.edit_outlined)),
+      IconButton(tooltip:S.t('groups.new'),onPressed:()=>_editGroup(null),icon:const Icon(Icons.group_add_outlined)),
+    ]),
+    body:Column(children:[
+     SizedBox(height:52,child:ListView(scrollDirection:Axis.horizontal,padding:const EdgeInsets.symmetric(horizontal:8,vertical:6),children:[
+       Padding(padding:const EdgeInsets.only(right:6),child:ChoiceChip(label:Text(S.t('messages.all')),selected:_groupId==null,onSelected:(_)=>setState(()=>_groupId=null))),
+       for(final g in groups)Padding(padding:const EdgeInsets.only(right:6),child:ChoiceChip(
+         avatar:CircleAvatar(backgroundColor:Color(g.color),radius:6),
+         label:Text(g.listenOnly?'${g.name} · ${S.t('groups.listenOnlyBadge')}':g.name),
+         selected:_groupId==g.id,onSelected:(_)=>setState(()=>_groupId=g.id),
+       )),
+     ])),
+     if(group!=null&&(group.description.isNotEmpty||group.managers.isNotEmpty))Padding(padding:const EdgeInsets.symmetric(horizontal:14),child:Align(alignment:Alignment.centerLeft,child:Text(
+       [if(group.description.isNotEmpty)group.description,if(group.radioChannel.isNotEmpty)group.radioChannel,S.t('groups.managers',{'names':group.managers.join(', ')})].join(' · '),
+       style:Theme.of(context).textTheme.bodySmall))),
+     Expanded(child:ListView.builder(itemCount:messages.length,itemBuilder:(c,i){
       final m=messages[i], mine=m.senderId==widget.actorId, ma=acks[m.id]??[];
       final photos=m.attachments.where((a)=>a.isImage).toList();
       return Card(child:ListTile(
@@ -99,20 +180,33 @@ class _MessagesPageState extends State<MessagesPage>{
           ])),
           Text(m.body),
         ]),
-        subtitle:Text('${m.senderId} · ${m.priority}\nACK: ${ma.map((a)=>a.status).join(', ')}'),
-        trailing:mine?null:PopupMenuButton<String>(onSelected:(s)=>_ack(m,s),itemBuilder:(_)=>const [
-          PopupMenuItem(value:'received',child:Text('Reçu')),PopupMenuItem(value:'read',child:Text('Lu')),
-          PopupMenuItem(value:'accepted',child:Text('Accepté')),PopupMenuItem(value:'rejected',child:Text('Refusé'))]),
+        subtitle:Text('${m.senderId} · ${S.t('priority.${m.priority}')} · ${S.t('messages.to',{'to':_recipientLabel(m.recipientIds,byId)})}\nACK: ${ma.map((a)=>S.t('ack.${a.status}')).join(', ')}'),
+        trailing:mine?null:PopupMenuButton<String>(onSelected:(s)=>_ack(m,s),itemBuilder:(_)=>[
+          for(final s in const ['received','read','accepted','rejected'])PopupMenuItem(value:s,child:Text(S.t('ack.$s')))]),
       ));
-    })),
-    SafeArea(child:Row(children:[
-      DropdownButton(value:_priority,items:const [DropdownMenuItem(value:'routine',child:Text('Routine')),DropdownMenuItem(value:'urgent',child:Text('Urgent')),DropdownMenuItem(value:'immediate',child:Text('Immédiat'))],onChanged:(v)=>setState(()=>_priority=v!)),
-      SizedBox(width:90,child:DropdownButton(value:_recipientType,isExpanded:true,items:const [DropdownMenuItem(value:'team',child:Text('Équipe')),DropdownMenuItem(value:'user',child:Text('Agent'))],onChanged:(v)=>setState(()=>_recipientType=v!))),
-      SizedBox(width:110,child:TextField(controller:_recipient,decoration:const InputDecoration(hintText:'ID ou vide'))),
-      Expanded(child:TextField(controller:_text,maxLength:2048,decoration:const InputDecoration(hintText:'Message court',counterText:''))),
-      IconButton(tooltip:'Envoyer une photo',onPressed:_picking?null:_photo,icon:_picking?const SizedBox(width:20,height:20,child:CircularProgressIndicator(strokeWidth:2)):const Icon(Icons.photo_camera)),
-      IconButton(tooltip:'Envoyer',onPressed:_send,icon:const Icon(Icons.send))
-    ]))
+     })),
+     if(group!=null&&!_canWrite)Material(color:Theme.of(context).colorScheme.surfaceContainerHighest,child:Padding(padding:const EdgeInsets.all(12),
+       child:Row(children:[const Icon(Icons.campaign_outlined),const SizedBox(width:8),Expanded(child:Text(group.archived?S.t('groups.archivedNotice'):S.t('groups.cannotSend')))])))
+     else SafeArea(child:Padding(padding:const EdgeInsets.symmetric(horizontal:6),child:Column(mainAxisSize:MainAxisSize.min,children:[
+      if(group==null)Row(children:[
+        ChoiceChip(label:Text(S.t('messages.broadcast')),selected:!_direct,onSelected:(_)=>setState(()=>_direct=false)),
+        const SizedBox(width:6),
+        ChoiceChip(label:Text(S.t('messages.direct')),selected:_direct,onSelected:(_)=>setState(()=>_direct=true)),
+        if(_direct)...[
+          const SizedBox(width:6),
+          DropdownButton<String>(value:_recipientType,items:const [DropdownMenuItem(value:'user',child:Text('Agent')),DropdownMenuItem(value:'team',child:Text('Équipe'))],onChanged:(v)=>setState(()=>_recipientType=v??'user')),
+          const SizedBox(width:6),
+          Expanded(child:TextField(controller:_recipient,decoration:InputDecoration(hintText:S.t('messages.directHint'),isDense:true))),
+        ],
+      ]),
+      Row(children:[
+        DropdownButton<String>(value:_priority,items:[for(final p in const ['routine','urgent','immediate'])DropdownMenuItem(value:p,child:Text(S.t('priority.$p')))],onChanged:(v)=>setState(()=>_priority=v!)),
+        const SizedBox(width:6),
+        Expanded(child:TextField(controller:_text,maxLength:2048,decoration:InputDecoration(hintText:S.t('messages.hint'),counterText:''))),
+        IconButton(tooltip:S.t('messages.photo'),onPressed:_picking?null:_photo,icon:_picking?const SizedBox(width:20,height:20,child:CircularProgressIndicator(strokeWidth:2)):const Icon(Icons.photo_camera)),
+        IconButton(tooltip:S.t('messages.send'),onPressed:_send,icon:const Icon(Icons.send)),
+      ]),
+     ]))),
    ]));
  }
 }
@@ -127,15 +221,15 @@ class _PhotoPreviewDialogState extends State<_PhotoPreviewDialog>{
  late final _caption=TextEditingController(text:widget.initialCaption);
  @override void dispose(){_caption.dispose();super.dispose();}
  @override Widget build(BuildContext context)=>AlertDialog(
-   title:const Text('Envoyer la photo'),
+   title:Text(S.t('messages.sendPhoto')),
    content:SingleChildScrollView(child:Column(mainAxisSize:MainAxisSize.min,children:[
      ClipRRect(borderRadius:BorderRadius.circular(8),child:Image.memory(widget.bytes,height:260,fit:BoxFit.contain)),
      const SizedBox(height:12),
-     TextField(controller:_caption,maxLength:2048,textCapitalization:TextCapitalization.sentences,decoration:const InputDecoration(labelText:'Légende (facultative)')),
+     TextField(controller:_caption,maxLength:2048,textCapitalization:TextCapitalization.sentences,decoration:InputDecoration(labelText:S.t('messages.caption'))),
    ])),
    actions:[
-     TextButton(onPressed:()=>Navigator.pop(context),child:const Text('Annuler')),
-     FilledButton.icon(onPressed:()=>Navigator.pop(context,_caption.text.trim()),icon:const Icon(Icons.send),label:const Text('Envoyer')),
+     TextButton(onPressed:()=>Navigator.pop(context),child:Text(S.t('common.cancel'))),
+     FilledButton.icon(onPressed:()=>Navigator.pop(context,_caption.text.trim()),icon:const Icon(Icons.send),label:Text(S.t('messages.send'))),
    ],
  );
 }
@@ -162,13 +256,13 @@ class _PhotoThumbState extends State<_PhotoThumb>{
    return SizedBox(width:160,height:120,child:FutureBuilder<Uint8List>(future:_bytes,builder:(c,s){
      if(s.hasError){
        return InkWell(onTap:()=>setState((){_bytes=_load();}),child:Container(color:Colors.black12,alignment:Alignment.center,
-         child:const Column(mainAxisSize:MainAxisSize.min,children:[Icon(Icons.broken_image_outlined),Text('Photo indisponible',style:TextStyle(fontSize:12)),Text('Toucher pour réessayer',style:TextStyle(fontSize:11))])));
+         child:Column(mainAxisSize:MainAxisSize.min,children:[const Icon(Icons.broken_image_outlined),Text(S.t('messages.photoUnavailable'),style:const TextStyle(fontSize:12)),Text(S.t('messages.tapRetry'),style:const TextStyle(fontSize:11))])));
      }
      if(!s.hasData)return Container(color:Colors.black12,alignment:Alignment.center,child:const CircularProgressIndicator(strokeWidth:2));
      return Stack(fit:StackFit.expand,children:[
        InkWell(onTap:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>_PhotoViewer(attachment:widget.attachment,bytes:s.data!))),
          child:ClipRRect(borderRadius:BorderRadius.circular(6),child:Image.memory(s.data!,fit:BoxFit.cover,cacheWidth:320))),
-       if(pending)const Positioned(right:4,top:4,child:Tooltip(message:'En attente d’envoi',child:CircleAvatar(radius:12,child:Icon(Icons.cloud_upload_outlined,size:16)))),
+       if(pending)Positioned(right:4,top:4,child:Tooltip(message:S.t('messages.pendingUpload'),child:const CircleAvatar(radius:12,child:Icon(Icons.cloud_upload_outlined,size:16)))),
      ]);
    }));
  }
@@ -181,12 +275,12 @@ class _PhotoViewer extends StatelessWidget {
  @override Widget build(BuildContext context)=>Scaffold(
    backgroundColor:Colors.black,
    appBar:AppBar(title:Text(attachment.name),actions:[
-     IconButton(tooltip:'Enregistrer',icon:const Icon(Icons.download),onPressed:() async {
+     IconButton(tooltip:S.t('messages.saveFile'),icon:const Icon(Icons.download),onPressed:() async {
        final messenger=ScaffoldMessenger.of(context);
        try{
          final path=await saveFile(attachment.name,bytes,mimeType:attachment.mimeType);
-         messenger.showSnackBar(SnackBar(content:Text(canOpenSavedFiles?'Photo enregistrée : $path':'Photo téléchargée')));
-       }catch(e){messenger.showSnackBar(SnackBar(content:Text('Échec de l’enregistrement : $e')));}
+         messenger.showSnackBar(SnackBar(content:Text(canOpenSavedFiles?S.t('messages.photoSaved',{'path':path}):S.t('messages.photoDownloaded'))));
+       }catch(e){messenger.showSnackBar(SnackBar(content:Text(S.t('messages.saveFailed',{'error':e}))));}
      }),
    ]),
    body:Center(child:InteractiveViewer(maxScale:6,child:Image.memory(bytes))),
