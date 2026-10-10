@@ -1,3 +1,4 @@
+import '../../../l10n/strings.dart';
 import 'package:flutter/material.dart';
 
 import 'drawing_controller.dart';
@@ -17,13 +18,13 @@ IconData toolIcon(FeatureKind k)=>switch(k){
 };
 
 String toolHint(FeatureKind k)=>switch(k){
-  FeatureKind.point=>'Touchez la carte pour placer le point',
-  FeatureKind.text=>'Touchez la carte pour placer le texte',
-  FeatureKind.circle=>'Touchez le centre, puis le bord',
-  FeatureKind.rectangle=>'Touchez un coin, puis le coin opposé',
-  FeatureKind.freehand=>'Dessinez au doigt sur la carte',
-  FeatureKind.zone=>'Touchez les sommets de la zone',
-  _=>'Touchez les points du tracé',
+  FeatureKind.point=>S.t('draw.hint.point'),
+  FeatureKind.text=>S.t('draw.hint.text'),
+  FeatureKind.circle=>S.t('draw.hint.circle'),
+  FeatureKind.rectangle=>S.t('draw.hint.rectangle'),
+  FeatureKind.freehand=>S.t('draw.hint.freehand'),
+  FeatureKind.zone=>S.t('draw.hint.zone'),
+  _=>S.t('draw.hint.line'),
 };
 
 /// Compact drawing toolbar: the nine tools, undo/redo, export and close.
@@ -47,11 +48,11 @@ class DrawingToolbar extends StatelessWidget {
             child:_ToolButton(kind:k,active:c.tool==k,onTap:()=>c.selectTool(c.tool==k?null:k)),
           ),
           const SizedBox(height:40,child:VerticalDivider(width:12)),
-          IconButton(tooltip:'Annuler',onPressed:c.canUndo?c.undo:null,icon:const Icon(Icons.undo)),
-          IconButton(tooltip:'Rétablir',onPressed:c.canRedo?c.redo:null,icon:const Icon(Icons.redo)),
-          IconButton(tooltip:'Importer GPX, KML ou GeoJSON',onPressed:onImport,icon:const Icon(Icons.file_upload_outlined)),
-          IconButton(tooltip:'Exporter en GeoJSON',onPressed:c.features.isEmpty?null:onExport,icon:const Icon(Icons.file_download_outlined)),
-          IconButton(tooltip:'Fermer les outils',onPressed:onClose,icon:const Icon(Icons.close)),
+          IconButton(tooltip:S.t('draw.undo'),onPressed:c.canUndo?c.undo:null,icon:const Icon(Icons.undo)),
+          IconButton(tooltip:S.t('draw.redo'),onPressed:c.canRedo?c.redo:null,icon:const Icon(Icons.redo)),
+          IconButton(tooltip:S.t('draw.import'),onPressed:onImport,icon:const Icon(Icons.file_upload_outlined)),
+          IconButton(tooltip:S.t('draw.export'),onPressed:c.features.isEmpty?null:onExport,icon:const Icon(Icons.file_download_outlined)),
+          IconButton(tooltip:S.t('draw.close'),onPressed:onClose,icon:const Icon(Icons.close)),
         ]),
       ),
     );
@@ -96,13 +97,13 @@ class DraftBar extends StatelessWidget {
           Icon(toolIcon(t),size:18,color:Theme.of(context).colorScheme.onInverseSurface),
           const SizedBox(width:8),
           Flexible(child:Text(
-            [t.isMultiVertex&&count>0?'$count point${count>1?'s':''}':toolHint(t),?measure].join(' · '),
+            [t.isMultiVertex&&count>0?S.t('draw.points',{'n':count}):toolHint(t),?measure].join(' · '),
             maxLines:2,overflow:TextOverflow.ellipsis,
             style:TextStyle(color:Theme.of(context).colorScheme.onInverseSurface),
           )),
-          if(t.isMultiVertex&&count>0)IconButton(tooltip:'Retirer le dernier point',onPressed:c.undoLastVertex,icon:const Icon(Icons.backspace_outlined),color:Theme.of(context).colorScheme.onInverseSurface),
-          if(t.isMultiVertex)IconButton(tooltip:'Terminer',onPressed:c.canFinish?c.finish:null,icon:const Icon(Icons.check_circle),color:Colors.lightGreenAccent,disabledColor:Colors.white24),
-          IconButton(tooltip:'Annuler le tracé',onPressed:()=>c.selectTool(null),icon:const Icon(Icons.close),color:Theme.of(context).colorScheme.onInverseSurface),
+          if(t.isMultiVertex&&count>0)IconButton(tooltip:S.t('draw.removeLast'),onPressed:c.undoLastVertex,icon:const Icon(Icons.backspace_outlined),color:Theme.of(context).colorScheme.onInverseSurface),
+          if(t.isMultiVertex)IconButton(tooltip:S.t('closures.finish'),onPressed:c.canFinish?c.finish:null,icon:const Icon(Icons.check_circle),color:Colors.lightGreenAccent,disabledColor:Colors.white24),
+          IconButton(tooltip:S.t('draw.cancel'),onPressed:()=>c.selectTool(null),icon:const Icon(Icons.close),color:Theme.of(context).colorScheme.onInverseSurface),
         ]),
       ),
     );
@@ -116,7 +117,7 @@ class SelectionBar extends StatelessWidget {
   const SelectionBar({super.key,required this.controller,required this.onEditLabel});
 
   String? _info(MapFeature f){
-    if(f.kind==FeatureKind.circle)return 'Rayon ${formatDistance(f.radiusM??0)} · ${formatArea(f.areaM2)}';
+    if(f.kind==FeatureKind.circle)return '${S.t('draw.radius')} ${formatDistance(f.radiusM??0)} · ${formatArea(f.areaM2)}';
     if(f.isClosed)return formatArea(f.areaM2);
     if(f.kind.isLinear)return formatDistance(f.lengthM);
     return null;
@@ -137,19 +138,19 @@ class SelectionBar extends StatelessWidget {
           )),
           SingleChildScrollView(scrollDirection:Axis.horizontal,child:Row(mainAxisSize:MainAxisSize.min,children:[
             PopupMenuButton<int>(
-              tooltip:'Couleur',onSelected:c.setColor,
+              tooltip:S.t('groups.color'),onSelected:c.setColor,
               itemBuilder:(_)=>[for(final col in drawingPalette)PopupMenuItem(value:col,child:Row(children:[Icon(Icons.circle,color:Color(col)),if(col==f.color)const Padding(padding:EdgeInsets.only(left:8),child:Icon(Icons.check,size:18))]))],
               child:Padding(padding:const EdgeInsets.all(10),child:Icon(Icons.circle,color:Color(f.color),size:26)),
             ),
             if(f.kind!=FeatureKind.point&&f.kind!=FeatureKind.text)PopupMenuButton<double>(
-              tooltip:'Épaisseur',onSelected:c.setStrokeWidth,
+              tooltip:S.t('draw.width'),onSelected:c.setStrokeWidth,
               itemBuilder:(_)=>[for(final w in drawingWidths)PopupMenuItem(value:w,child:Row(children:[SizedBox(width:48,child:Divider(thickness:w,color:Colors.black87)),const SizedBox(width:10),Text(w==drawingWidths.first?'Fin':w==drawingWidths.last?'Épais':'Moyen')]))],
               child:const Padding(padding:EdgeInsets.all(10),child:Icon(Icons.line_weight)),
             ),
-            IconButton(tooltip:f.kind==FeatureKind.text?'Modifier le texte':'Nom',onPressed:onEditLabel,icon:const Icon(Icons.edit_outlined)),
-            IconButton(tooltip:'Dupliquer',onPressed:c.duplicateSelected,icon:const Icon(Icons.copy_all_outlined)),
-            IconButton(tooltip:'Supprimer',onPressed:c.deleteSelected,icon:const Icon(Icons.delete_outline),color:Colors.red.shade700),
-            IconButton(tooltip:'Désélectionner',onPressed:()=>c.select(null),icon:const Icon(Icons.close)),
+            IconButton(tooltip:f.kind==FeatureKind.text?S.t('draw.editText'):S.t('groups.name'),onPressed:onEditLabel,icon:const Icon(Icons.edit_outlined)),
+            IconButton(tooltip:S.t('draw.duplicate'),onPressed:c.duplicateSelected,icon:const Icon(Icons.copy_all_outlined)),
+            IconButton(tooltip:S.t('routes.delete'),onPressed:c.deleteSelected,icon:const Icon(Icons.delete_outline),color:Colors.red.shade700),
+            IconButton(tooltip:S.t('draw.deselect'),onPressed:()=>c.select(null),icon:const Icon(Icons.close)),
           ])),
         ]),
       ),

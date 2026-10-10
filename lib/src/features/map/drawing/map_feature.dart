@@ -1,3 +1,4 @@
+import '../../../l10n/strings.dart';
 import 'package:latlong2/latlong.dart';
 
 import 'geometry.dart';
@@ -7,15 +8,15 @@ enum FeatureKind { point, line, arrow, circle, rectangle, zone, text, freehand, 
 
 extension FeatureKindInfo on FeatureKind {
   String get label=>switch(this){
-    FeatureKind.point=>'Point',
-    FeatureKind.line=>'Ligne',
-    FeatureKind.arrow=>'Flèche',
-    FeatureKind.circle=>'Cercle',
-    FeatureKind.rectangle=>'Rectangle',
-    FeatureKind.zone=>'Zone',
-    FeatureKind.text=>'Texte',
-    FeatureKind.freehand=>'Libre',
-    FeatureKind.measure=>'Mesure',
+    FeatureKind.point=>S.t('feature.point'),
+    FeatureKind.line=>S.t('feature.line'),
+    FeatureKind.arrow=>S.t('feature.arrow'),
+    FeatureKind.circle=>S.t('feature.circle'),
+    FeatureKind.rectangle=>S.t('feature.rectangle'),
+    FeatureKind.zone=>S.t('feature.zone'),
+    FeatureKind.text=>S.t('feature.text'),
+    FeatureKind.freehand=>S.t('feature.freehand'),
+    FeatureKind.measure=>S.t('feature.measure'),
   };
 
   /// Kinds drawn by tapping several vertices, then finishing explicitly.

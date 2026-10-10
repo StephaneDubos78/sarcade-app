@@ -63,6 +63,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   late final TrackingService _tracking; late final OperationsService _ops; bool _updatePageShown=false;
   late final RoutesController _routes; late final NavigationController _nav;
   List<Basemap> _catalog=builtInBasemaps;
+  /// APRS stations followed by the event (the server only sends those).
+  bool _showAprs=true;
   bool _showRoutesPanel=false; String? _selectedRouteId, _drawingRouteId; bool _drawingClosure=false; final List<LatLng> _closureDraft=[];
   final List<Offset> _stroke=[];
 
@@ -269,9 +271,9 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       final refs=await widget.api.referenceSites();
       await widget.store.replaceReferences(refs.map((e)=>e.toJson()).toList());
       if(mounted)setState((){_references..clear()..addEntries(refs.map((e)=>MapEntry(e.id,e)));});
-      if(!silent&&mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('Référentiel mis à jour : ${refs.length} éléments')));
+      if(!silent&&mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(S.t('refs.updated',{'n':refs.length}))));
     }catch(e){
-      if(!silent&&mounted)ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Mise à jour du référentiel impossible')));
+      if(!silent&&mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(S.t('refs.updateFailed'))));
       rethrow;
     }
   }
@@ -376,7 +378,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     if(_drawingClosure){setState(()=>_closureDraft.add(point));return;}
     if(_drawing.isDrawing){
       if(_drawing.tool==FeatureKind.text){
-        final text=await _askText(title:'Texte sur la carte',initial:'');
+        final text=await _askText(title:S.t('map.textTitle'),initial:'');
         if(text==null||text.trim().isEmpty)return;
         _drawing.tapAt(point,label:text.trim());
       }else{
@@ -395,8 +397,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       title:Text(title),
       content:TextField(controller:controller,autofocus:true,textCapitalization:TextCapitalization.sentences,maxLength:80,onSubmitted:(v)=>Navigator.pop(context,v)),
       actions:[
-        TextButton(onPressed:()=>Navigator.pop(context),child:const Text('Annuler')),
-        FilledButton(onPressed:()=>Navigator.pop(context,controller.text),child:const Text('OK')),
+        TextButton(onPressed:()=>Navigator.pop(context),child:Text(S.t('common.cancel'))),
+        FilledButton(onPressed:()=>Navigator.pop(context,controller.text),child:Text(S.t('common.ok'))),
       ],
     )).whenComplete(controller.dispose);
   }
@@ -404,7 +406,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   Future<void> _editSelectedLabel() async {
     final f=_drawing.selected;
     if(f==null)return;
-    final text=await _askText(title:f.kind==FeatureKind.text?'Modifier le texte':'Nom de l’objet',initial:f.label);
+    final text=await _askText(title:f.kind==FeatureKind.text?S.t('draw.editText'):S.t('map.objectName'),initial:f.label);
     if(text!=null)_drawing.setLabel(text);
   }
 
@@ -430,16 +432,16 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     final file=picked.files.single;
     try{
       final bytes=await readPickedFile(file);
-      if(bytes==null)throw const ImportFormatException('Fichier illisible');
+      if(bytes==null)throw ImportFormatException(S.t('map.unreadable'));
       final result=parseMapFile(file.name,bytes);
       final created=_drawing.importShapes(result.shapes);
       _fitPoints([for(final f in created)...f.points]);
-      final skipped=result.skipped>0?', ${result.skipped} ignorés':'';
-      messenger.showSnackBar(SnackBar(content:Text('${created.length} objets importés depuis ${file.name}$skipped')));
+      final skipped=result.skipped>0?S.t('map.importSkipped',{'n':result.skipped}):'';
+      messenger.showSnackBar(SnackBar(content:Text(S.t('map.importDone',{'n':created.length,'file':file.name,'skipped':skipped}))));
     }on ImportFormatException catch(e){
       messenger.showSnackBar(SnackBar(content:Text(e.message)));
     }catch(e){
-      messenger.showSnackBar(SnackBar(content:Text('Import impossible : $e')));
+      messenger.showSnackBar(SnackBar(content:Text(S.t('map.importFailed',{'error':e}))));
     }
   }
 
@@ -464,8 +466,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     final count=_drawing.features.length;
     messenger.showSnackBar(SnackBar(
       duration:const Duration(seconds:6),
-      content:Text(shared?'$count objets exportés et partagés dans les fichiers de l’événement':localPath!=null?'$count objets exportés sur l’appareil, partage impossible hors connexion':'Export impossible'),
-      action:localPath==null||!canOpenSavedFiles?null:SnackBarAction(label:'Ouvrir',onPressed:()=>openSavedFile(localPath!)),
+      content:Text(shared?S.t('map.exportShared',{'n':count}):localPath!=null?S.t('map.exportLocal',{'n':count}):S.t('map.exportFailed')),
+      action:localPath==null||!canOpenSavedFiles?null:SnackBarAction(label:S.t('map.open'),onPressed:()=>openSavedFile(localPath!)),
     ));
   }
 
@@ -503,9 +505,9 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   @override void dispose(){_rtSub?.cancel();_tracking.removeListener(_onOperationsChanged);_ops.removeListener(_onOperationsChanged);_tracking.dispose();_ops.dispose();_routes.removeListener(_onRoutesChanged);_nav.removeListener(_onRoutesChanged);_routes.dispose();_nav.dispose();_syncUiTimer?.cancel();_sync.dispose();_realtime.dispose();_drawing.dispose();widget.api.close();super.dispose();}
 
   @override Widget build(BuildContext context){
-    final sorted=_positions.values.toList()..sort((a,b)=>a.deviceId.compareTo(b.deviceId));
+    final sorted=_positions.values.where((p)=>_showAprs||!p.isAprs).toList()..sort((a,b)=>a.deviceId.compareTo(b.deviceId));
     final markers=<Marker>[
-      ...sorted.map((p)=>Marker(point:LatLng(p.lat,p.lon),width:130,height:62,alignment:Alignment.topCenter,child:GestureDetector(onTap:()=>_select(p),child:Column(mainAxisSize:MainAxisSize.min,children:[Icon(Icons.person_pin_circle,size:38,color:p.deviceId==widget.deviceId?Colors.orange:(_selectedDevice==p.deviceId?Colors.deepPurple:Colors.blue)),Container(padding:const EdgeInsets.symmetric(horizontal:6,vertical:2),decoration:BoxDecoration(color:Colors.white,borderRadius:BorderRadius.circular(5),boxShadow:const [BoxShadow(blurRadius:2)]),child:Text(p.deviceId,style:const TextStyle(fontSize:11,fontWeight:FontWeight.w600)))])))),
+      ...sorted.map((p)=>Marker(point:LatLng(p.lat,p.lon),width:130,height:62,alignment:Alignment.topCenter,child:GestureDetector(onTap:()=>_select(p),child:Column(mainAxisSize:MainAxisSize.min,children:[Icon(p.isAprs?Icons.settings_input_antenna:Icons.person_pin_circle,size:p.isAprs?30:38,color:p.deviceId==widget.deviceId?Colors.orange:(_selectedDevice==p.deviceId?Colors.deepPurple:(p.isAprs?Colors.purple.shade400:Colors.blue))),Container(padding:const EdgeInsets.symmetric(horizontal:6,vertical:2),decoration:BoxDecoration(color:Colors.white,borderRadius:BorderRadius.circular(5),boxShadow:const [BoxShadow(blurRadius:2)]),child:Text(p.label,style:const TextStyle(fontSize:11,fontWeight:FontWeight.w600)))])))),
       ..._pois.values.map((p)=>Marker(point:LatLng(p.lat,p.lon),width:40,height:40,child:Tooltip(message:p.label??p.kind,child:const Icon(Icons.location_on,size:38,color:Colors.red)))),
       ..._references.values.where((r)=>(r.isHighPoint&&_showHighPoints)||(r.isRelay&&_showRelays)).map((r)=>Marker(
         point:LatLng(r.lat,r.lon),width:46,height:46,
@@ -566,32 +568,34 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           onFocus:_fitPoints,
         ))),
         if(_showReferencePanel)SizedBox(width:panelWidth(355),child:Material(elevation:3,child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
-          Padding(padding:const EdgeInsets.fromLTRB(14,8,6,0),child:Row(children:[Expanded(child:Text('Référentiel radio (${_filteredReferences().length})',style:Theme.of(context).textTheme.titleMedium)),IconButton(tooltip:'Actualiser le référentiel',onPressed:()=>_refreshReferences(),icon:const Icon(Icons.refresh))])),
-          Padding(padding:const EdgeInsets.symmetric(horizontal:12,vertical:4),child:TextField(decoration:const InputDecoration(prefixIcon:Icon(Icons.search),hintText:'Nom, indicatif, fréquence, mode…',isDense:true,border:OutlineInputBorder()),onChanged:(v)=>setState(()=>_referenceQuery=v))),
+          Padding(padding:const EdgeInsets.fromLTRB(14,8,6,0),child:Row(children:[Expanded(child:Text(S.t('refs.title',{'n':_filteredReferences().length}),style:Theme.of(context).textTheme.titleMedium)),IconButton(tooltip:S.t('refs.refresh'),onPressed:()=>_refreshReferences(),icon:const Icon(Icons.refresh))])),
+          Padding(padding:const EdgeInsets.symmetric(horizontal:12,vertical:4),child:TextField(decoration:InputDecoration(prefixIcon:const Icon(Icons.search),hintText:S.t('refs.search'),isDense:true,border:const OutlineInputBorder()),onChanged:(v)=>setState(()=>_referenceQuery=v))),
           Padding(padding:const EdgeInsets.symmetric(horizontal:12,vertical:6),child:Wrap(spacing:8,children:[
-            FilterChip(label:const Text('Points hauts'),selected:_showHighPoints,onSelected:(v)=>setState(()=>_showHighPoints=v)),
-            FilterChip(label:const Text('Relais'),selected:_showRelays,onSelected:(v)=>setState(()=>_showRelays=v)),
+            FilterChip(label:Text(S.t('refs.highPoints')),selected:_showHighPoints,onSelected:(v)=>setState(()=>_showHighPoints=v)),
+            FilterChip(label:Text(S.t('refs.relays')),selected:_showRelays,onSelected:(v)=>setState(()=>_showRelays=v)),
           ])),
           Expanded(child:ListView.builder(itemCount:_filteredReferences().length,itemBuilder:(context,index){final r=_filteredReferences()[index];return ListTile(selected:_selectedReference?.id==r.id,leading:Icon(r.isHighPoint?Icons.terrain:Icons.cell_tower,color:r.isHighPoint?Colors.indigo:Colors.deepOrange),title:Text(r.name),subtitle:Text(r.subtitle),onTap:()=>_selectReference(r));})),
           if(_selectedReference!=null)Builder(builder:(context){final r=_selectedReference!;return Container(padding:const EdgeInsets.all(14),decoration:BoxDecoration(border:Border(top:BorderSide(color:Theme.of(context).dividerColor))),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
             Text(r.name,style:const TextStyle(fontWeight:FontWeight.bold)),
-            if(r.callsign?.isNotEmpty==true)Text('Indicatif : ${r.callsign}'),
-            if(r.isHighPoint&&r.altM!=null)Text('Altitude : ${r.altM!.toStringAsFixed(0)} m'),
-            if(r.subtype?.isNotEmpty==true)Text('Type : ${r.subtype}'),
-            if(r.mode?.isNotEmpty==true)Text('Mode : ${r.mode}'),
-            if(r.isRelay)Text('Entrée : ${_frequency(r.rxMhz)}'),
-            if(r.isRelay)Text('Sortie : ${_frequency(r.txMhz)}'),
-            if(r.ctcssRx?.isNotEmpty==true)Text('CTCSS entrée : ${r.ctcssRx}'),
-            if(r.ctcssTx?.isNotEmpty==true)Text('CTCSS sortie : ${r.ctcssTx}'),
-            if(r.access?.isNotEmpty==true)Text('Accès : ${r.access}'),
-            if(r.clearance?.isNotEmpty==true)Text('Dégagement : ${r.clearance}'),
-            if(r.verifiedAt?.isNotEmpty==true)Text('Vérifié : ${r.verifiedAt}'),
+            if(r.callsign?.isNotEmpty==true)Text(S.t('refs.callsign',{'v':r.callsign})),
+            if(r.isHighPoint&&r.altM!=null)Text(S.t('refs.altitude',{'v':r.altM!.toStringAsFixed(0)})),
+            if(r.subtype?.isNotEmpty==true)Text(S.t('refs.type',{'v':r.subtype})),
+            if(r.mode?.isNotEmpty==true)Text(S.t('refs.mode',{'v':r.mode})),
+            if(r.isRelay)Text(S.t('refs.input',{'v':_frequency(r.rxMhz)})),
+            if(r.isRelay)Text(S.t('refs.output',{'v':_frequency(r.txMhz)})),
+            if(r.ctcssRx?.isNotEmpty==true)Text(S.t('refs.ctcssIn',{'v':r.ctcssRx})),
+            if(r.ctcssTx?.isNotEmpty==true)Text(S.t('refs.ctcssOut',{'v':r.ctcssTx})),
+            if(r.access?.isNotEmpty==true)Text(S.t('refs.access',{'v':r.access})),
+            if(r.clearance?.isNotEmpty==true)Text(S.t('refs.clearance',{'v':r.clearance})),
+            if(r.verifiedAt?.isNotEmpty==true)Text(S.t('refs.verified',{'v':r.verifiedAt})),
           ]));}),
         ]))),
         if(_showPanel)SizedBox(width:panelWidth(285),child:Material(elevation:3,child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
-          Padding(padding:const EdgeInsets.all(14),child:Text('Opérateurs (${sorted.length})',style:Theme.of(context).textTheme.titleMedium)),
-          Expanded(child:ListView(children:sorted.map((p)=>ListTile(selected:_selectedDevice==p.deviceId,leading:Icon(Icons.circle,size:13,color:DateTime.now().toUtc().difference(p.time.toUtc()).inMinutes<5?Colors.green:Colors.grey),title:Text(p.deviceId),subtitle:Text('Dernière position : ${_age(p.time)}'),onTap:()=>_select(p))).toList())),
-          if(selected!=null)Container(padding:const EdgeInsets.all(14),decoration:BoxDecoration(border:Border(top:BorderSide(color:Theme.of(context).dividerColor))),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text(selected.deviceId,style:const TextStyle(fontWeight:FontWeight.bold)),const SizedBox(height:6),Text('Lat : ${selected.lat.toStringAsFixed(6)}'),Text('Lon : ${selected.lon.toStringAsFixed(6)}'),Text('Précision : ${selected.accuracyM?.toStringAsFixed(1)??'-'} m'),Text('Heure : ${selected.time.toLocal()}'),Text(_traceLoading?'Trace : chargement…':'Trace : ${_trace.length} points')]))
+          Padding(padding:const EdgeInsets.fromLTRB(14,14,14,4),child:Text(S.t('operators.title',{'n':sorted.length}),style:Theme.of(context).textTheme.titleMedium)),
+          if(_positions.values.any((p)=>p.isAprs))Padding(padding:const EdgeInsets.symmetric(horizontal:12),child:Align(alignment:Alignment.centerLeft,child:Tooltip(message:S.t('operators.aprsHint'),
+            child:FilterChip(avatar:const Icon(Icons.settings_input_antenna,size:18),label:Text(S.t('operators.aprs')),selected:_showAprs,onSelected:(v)=>setState(()=>_showAprs=v))))),
+          Expanded(child:ListView(children:sorted.map((p)=>ListTile(selected:_selectedDevice==p.deviceId,leading:Icon(Icons.circle,size:13,color:DateTime.now().toUtc().difference(p.time.toUtc()).inMinutes<5?Colors.green:Colors.grey),title:Text(p.label),subtitle:Text([if(p.isAprs)S.t('operators.aprsVia',{'via':p.aprsVia??'APRS'}),S.t('operators.lastPosition',{'age':_age(p.time)})].join(' · ')),onTap:()=>_select(p))).toList())),
+          if(selected!=null)Container(padding:const EdgeInsets.all(14),decoration:BoxDecoration(border:Border(top:BorderSide(color:Theme.of(context).dividerColor))),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text(selected.deviceId,style:const TextStyle(fontWeight:FontWeight.bold)),const SizedBox(height:6),Text('Lat : ${selected.lat.toStringAsFixed(6)}'),Text('Lon : ${selected.lon.toStringAsFixed(6)}'),Text(S.t('operators.accuracy',{'m':selected.accuracyM?.toStringAsFixed(1)??'-'})),Text(S.t('operators.time',{'time':selected.time.toLocal()})),Text(_traceLoading?S.t('operators.traceLoading'):S.t('operators.trace',{'n':_trace.length}))]))
         ]))),
         Expanded(child:Stack(key:_mapKey,children:[FlutterMap(mapController:_map,options:MapOptions(
           initialCenter:const LatLng(48.8566,2.3522),initialZoom:11,maxZoom:20,onTap:_onMapTap,
@@ -616,7 +620,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         )),
         Positioned(top:8,left:8,right:8,child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
           if(_drawingTools)DrawingToolbar(controller:_drawing,onExport:_exportGeoJson,onImport:_importFile,onClose:(){_drawing.selectTool(null);setState(()=>_drawingTools=false);})
-          else FloatingActionButton.small(heroTag:'drawing-tools',tooltip:'Dessiner sur la carte',onPressed:()=>setState(()=>_drawingTools=true),child:const Icon(Icons.draw_outlined)),
+          else FloatingActionButton.small(heroTag:'drawing-tools',tooltip:S.t('draw.open'),onPressed:()=>setState(()=>_drawingTools=true),child:const Icon(Icons.draw_outlined)),
           if(_drawing.isDrawing)Padding(padding:const EdgeInsets.only(top:8),child:DraftBar(controller:_drawing)),
           if(_drawing.selected!=null)Padding(padding:const EdgeInsets.only(top:8),child:SelectionBar(controller:_drawing,onEditLabel:_editSelectedLabel)),
           if(_drawingClosure)Padding(padding:const EdgeInsets.only(top:8),child:Card(child:Padding(padding:const EdgeInsets.symmetric(horizontal:12,vertical:6),child:Row(mainAxisSize:MainAxisSize.min,children:[
