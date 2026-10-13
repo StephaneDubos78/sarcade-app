@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -18,6 +19,9 @@ class MessagesPage extends StatefulWidget {
 class _MessagesPageState extends State<MessagesPage>{
  final _text=TextEditingController(); final _recipient=TextEditingController(); final _uuid=const Uuid(); String _priority='routine'; String _recipientType='team';
  bool _picking=false;
+ final _watch=<StreamSubscription>[];
+ // Messages received while this screen is open appear without the button.
+ @override void initState(){super.initState();for(final s in widget.store.messageChanges()){_watch.add(s.listen((_){if(mounted)setState((){});}));}}
  List<SarcadeMessage> get _messages=>(widget.store.messages().map(SarcadeMessage.fromJson).toList()..sort((a,b)=>a.createdAt.compareTo(b.createdAt)));
  Map<String,List<SarcadeAck>> get _acks {
    final out=<String,List<SarcadeAck>>{};
@@ -84,7 +88,7 @@ class _MessagesPageState extends State<MessagesPage>{
    await widget.sync.queue(objectId:a.id,objectType:'ack',payload:a.toJson());
    if(mounted)setState((){});
  }
- @override void dispose(){_text.dispose();_recipient.dispose();super.dispose();}
+ @override void dispose(){for(final w in _watch){w.cancel();}_text.dispose();_recipient.dispose();super.dispose();}
  @override Widget build(BuildContext context){
    final messages=_messages,acks=_acks;
    return Scaffold(appBar:AppBar(title:Text('Messages · ${widget.store.pendingCount()} en attente')),body:Column(children:[
@@ -153,9 +157,18 @@ class _PhotoThumbState extends State<_PhotoThumb>{
    final id=widget.attachment.fileId;
    final local=await widget.store.attachment(id);
    if(local!=null)return local;
-   final bytes=Uint8List.fromList(await widget.api.downloadFile(widget.eventId,id));
-   await widget.store.saveAttachment(id,bytes);
-   return bytes;
+   // The message can arrive before the sender finished uploading the photo:
+   // retry for about a minute before showing « Photo indisponible ».
+   for(var attempt=0;;attempt++){
+     try{
+       final bytes=Uint8List.fromList(await widget.api.downloadFile(widget.eventId,id));
+       await widget.store.saveAttachment(id,bytes);
+       return bytes;
+     }catch(_){
+       if(attempt>=11||!mounted)rethrow;
+       await Future<void>.delayed(const Duration(seconds:5));
+     }
+   }
  }
  @override Widget build(BuildContext context){
    final pending=widget.store.isUploadPending(widget.attachment.fileId);

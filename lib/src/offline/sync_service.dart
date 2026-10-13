@@ -15,11 +15,16 @@ class OfflineSyncService {
   final SarcadeApi api; final LocalStore store; final String eventId;
   /// Called for every change of the feed, after it is cached locally.
   final void Function(String objectType,Map<String,dynamic> payload)? onRemoteChange;
-  final _uuid=const Uuid(); StreamSubscription? _network; bool _syncing=false, _again=false;
+  final _uuid=const Uuid(); StreamSubscription? _network; Timer? _periodic; bool _syncing=false, _again=false;
+  /// Automatic synchronisation even without user action: pulls changes that
+  /// the real-time channel may have missed and retries pending sends and
+  /// photo uploads (test of 14 Oct 2026: photos only came after the button).
+  static const autoInterval=Duration(seconds:20);
   OfflineSyncService({required this.api,required this.store,required this.eventId,this.onRemoteChange});
 
   void start(){
     _network=Connectivity().onConnectivityChanged.listen((_){syncNow();});
+    _periodic=Timer.periodic(autoInterval,(_){syncNow();});
     syncNow();
   }
 
@@ -87,5 +92,5 @@ class OfflineSyncService {
     }
   }
 
-  Future<void> dispose() async => _network?.cancel();
+  Future<void> dispose() async {_periodic?.cancel();await _network?.cancel();}
 }
