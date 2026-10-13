@@ -230,17 +230,11 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     _drawing.select(hit?.id);
   }
 
-  Future<String?> _askText({required String title,required String initial}){
-    final controller=TextEditingController(text:initial);
-    return showDialog<String>(context:context,builder:(context)=>AlertDialog(
-      title:Text(title),
-      content:TextField(controller:controller,autofocus:true,textCapitalization:TextCapitalization.sentences,maxLength:80,onSubmitted:(v)=>Navigator.pop(context,v)),
-      actions:[
-        TextButton(onPressed:()=>Navigator.pop(context),child:const Text('Annuler')),
-        FilledButton(onPressed:()=>Navigator.pop(context,controller.text),child:const Text('OK')),
-      ],
-    )).whenComplete(controller.dispose);
-  }
+  // The dialog owns its text controller: disposing it when the Future
+  // completed freed it while the closing animation still used it
+  // ('_dependents.isEmpty' assertion, Windows test of 13 Oct 2026).
+  Future<String?> _askText({required String title,required String initial})=>
+    showDialog<String>(context:context,builder:(_)=>_TextPromptDialog(title:title,initial:initial));
 
   Future<void> _editSelectedLabel() async {
     final f=_drawing.selected;
@@ -461,4 +455,24 @@ class _StrokePainter extends CustomPainter {
     canvas.drawPath(path,Paint()..color=color..strokeWidth=width..style=PaintingStyle.stroke..strokeCap=StrokeCap.round..strokeJoin=StrokeJoin.round);
   }
   @override bool shouldRepaint(_StrokePainter old)=>true;
+}
+
+
+class _TextPromptDialog extends StatefulWidget {
+  const _TextPromptDialog({required this.title,required this.initial});
+  final String title, initial;
+  @override State<_TextPromptDialog> createState()=>_TextPromptDialogState();
+}
+
+class _TextPromptDialogState extends State<_TextPromptDialog> {
+  late final TextEditingController _controller=TextEditingController(text:widget.initial);
+  @override void dispose(){_controller.dispose();super.dispose();}
+  @override Widget build(BuildContext context)=>AlertDialog(
+    title:Text(widget.title),
+    content:TextField(controller:_controller,autofocus:true,textCapitalization:TextCapitalization.sentences,maxLength:80,onSubmitted:(v)=>Navigator.pop(context,v)),
+    actions:[
+      TextButton(onPressed:()=>Navigator.pop(context),child:const Text('Annuler')),
+      FilledButton(onPressed:()=>Navigator.pop(context,_controller.text),child:const Text('OK')),
+    ],
+  );
 }
