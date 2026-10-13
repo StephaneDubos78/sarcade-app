@@ -1,20 +1,12 @@
-import 'dart:io';
-import 'package:flutter/foundation.dart';
 import 'package:hive_ce_flutter/hive_ce_flutter.dart';
+import '../platform/platform_services.dart';
 
 class LocalStore {
   static const _positions='positions', _pois='pois', _messages='messages', _acks='acks', _references='references', _outbox='outbox', _meta='meta', _features='map_features';
   late Box _positionBox, _poiBox, _messageBox, _ackBox, _referenceBox, _outboxBox, _metaBox, _featureBox;
 
   Future<void> init() async {
-    if(!kIsWeb && Platform.isWindows){
-      final base=Platform.environment['LOCALAPPDATA'] ?? Directory.systemTemp.path;
-      final dir=Directory('$base\\SARCADE\\data');
-      await dir.create(recursive:true);
-      Hive.init(dir.path);
-    }else{
-      await Hive.initFlutter('sarcade');
-    }
+    await initHiveStorage();
     _positionBox=await Hive.openBox(_positions);
     _poiBox=await Hive.openBox(_pois);
     _messageBox=await Hive.openBox(_messages);

@@ -22,7 +22,9 @@ class _SarcadeAppState extends State<SarcadeApp> {
   // One client per session: the map page closes it on dispose.
   SarcadeApi _apiFor(AppConfig c){if(_apiKey!=c.sessionKey){_api=SarcadeApi(baseUrl:c.serverUrl);_apiKey=c.sessionKey;}return _api!;}
 
-  static bool get _isMobile=>!kIsWeb&&(defaultTargetPlatform==TargetPlatform.android||defaultTargetPlatform==TargetPlatform.iOS);
+  // Phones and the web app (Chromebooks, PWA) cannot receive --dart-define
+  // values per operator, so they ask the settings once.
+  static bool get _asksSettings=>kIsWeb||defaultTargetPlatform==TargetPlatform.android||defaultTargetPlatform==TargetPlatform.iOS;
 
   @override void initState(){
     super.initState();
@@ -31,7 +33,7 @@ class _SarcadeAppState extends State<SarcadeApp> {
     _config=stored==null?env:AppConfig.fromStored(stored,env);
     // Desktop keeps the build-time configuration (run-windows-demo.ps1).
     // A phone cannot be given --dart-define values per operator, so it asks once.
-    _needsSetup=!_config.isComplete||(_isMobile&&stored==null);
+    _needsSetup=!_config.isComplete||(_asksSettings&&stored==null);
   }
 
   Future<void> _save(AppConfig c) async {
