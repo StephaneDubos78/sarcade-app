@@ -8,6 +8,9 @@ CI generates android/ and this script applies the SARCADE-specific settings:
 - foreground location permissions used by geolocator
 - cleartext HTTP/WS, needed while the V0.1 server is reached as http://IP:8000 on a LAN
 - application label "SARCADE"
+- hardware features declared optional (touchscreen, GPS, location), so the
+  Play Store also offers the app on Chromebooks without touch screen or GPS:
+  a location permission otherwise implies a required GPS feature
 
 The script is idempotent and fails loudly if the template changed shape.
 """
@@ -16,6 +19,12 @@ import sys
 from pathlib import Path
 
 MANIFEST = Path("android/app/src/main/AndroidManifest.xml")
+OPTIONAL_FEATURES = [
+    "android.hardware.touchscreen",
+    "android.hardware.location",
+    "android.hardware.location.gps",
+    "android.hardware.location.network",
+]
 PERMISSIONS = [
     "android.permission.INTERNET",
     "android.permission.ACCESS_NETWORK_STATE",
@@ -31,8 +40,10 @@ def main() -> int:
     xml = MANIFEST.read_text(encoding="utf-8")
 
     missing = [p for p in PERMISSIONS if f'android:name="{p}"' not in xml]
-    if missing:
+    features = [f for f in OPTIONAL_FEATURES if f'android:name="{f}"' not in xml]
+    if missing or features:
         block = "".join(f'    <uses-permission android:name="{p}"/>\n' for p in missing)
+        block += "".join(f'    <uses-feature android:name="{f}" android:required="false"/>\n' for f in features)
         xml, n = re.subn(r"(\n\s*<application\b)", "\n" + block.rstrip("\n") + r"\1", xml, count=1)
         if n != 1:
             print("error: <application> element not found", file=sys.stderr)
