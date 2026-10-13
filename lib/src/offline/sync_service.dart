@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:uuid/uuid.dart';
+import '../features/messages/photo_attachment.dart';
 import '../services/sarcade_api.dart';
 import 'local_store.dart';
 import 'sync_operation.dart';
@@ -14,11 +15,16 @@ class OfflineSyncService {
   final SarcadeApi api; final LocalStore store; final String eventId;
   /// Called for every change of the feed, after it is cached locally.
   final void Function(String objectType,Map<String,dynamic> payload)? onRemoteChange;
-  final _uuid=const Uuid(); StreamSubscription? _network; bool _syncing=false, _again=false;
+  final _uuid=const Uuid(); StreamSubscription? _network; Timer? _periodic; bool _syncing=false, _again=false;
+  /// Automatic synchronisation even without user action: pulls changes that
+  /// the real-time channel may have missed and retries pending sends and
+  /// photo uploads (test of 14 Oct 2026: photos only came after the button).
+  static const autoInterval=Duration(seconds:20);
   OfflineSyncService({required this.api,required this.store,required this.eventId,this.onRemoteChange});
 
   void start(){
     _network=Connectivity().onConnectivityChanged.listen((_){syncNow();});
+    _periodic=Timer.periodic(autoInterval,(_){syncNow();});
     syncNow();
   }
 
@@ -36,7 +42,10 @@ class OfflineSyncService {
     if(_syncing){_again=true;return;}
     _syncing=true;
     try {
-      final pending=store.pending();
+      // Photos first: a message is only sent once its photos are on the server.
+      await _uploadPending();
+      final waiting=store.pendingUploads().map((u)=>u['file_id'] as String).toSet();
+      final pending=readyOperations(store.pending(),waiting);
       if(pending.isNotEmpty){
         final results=await api.sync(pending);
         for(final r in results){
@@ -67,5 +76,21 @@ class OfflineSyncService {
     }
   }
 
-  Future<void> dispose() async => _network?.cancel();
+  Future<void> _uploadPending() async {
+    for(final u in store.pendingUploads()){
+      final id=u['file_id'] as String;
+      final bytes=await store.attachment(id);
+      if(bytes==null){await store.uploadDone(id);continue;}
+      try{
+        await api.uploadFile((u['event_id'] as String?)??eventId,u['sender_id'] as String,u['name'] as String,u['mime_type'] as String,bytes,fileId:id);
+        await store.uploadDone(id);
+      }on SarcadeHttpException catch(e){
+        // A refused photo (too large, unknown event) must not block the
+        // message forever: it is sent without the photo being available.
+        if(e.isPermanent){await store.uploadDone(id);}else{return;}
+      }
+    }
+  }
+
+  Future<void> dispose() async {_periodic?.cancel();await _network?.cancel();}
 }

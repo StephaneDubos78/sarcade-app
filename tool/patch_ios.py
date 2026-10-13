@@ -4,7 +4,7 @@
 The repository does not commit the platform runners yet. CI generates ios/
 and this script applies the SARCADE-specific settings to Runner/Info.plist:
 
-- usage texts for location (geolocator), local network and photo library,
+- usage texts for location (geolocator), local network, photo library and camera,
   required by iOS before the system shows its permission prompts
 - App Transport Security exception for plain HTTP/WS, needed while the V0.1
   server is reached as http://IP:8000 on a LAN (same as cleartext on Android)
@@ -24,7 +24,9 @@ USAGE = {
     "NSLocalNetworkUsageDescription":
         "SARCADE se connecte au serveur de l’événement sur le réseau local, même sans Internet.",
     "NSPhotoLibraryUsageDescription":
-        "SARCADE permet de joindre des photos aux fichiers partagés de l’événement.",
+        "SARCADE permet de joindre des photos aux messages et aux fichiers partagés de l’événement.",
+    "NSCameraUsageDescription":
+        "SARCADE permet de prendre une photo et de l’envoyer en message au poste de commandement.",
 }
 
 

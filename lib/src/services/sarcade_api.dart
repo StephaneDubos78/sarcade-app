@@ -6,6 +6,15 @@ import '../models/message.dart';
 import '../models/shared_file.dart';
 import '../models/reference_site.dart';
 
+/// HTTP refusal from the server, with its status for retry decisions.
+class SarcadeHttpException implements Exception {
+  final String operation; final int statusCode; final String body;
+  const SarcadeHttpException(this.operation,this.statusCode,[this.body='']);
+  /// 4xx except timeout and rate limit: retrying the same request cannot succeed.
+  bool get isPermanent=>statusCode>=400&&statusCode<500&&statusCode!=408&&statusCode!=429;
+  @override String toString()=>'${operation}_http_$statusCode${body.isEmpty?'':':$body'}';
+}
+
 class SarcadeApi {
   final String baseUrl; final http.Client _client;
   SarcadeApi({required this.baseUrl,http.Client? client}):_client=client??http.Client();
@@ -57,12 +66,16 @@ class SarcadeApi {
     if(r.statusCode!=200) throw Exception('files_http_${r.statusCode}');
     return (jsonDecode(r.body) as List).map((e)=>SarcadeSharedFile.fromJson(e)).toList();
   }
-  Future<SarcadeSharedFile> uploadFile(String eventId,String senderId,String name,String mimeType,List<int> bytes) async {
+  /// [fileId], chosen by the client, makes a retried upload idempotent
+  /// (the server answers 200 with the stored file).
+  Future<SarcadeSharedFile> uploadFile(String eventId,String senderId,String name,String mimeType,List<int> bytes,{String? fileId}) async {
     final req=http.MultipartRequest('POST',Uri.parse('$baseUrl/api/v0.1/events/$eventId/files'))
       ..fields['sender_id']=senderId
+      ..fields['mime_type']=mimeType
       ..files.add(http.MultipartFile.fromBytes('file',bytes,filename:name,contentType:null));
+    if(fileId!=null)req.fields['file_id']=fileId;
     final streamed=await _client.send(req); final body=await streamed.stream.bytesToString();
-    if(streamed.statusCode!=201) throw Exception('file_upload_http_${streamed.statusCode}:$body');
+    if(streamed.statusCode!=201&&streamed.statusCode!=200) throw SarcadeHttpException('file_upload',streamed.statusCode,body);
     return SarcadeSharedFile.fromJson(jsonDecode(body));
   }
   Future<List<int>> downloadFile(String eventId,String fileId) async {
