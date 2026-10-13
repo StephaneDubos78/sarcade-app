@@ -9,20 +9,33 @@ import 'map_feature.dart';
 const drawingPalette=<int>[0xFFE53935,0xFFFB8C00,0xFFFDD835,0xFF43A047,0xFF1E88E5,0xFF8E24AA,0xFF212121];
 const drawingWidths=<double>[2,4,7];
 
+/// One undoable action: the state of each touched object before and after.
+/// A null value means the object did not exist. Undo only touches these
+/// objects, so it never reverts what other operators changed (ADR-001).
+class _Step {
+  final Map<String,MapFeature?> before, after;
+  _Step(this.before,this.after);
+}
+
 /// State of the PowerPoint-like drawing tools: active tool, shape being drawn,
 /// selection, styles and undo/redo. Pure logic, no widgets, so it is unit tested.
+///
+/// Local changes are reported through [onChanged] and [onDeleted] so the page
+/// can store and synchronise them. Changes coming from the server go through
+/// [applyRemote] and [removeRemote], which do not report back and are not undoable.
 class DrawingController extends ChangeNotifier {
   final String eventId, actorId;
-  final void Function(MapFeature)? onSaved;
-  final void Function(String id)? onDeleted;
-  DrawingController({required this.eventId,required this.actorId,Iterable<MapFeature> initial=const [],this.onSaved,this.onDeleted}){
+  final void Function(MapFeature feature,{required bool isNew})? onChanged;
+  final void Function(MapFeature feature)? onDeleted;
+  DrawingController({required this.eventId,required this.actorId,Iterable<MapFeature> initial=const [],this.onChanged,this.onDeleted}){
     for(final f in initial){_features[f.id]=f;}
   }
 
   final _uuid=const Uuid();
   final Map<String,MapFeature> _features={};
-  final List<Map<String,MapFeature>> _undo=[], _redo=[];
+  final List<_Step> _undo=[], _redo=[];
   static const _historyLimit=50;
+  Map<String,MapFeature?>? _editBefore;
 
   FeatureKind? _tool;
   final List<LatLng> _draft=[];
@@ -33,6 +46,7 @@ class DrawingController extends ChangeNotifier {
   FeatureKind? get tool=>_tool;
   List<LatLng> get draft=>List.unmodifiable(_draft);
   List<MapFeature> get features=>_features.values.toList()..sort((a,b)=>a.updatedAt.compareTo(b.updatedAt));
+  MapFeature? feature(String id)=>_features[id];
   MapFeature? get selected=>_selectedId==null?null:_features[_selectedId];
   bool get canUndo=>_undo.isNotEmpty;
   bool get canRedo=>_redo.isNotEmpty;
@@ -101,17 +115,17 @@ class DrawingController extends ChangeNotifier {
   }
 
   MapFeature _commit(FeatureKind kind,List<LatLng> points,{double? radiusM,String label=''}){
-    _snapshot();
     final f=MapFeature(
-      id:_uuid.v4(),eventId:eventId,kind:kind,points:points,radiusM:radiusM,
-      color:color,strokeWidth:strokeWidth,label:label,createdBy:actorId,updatedAt:DateTime.now().toUtc(),
+      // UUID v7: time-ordered, recommended by ADR-001 for new object types.
+      id:_uuid.v7(),eventId:eventId,kind:kind,points:points,radiusM:radiusM,
+      color:color,strokeWidth:strokeWidth,label:label,createdBy:actorId,updatedBy:actorId,updatedAt:DateTime.now().toUtc(),
     );
-    _features[f.id]=f;
     _draft.clear();
     // Like PowerPoint: the new shape is selected so it can be styled at once,
     // and the tool is released so the next tap selects instead of drawing.
     _tool=null;_selectedId=f.id;
-    onSaved?.call(f);
+    _record({f.id:null},{f.id:f});
+    _put(f,isNew:true);
     notifyListeners();
     return f;
   }
@@ -122,35 +136,44 @@ class DrawingController extends ChangeNotifier {
   }
 
   // Drag gestures: call beginEdit once at the start, then the move/update
-  // methods for every frame, so one drag is one undo step.
-  void beginEdit(){_snapshot();}
+  // methods for every frame, then endEdit, so one drag is one undo step and
+  // one synchronised change.
+  void beginEdit(){final f=selected;_editBefore=f==null?null:{f.id:f};}
 
-  void moveSelected(double dLat,double dLon){_replaceSelected((f)=>f.translated(dLat,dLon),save:false);}
+  void moveSelected(double dLat,double dLon){_mutateSelected((f)=>f.translated(dLat,dLon));}
 
   void moveVertex(int index,LatLng to){
-    _replaceSelected((f){
+    _mutateSelected((f){
       final pts=List.of(f.points);
       if(index<0||index>=pts.length)return f;
       pts[index]=to;
       return f.copyWith(points:pts);
-    },save:false);
+    });
   }
 
-  void setRadius(double r){_replaceSelected((f)=>f.copyWith(radiusM:r<1?1:r),save:false);}
+  void setRadius(double r){_mutateSelected((f)=>f.copyWith(radiusM:r<1?1:r));}
 
-  /// Persists the selected feature at the end of a drag.
-  void endEdit(){final f=selected;if(f!=null)onSaved?.call(f);}
+  void endEdit(){
+    final before=_editBefore, f=selected;
+    _editBefore=null;
+    if(before==null||f==null||identical(before[f.id],f))return;
+    final stamped=_stamp(f);
+    _features[f.id]=stamped;
+    _record(before,{f.id:stamped});
+    onChanged?.call(stamped,isNew:false);
+    notifyListeners();
+  }
 
-  void setColor(int c){color=c;if(selected!=null){_snapshot();_replaceSelected((f)=>f.copyWith(color:c));}else{notifyListeners();}}
-  void setStrokeWidth(double w){strokeWidth=w;if(selected!=null){_snapshot();_replaceSelected((f)=>f.copyWith(strokeWidth:w));}else{notifyListeners();}}
-  void setLabel(String label){if(selected!=null){_snapshot();_replaceSelected((f)=>f.copyWith(label:label.trim()));}}
+  void setColor(int c){color=c;_changeSelected((f)=>f.copyWith(color:c));}
+  void setStrokeWidth(double w){strokeWidth=w;_changeSelected((f)=>f.copyWith(strokeWidth:w));}
+  void setLabel(String label){_changeSelected((f)=>f.copyWith(label:label.trim()));}
 
   void deleteSelected(){
-    final id=_selectedId;
-    if(id==null)return;
-    _snapshot();
-    _features.remove(id);_selectedId=null;
-    onDeleted?.call(id);
+    final f=selected;
+    if(f==null)return;
+    _selectedId=null;
+    _record({f.id:f},{f.id:null});
+    _remove(f.id);
     notifyListeners();
   }
 
@@ -158,48 +181,105 @@ class DrawingController extends ChangeNotifier {
   MapFeature? duplicateSelected({double offsetDeg=0.0005}){
     final f=selected;
     if(f==null)return null;
-    _snapshot();
-    final copy=f.translated(offsetDeg,offsetDeg).copyWith(id:_uuid.v4());
-    _features[copy.id]=copy;_selectedId=copy.id;
-    onSaved?.call(copy);
+    final copy=_stamp(f.translated(offsetDeg,offsetDeg).copyWith(id:_uuid.v7()));
+    _selectedId=copy.id;
+    _record({copy.id:null},{copy.id:copy});
+    _put(copy,isNew:true);
     notifyListeners();
     return copy;
   }
 
   void undo(){
     if(_undo.isEmpty)return;
-    _redo.add(Map.of(_features));
-    _restore(_undo.removeLast());
+    final step=_undo.removeLast();
+    _redo.add(step);
+    _apply(step.before);
   }
 
   void redo(){
     if(_redo.isEmpty)return;
-    _undo.add(Map.of(_features));
-    _restore(_redo.removeLast());
+    final step=_redo.removeLast();
+    _undo.add(step);
+    _apply(step.after);
   }
 
-  void _restore(Map<String,MapFeature> state){
-    final removed=_features.keys.where((k)=>!state.containsKey(k)).toList();
-    final changed=state.values.where((f)=>!identical(_features[f.id],f)).toList();
-    _features..clear()..addAll(state);
-    if(_selectedId!=null&&!_features.containsKey(_selectedId))_selectedId=null;
-    for(final id in removed){onDeleted?.call(id);}
-    for(final f in changed){onSaved?.call(f);}
+  /// Applies a server state. Ignored when it is not newer than the local copy,
+  /// so a late echo cannot roll back a more recent local edit.
+  void applyRemote(MapFeature f){
+    final local=_features[f.id];
+    if(local!=null&&!_isNewer(f,local))return;
+    _features[f.id]=f;
     notifyListeners();
   }
 
-  void _snapshot(){
-    _undo.add(Map.of(_features));
+  /// Applies a server deletion, unless the local copy was changed after it.
+  void removeRemote(String id,{DateTime? at,String? by}){
+    final local=_features[id];
+    if(local==null)return;
+    if(at!=null){
+      final c=local.updatedAt.compareTo(at);
+      if(c>0||(c==0&&(local.updatedBy??'').compareTo(by??'')>0))return;
+    }
+    _features.remove(id);
+    if(_selectedId==id)_selectedId=null;
+    notifyListeners();
+  }
+
+  bool _isNewer(MapFeature a,MapFeature b){
+    final c=a.updatedAt.compareTo(b.updatedAt);
+    if(c!=0)return c>0;
+    return (a.updatedBy??'').compareTo(b.updatedBy??'')>=0;
+  }
+
+  /// Restores the given states. Restored objects get a fresh timestamp so the
+  /// server accepts them as the newest change (an undo is a new change).
+  void _apply(Map<String,MapFeature?> states){
+    for(final e in states.entries){
+      final target=e.value;
+      if(target==null){
+        _remove(e.key);
+      }else{
+        final existed=_features.containsKey(e.key);
+        _put(_stamp(target),isNew:!existed);
+      }
+    }
+    if(_selectedId!=null&&!_features.containsKey(_selectedId))_selectedId=null;
+    notifyListeners();
+  }
+
+  MapFeature _stamp(MapFeature f)=>f.copyWith(updatedBy:actorId,updatedAt:DateTime.now().toUtc());
+
+  void _put(MapFeature f,{required bool isNew}){
+    _features[f.id]=f;
+    onChanged?.call(f,isNew:isNew);
+  }
+
+  void _remove(String id){
+    final f=_features.remove(id);
+    if(f!=null)onDeleted?.call(f);
+  }
+
+  void _record(Map<String,MapFeature?> before,Map<String,MapFeature?> after){
+    _undo.add(_Step(before,after));
     if(_undo.length>_historyLimit)_undo.removeAt(0);
     _redo.clear();
   }
 
-  void _replaceSelected(MapFeature Function(MapFeature) change,{bool save=true}){
+  /// One-shot change of the selection (style, label): one undo step.
+  void _changeSelected(MapFeature Function(MapFeature) change){
+    final f=selected;
+    if(f==null){notifyListeners();return;}
+    final next=_stamp(change(f));
+    _record({f.id:f},{f.id:next});
+    _put(next,isNew:false);
+    notifyListeners();
+  }
+
+  /// Live change during a drag: shown at once, recorded and synced on endEdit.
+  void _mutateSelected(MapFeature Function(MapFeature) change){
     final f=selected;
     if(f==null)return;
-    final next=change(f);
-    _features[f.id]=next;
-    if(save)onSaved?.call(next);
+    _features[f.id]=change(f);
     notifyListeners();
   }
 }

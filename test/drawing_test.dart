@@ -100,7 +100,7 @@ void main(){
   group('DrawingController',(){
     test('zone: vertices, live area, finish selects the new shape',(){
       final saved=<MapFeature>[];
-      final c=DrawingController(eventId:'e',actorId:'TERRAIN-01',onSaved:saved.add);
+      final c=DrawingController(eventId:'e',actorId:'TERRAIN-01',onChanged:(f,{required isNew}){if(isNew)saved.add(f);});
       c.selectTool(FeatureKind.zone);
       c.tapAt(const LatLng(48.7,2.0));
       c.tapAt(const LatLng(48.71,2.0));
@@ -140,7 +140,7 @@ void main(){
 
     test('delete, duplicate and style changes notify the store',(){
       final deleted=<String>[];
-      final c=DrawingController(eventId:'e',actorId:'a',onDeleted:deleted.add);
+      final c=DrawingController(eventId:'e',actorId:'a',onDeleted:(f)=>deleted.add(f.id));
       c.selectTool(FeatureKind.text);
       final t=c.tapAt(const LatLng(48.7,2.0),label:'PC avancé')!;
       final copy=c.duplicateSelected()!;
@@ -167,6 +167,79 @@ void main(){
       expect(c.locksMapDrag,isTrue);
       c.select(null);
       expect(c.locksMapDrag,isFalse);
+    });
+  });
+
+  group('synchronisation (ADR-001)',(){
+    MapFeature remote(String id,{required DateTime at,String by='PCO',String label='',double lat=48.7})=>MapFeature(id:id,eventId:'e',kind:FeatureKind.point,points:[LatLng(lat,2.0)],color:0,strokeWidth:4,label:label,createdBy:by,updatedBy:by,updatedAt:at);
+
+    test('new objects get time-ordered UUID v7 identifiers',(){
+      final c=DrawingController(eventId:'e',actorId:'a');
+      c.selectTool(FeatureKind.point);
+      final f=c.tapAt(const LatLng(48.7,2.0))!;
+      expect(f.id[14],'7');
+      expect(f.updatedBy,'a');
+    });
+
+    test('a stale server state does not roll back a newer local edit',(){
+      final c=DrawingController(eventId:'e',actorId:'a');
+      final now=DateTime.now().toUtc();
+      c.applyRemote(remote('x',at:now,label:'récent'));
+      c.applyRemote(remote('x',at:now.subtract(const Duration(minutes:1)),label:'ancien'));
+      expect(c.feature('x')!.label,'récent');
+      c.applyRemote(remote('x',at:now.add(const Duration(seconds:1)),label:'plus récent'));
+      expect(c.feature('x')!.label,'plus récent');
+    });
+
+    test('a remote delete older than the local copy is ignored',(){
+      final c=DrawingController(eventId:'e',actorId:'a');
+      final now=DateTime.now().toUtc();
+      c.applyRemote(remote('x',at:now));
+      c.removeRemote('x',at:now.subtract(const Duration(seconds:5)),by:'PCO');
+      expect(c.feature('x'),isNotNull);
+      c.removeRemote('x',at:now.add(const Duration(seconds:5)),by:'PCO');
+      expect(c.feature('x'),isNull);
+    });
+
+    test('undo only touches its own objects, never remote changes',(){
+      final changed=<String>[], deleted=<String>[];
+      final c=DrawingController(eventId:'e',actorId:'TERRAIN-01',
+        onChanged:(f,{required isNew})=>changed.add(f.id),onDeleted:(f)=>deleted.add(f.id));
+      c.applyRemote(remote('pco-zone',at:DateTime.now().toUtc(),label:'du PCO'));
+      c.selectTool(FeatureKind.point);
+      final mine=c.tapAt(const LatLng(48.71,2.0))!;
+      // The PCO edits its own object after my action.
+      c.applyRemote(remote('pco-zone',at:DateTime.now().toUtc().add(const Duration(seconds:1)),label:'modifié au PCO'));
+      changed.clear();
+      c.undo();
+      expect(c.feature(mine.id),isNull);
+      expect(deleted,[mine.id]);
+      expect(c.feature('pco-zone')!.label,'modifié au PCO');
+      expect(changed,isEmpty);
+    });
+
+    test('undo of a delete restores the object with a fresh timestamp',(){
+      final restored=<MapFeature>[];
+      final c=DrawingController(eventId:'e',actorId:'a',onChanged:(f,{required isNew}){restored.add(f);});
+      c.selectTool(FeatureKind.point);
+      final f=c.tapAt(const LatLng(48.7,2.0))!;
+      c.deleteSelected();
+      restored.clear();
+      c.undo();
+      expect(restored.single.id,f.id);
+      expect(restored.single.updatedAt.isAfter(f.updatedAt)||restored.single.updatedAt==f.updatedAt,isTrue);
+    });
+
+    test('a drag reports one change, at the end',(){
+      var updates=0;
+      final c=DrawingController(eventId:'e',actorId:'a',onChanged:(f,{required isNew}){if(!isNew)updates++;});
+      c.selectTool(FeatureKind.point);
+      c.tapAt(const LatLng(48.7,2.0));
+      c.beginEdit();
+      for(var i=0;i<20;i++){c.moveSelected(0.0001,0);}
+      expect(updates,0);
+      c.endEdit();
+      expect(updates,1);
     });
   });
 }
