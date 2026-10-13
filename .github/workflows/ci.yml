@@ -18,8 +18,28 @@ jobs:
         with:
           channel: stable
       - run: flutter pub get
-      - run: flutter analyze
-      - run: flutter test
+      - name: Analyze
+        shell: bash
+        run: |
+          set -o pipefail
+          flutter analyze 2>&1 | tee analyze.log
+      - name: Test
+        # Run even when analyze fails, to report both in one CI round.
+        if: success() || failure()
+        shell: bash
+        run: |
+          set -o pipefail
+          flutter test 2>&1 | tee test.log
+      - name: Report analyze and test errors
+        if: failure()
+        shell: bash
+        run: |
+          # Raw logs are not always reachable: surface the diagnosis as annotations.
+          for f in analyze.log test.log; do
+            [ -f "$f" ] || continue
+            grep -E "error •|warning •|info •|Expected:|Actual:|Error:|FAILED|\[E\]|^lib/|^test/" "$f" | head -60 \
+              | sed 's/%/%25/g' | while IFS= read -r line; do echo "::error title=$f::${line}"; done || true
+          done
 
   windows-build:
     runs-on: windows-latest
