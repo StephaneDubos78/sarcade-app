@@ -239,8 +239,22 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     });
   }
 
+  /// Changes pulled by the automatic synchronisation (every 20 s): shown on
+  /// the map even when the real-time channel missed them (test of 23 Oct
+  /// 2026: the phone's positions reached the server but not the PC map).
   void _onRemoteChange(String objectType,Map<String,dynamic> payload){
     if(objectType=='map_feature')_applyRemoteFeature(payload);
+    if(objectType=='position'){
+      final p=SarcadePosition.fromJson(payload);
+      final current=_positions[p.deviceId];
+      if(p.eventId==widget.eventId&&_validPosition(p)&&(current==null||p.time.isAfter(current.time))&&mounted){
+        setState((){_positions[p.deviceId]=p;if(_selectedDevice==p.deviceId)_trace.add(p);});
+      }
+    }
+    if(objectType=='poi'){
+      final p=SarcadePoi.fromJson(payload);
+      if(p.eventId==widget.eventId&&mounted)setState(()=>_pois[p.id]=p);
+    }
   }
 
   /// Server state of a map object, from the change feed or realtime.
