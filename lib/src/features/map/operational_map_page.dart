@@ -49,7 +49,7 @@ class OperationalMapPage extends StatefulWidget {
 class _OperationalMapPageState extends State<OperationalMapPage> {
   final _map=MapController(); final _realtime=RealtimeService(); final _location=LocationService(); final _notifications=NotificationService(); final _uuid=const Uuid();
   final Map<String,SarcadePosition> _positions={}; final Map<String,SarcadePoi> _pois={}; final Map<String,ReferenceSite> _references={};
-  StreamSubscription? _rtSub; Timer? _syncUiTimer; String _status=S.t('status.connecting'); bool _showPanel=true; bool _showReferencePanel=false; bool _showHighPoints=true; bool _showRelays=true; String _referenceQuery=''; String? _selectedDevice; ReferenceSite? _selectedReference; List<SarcadePosition> _trace=[]; bool _traceLoading=false; late final OfflineSyncService _sync; bool _layoutInitialized=false;
+  StreamSubscription? _rtSub; Timer? _syncUiTimer; bool _started=false, _starting=false; bool _showPanel=true; bool _showReferencePanel=false; bool _showHighPoints=true; bool _showRelays=true; String _referenceQuery=''; String? _selectedDevice; ReferenceSite? _selectedReference; List<SarcadePosition> _trace=[]; bool _traceLoading=false; late final OfflineSyncService _sync; bool _layoutInitialized=false;
   late final DrawingController _drawing; bool _drawingTools=false; final _mapKey=GlobalKey();
   late final TrackingService _tracking; late final OperationsService _ops; bool _updatePageShown=false;
   final List<Offset> _stroke=[];
@@ -65,15 +65,25 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   }
   void _loadLocal(){for(final j in widget.store.positions()){final p=SarcadePosition.fromJson(j);if(p.eventId==widget.eventId&&_validPosition(p))_positions[p.deviceId]=p;}for(final j in widget.store.pois()){final p=SarcadePoi.fromJson(j);if(p.eventId==widget.eventId)_pois[p.id]=p;}for(final j in widget.store.references()){final p=ReferenceSite.fromJson(j);if(p.status=='active')_references[p.id]=p;}}
   Future<void> _start() async {
+    if(_starting)return; _starting=true;
     try {
       final data=await Future.wait([widget.api.latestPositions(widget.eventId),widget.api.pois(widget.eventId)]);
       for(final p in data[0] as List<SarcadePosition>){if(_validPosition(p)){_positions[p.deviceId]=p;widget.store.cachePosition(p.toJson());}}
       for(final p in data[1] as List<SarcadePoi>){_pois[p.id]=p;}
       try{await _refreshReferences(silent:true);}catch(_){}
       _realtime.connect(widget.api.websocketUri(widget.eventId));
-      _rtSub=_realtime.events.listen(_onRealtime,onError:(_){if(mounted)setState(()=>_status=S.t('status.realtimeUnavailable'));});
-      if(mounted){setState(()=>_status=S.t('status.connected'));WidgetsBinding.instance.addPostFrameCallback((_)=>_fitOperators());}
-    } catch(e){if(mounted)setState(()=>_status=S.t('status.offline'));}
+      _rtSub=_realtime.events.listen(_onRealtime);
+      if(mounted){setState(()=>_started=true);WidgetsBinding.instance.addPostFrameCallback((_)=>_fitOperators());}
+    } catch(e){if(mounted)setState((){});} finally {_starting=false;}
+  }
+  /// Status at the top of the screen, from the last exchange with the server
+  /// and the real-time channel, refreshed every 2 s.
+  String get _status{
+    if(!_sync.lastSyncOk)return S.t(_started||_sync.lastServerContact!=null?'status.offline':'status.connecting');
+    // Started without network: load the map data and open real time now.
+    if(!_started){_start();return S.t('status.connecting');}
+    if(!_realtime.connected){_realtime.reconnectNow();return S.t('status.realtimeUnavailable');}
+    return S.t('status.connected');
   }
   void _onRealtime(RealtimeEvent e){
     if(e.type=='position.updated'){final p=SarcadePosition.fromJson(e.data);if(_validPosition(p)){widget.store.cachePosition(p.toJson());if(mounted)setState((){_positions[p.deviceId]=p;if(_selectedDevice==p.deviceId)_trace.add(p);});}}

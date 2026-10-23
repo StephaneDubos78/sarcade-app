@@ -23,6 +23,9 @@ class OfflineSyncService {
   /// photo uploads (test of 14 Oct 2026: photos only came after the button).
   /// Paused in low-bandwidth mode, where the PCO interval applies instead.
   static const autoInterval=Duration(seconds:20);
+  /// Result of the last exchange with the server, for the status shown at
+  /// the top of the screen (« Connecté » / « Hors connexion »).
+  bool lastSyncOk=false; DateTime? lastServerContact;
   OfflineSyncService({required this.api,required this.store,required this.eventId,this.onRemoteChange});
 
   void start(){
@@ -89,7 +92,9 @@ class OfflineSyncService {
         onRemoteChange?.call(c['object_type'] as String,p);
       }
       await store.setCursor(eventId,feed.nextCursor);
+      lastSyncOk=true; lastServerContact=DateTime.now();
     } catch(_){
+      lastSyncOk=false;
       // Offline is an expected state. The outbox remains persistent for retry.
     } finally {
       _syncing=false;
