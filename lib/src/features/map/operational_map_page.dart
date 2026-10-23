@@ -28,6 +28,7 @@ import '../../services/realtime_service.dart';
 import '../../services/sarcade_api.dart';
 import '../../offline/local_store.dart';
 import '../../offline/sync_service.dart';
+import '../../offline/unsent_page.dart';
 import '../../platform/platform_services.dart';
 import '../../l10n/strings.dart';
 import '../../operations/event_settings.dart';
@@ -80,11 +81,22 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   /// and the real-time channel, refreshed every 2 s.
   String get _status{
     if(!_sync.lastSyncOk)return S.t(_started||_sync.lastServerContact!=null?'status.offline':'status.connecting');
+    if(_sync.eventUnknown)return S.t('status.eventUnknown');
     // Started without network: load the map data and open real time now.
     if(!_started){_start();return S.t('status.connecting');}
+    final unsent=_sync.unsent;
+    // Server reachable but items set aside: « Connecté · n non envoyés ».
+    if(unsent>0)return S.t('status.unsent',{'n':unsent});
     if(!_realtime.connected){_realtime.reconnectNow();return S.t('status.realtimeUnavailable');}
     return S.t('status.connected');
   }
+  /// Status line: connection state, then the items on their way.
+  String get _statusLine{
+    final n=_sync.inFlight;
+    return n>0?'$_status · ${S.t('status.inFlight',{'n':n})}':_status;
+  }
+  Color? get _statusColor=>_sync.lastSyncOk&&(_sync.unsent>0||_sync.eventUnknown)?Colors.deepOrange:null;
+  void _openUnsent()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>UnsentPage(sync:_sync,actorId:widget.deviceId))).then((_){if(mounted)setState((){});});
   void _onRealtime(RealtimeEvent e){
     if(e.type=='position.updated'){final p=SarcadePosition.fromJson(e.data);if(_validPosition(p)){widget.store.cachePosition(p.toJson());if(mounted)setState((){_positions[p.deviceId]=p;if(_selectedDevice==p.deviceId)_trace.add(p);});}}
     if(e.type=='poi.created'){final p=SarcadePoi.fromJson(e.data);widget.store.cachePoi(e.data);setState(()=>_pois[p.id]=p);}
@@ -429,32 +441,33 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     void openFiles()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>FilesPage(api:widget.api,eventId:widget.eventId,actorId:widget.deviceId)));
     void openLogbook()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>LogbookPage(api:widget.api,eventId:widget.eventId)));
     final syncButton=IconButton(tooltip:S.t('map.sync'),onPressed:() async {await _sync.syncNow();if(mounted)setState((){});},icon:const Icon(Icons.sync));
-    final messagesButton=IconButton(tooltip:S.t('map.messages'),onPressed:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>MessagesPage(api:widget.api,eventId:widget.eventId,actorId:widget.deviceId,sync:_sync,store:widget.store))),icon:Badge(label:Text('${widget.store.pendingCount()}'),child:const Icon(Icons.message)));
+    final messagesButton=IconButton(tooltip:S.t('map.messages'),onPressed:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>MessagesPage(api:widget.api,eventId:widget.eventId,actorId:widget.deviceId,sync:_sync,store:widget.store))),icon:Badge(isLabelVisible:_sync.inFlight>0,label:Text('${_sync.inFlight}'),child:const Icon(Icons.message)));
     return Scaffold(
       appBar:compact
         ? AppBar(
             titleSpacing:12,
-            title:Column(crossAxisAlignment:CrossAxisAlignment.start,mainAxisSize:MainAxisSize.min,children:[const Text('SARCADE'),Text('$_status · ${S.t('status.pending',{'n':widget.store.pendingCount()})}',style:Theme.of(context).textTheme.labelSmall,overflow:TextOverflow.ellipsis)]),
+            title:InkWell(onTap:_openUnsent,child:Column(crossAxisAlignment:CrossAxisAlignment.start,mainAxisSize:MainAxisSize.min,children:[const Text('SARCADE'),Text(_statusLine,style:Theme.of(context).textTheme.labelSmall?.copyWith(color:_statusColor),overflow:TextOverflow.ellipsis)])),
             actions:[
               syncButton,
               messagesButton,
               PopupMenuButton<String>(
                 tooltip:S.t('map.menu'),
-                onSelected:(v){switch(v){case 'fit':_fitOperators();case 'operators':toggleOperators();case 'references':toggleReferences();case 'files':openFiles();case 'logbook':openLogbook();case 'settings':widget.onSettings?.call();}},
+                onSelected:(v){switch(v){case 'fit':_fitOperators();case 'operators':toggleOperators();case 'references':toggleReferences();case 'files':openFiles();case 'logbook':openLogbook();case 'settings':widget.onSettings?.call();case 'unsent':_openUnsent();}},
                 itemBuilder:(_)=>[
                   PopupMenuItem(value:'fit',child:ListTile(leading:const Icon(Icons.center_focus_strong),title:Text(S.t('map.fit')))),
                   PopupMenuItem(value:'operators',child:ListTile(leading:const Icon(Icons.groups),title:Text(S.t('map.operators')))),
                   PopupMenuItem(value:'references',child:ListTile(leading:const Icon(Icons.cell_tower),title:Text(S.t('map.references')))),
                   PopupMenuItem(value:'files',child:ListTile(leading:const Icon(Icons.folder_copy_outlined),title:Text(S.t('map.files')))),
                   PopupMenuItem(value:'logbook',child:ListTile(leading:const Icon(Icons.receipt_long),title:Text(S.t('map.logbook')))),
+                  PopupMenuItem(value:'unsent',child:ListTile(leading:const Icon(Icons.outbox_outlined),title:Text('${S.t('unsent.title')} (${_sync.unsent})'))),
                   if(widget.onSettings!=null)PopupMenuItem(value:'settings',child:ListTile(leading:const Icon(Icons.settings),title:Text(S.t('map.settings')))),
                 ],
               ),
             ])
-        : AppBar(title:const Text('SARCADE'),actions:[syncButton,IconButton(tooltip:S.t('map.fit'),onPressed:_fitOperators,icon:const Icon(Icons.center_focus_strong)),IconButton(tooltip:S.t('map.operators'),onPressed:toggleOperators,icon:const Icon(Icons.groups)),IconButton(tooltip:S.t('map.references'),onPressed:toggleReferences,icon:const Icon(Icons.cell_tower)),messagesButton,IconButton(tooltip:S.t('map.files'),onPressed:openFiles,icon:const Icon(Icons.folder_copy_outlined)),IconButton(tooltip:S.t('map.logbook'),onPressed:openLogbook,icon:const Icon(Icons.receipt_long)),if(widget.onSettings!=null)IconButton(tooltip:S.t('map.settings'),onPressed:widget.onSettings,icon:const Icon(Icons.settings)),Padding(padding:const EdgeInsets.symmetric(horizontal:12),child:Center(child:Text('$_status · ${S.t('status.pending',{'n':widget.store.pendingCount()})}')))]),
+        : AppBar(title:const Text('SARCADE'),actions:[syncButton,IconButton(tooltip:S.t('map.fit'),onPressed:_fitOperators,icon:const Icon(Icons.center_focus_strong)),IconButton(tooltip:S.t('map.operators'),onPressed:toggleOperators,icon:const Icon(Icons.groups)),IconButton(tooltip:S.t('map.references'),onPressed:toggleReferences,icon:const Icon(Icons.cell_tower)),messagesButton,IconButton(tooltip:S.t('map.files'),onPressed:openFiles,icon:const Icon(Icons.folder_copy_outlined)),IconButton(tooltip:S.t('map.logbook'),onPressed:openLogbook,icon:const Icon(Icons.receipt_long)),if(widget.onSettings!=null)IconButton(tooltip:S.t('map.settings'),onPressed:widget.onSettings,icon:const Icon(Icons.settings)),Padding(padding:const EdgeInsets.symmetric(horizontal:12),child:Center(child:InkWell(onTap:_openUnsent,child:Text(_statusLine,style:TextStyle(color:_statusColor)))))]),
       body:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
         OperationsBanners(settings:_ops.settings,update:_ops.update,
-          alert:syncAlert(widget.store.pending(),DateTime.now(),_ops.settings.syncAlertMinutes),
+          alert:syncAlert(_sync.currentItems,DateTime.now(),_ops.settings.syncAlertMinutes),
           heldPhotos:_sync.lowBandwidth?widget.store.pendingUploads().length:0,
           onSyncNow:() async {await _sync.syncNow();if(mounted)setState((){});},
           onUpdate:()=>downloadUpdate(context,widget.api,_ops.update)),
