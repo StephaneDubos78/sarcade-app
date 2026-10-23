@@ -109,14 +109,23 @@ class _MessagesPageState extends State<MessagesPage>{
           PopupMenuItem(value:'accepted',child:Text('Accepté')),PopupMenuItem(value:'rejected',child:Text('Refusé'))]),
       ));
     })),
-    SafeArea(child:Row(children:[
-      DropdownButton(value:_priority,items:const [DropdownMenuItem(value:'routine',child:Text('Routine')),DropdownMenuItem(value:'urgent',child:Text('Urgent')),DropdownMenuItem(value:'immediate',child:Text('Immédiat'))],onChanged:(v)=>setState(()=>_priority=v!)),
-      SizedBox(width:90,child:DropdownButton(value:_recipientType,isExpanded:true,items:const [DropdownMenuItem(value:'team',child:Text('Équipe')),DropdownMenuItem(value:'user',child:Text('Agent'))],onChanged:(v)=>setState(()=>_recipientType=v!))),
-      SizedBox(width:110,child:TextField(controller:_recipient,decoration:const InputDecoration(hintText:'ID ou vide'))),
-      Expanded(child:TextField(controller:_text,maxLength:2048,decoration:const InputDecoration(hintText:'Message court',counterText:''))),
-      IconButton(tooltip:'Envoyer une photo',onPressed:_picking?null:_photo,icon:_picking?const SizedBox(width:20,height:20,child:CircularProgressIndicator(strokeWidth:2)):const Icon(Icons.photo_camera)),
-      IconButton(tooltip:'Envoyer',onPressed:_send,icon:const Icon(Icons.send))
-    ]))
+    SafeArea(child:LayoutBuilder(builder:(context,box){
+      // Phones: two lines, so that the message field keeps the full width
+      // (recette of 23 October 2026: on Android it was squeezed to nothing).
+      final priority=DropdownButton(value:_priority,items:const [DropdownMenuItem(value:'routine',child:Text('Routine')),DropdownMenuItem(value:'urgent',child:Text('Urgent')),DropdownMenuItem(value:'immediate',child:Text('Immédiat'))],onChanged:(v)=>setState(()=>_priority=v!));
+      final type=SizedBox(width:90,child:DropdownButton(value:_recipientType,isExpanded:true,items:const [DropdownMenuItem(value:'team',child:Text('Équipe')),DropdownMenuItem(value:'user',child:Text('Agent'))],onChanged:(v)=>setState(()=>_recipientType=v!)));
+      final recipient=TextField(controller:_recipient,decoration:const InputDecoration(hintText:'ID (vide = tous)'));
+      final message=TextField(controller:_text,maxLength:2048,minLines:1,maxLines:4,decoration:const InputDecoration(hintText:'Message court',counterText:''));
+      final photo=IconButton(tooltip:'Envoyer une photo',onPressed:_picking?null:_photo,icon:_picking?const SizedBox(width:20,height:20,child:CircularProgressIndicator(strokeWidth:2)):const Icon(Icons.photo_camera));
+      final send=IconButton(tooltip:'Envoyer',onPressed:_send,icon:const Icon(Icons.send));
+      if(box.maxWidth<600){
+        return Padding(padding:const EdgeInsets.symmetric(horizontal:8),child:Column(mainAxisSize:MainAxisSize.min,children:[
+          Row(children:[priority,const SizedBox(width:8),type,const SizedBox(width:8),Expanded(child:recipient)]),
+          Row(crossAxisAlignment:CrossAxisAlignment.end,children:[Expanded(child:message),photo,send]),
+        ]));
+      }
+      return Row(children:[priority,type,SizedBox(width:110,child:recipient),Expanded(child:message),photo,send]);
+    })),
    ]));
  }
 }

@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import '../access/access_manager.dart';
 import '../models/poi.dart';
 import '../models/position.dart';
 import '../models/message.dart';
@@ -17,7 +18,9 @@ class SarcadeHttpException implements Exception {
 
 class SarcadeApi {
   final String baseUrl; final http.Client _client;
-  SarcadeApi({required this.baseUrl,http.Client? client}):_client=client??http.Client();
+  SarcadeApi({required this.baseUrl,http.Client? client}):_client=client??AccessHttpClient();
+  /// Headers of the Cloudflare Access session, for the real-time channel.
+  Map<String,String> realtimeHeaders()=>AccessManager.instance.headersFor(Uri.parse(baseUrl));
   Future<List<SarcadePosition>> latestPositions(String eventId) async {
     final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/events/$eventId/positions/latest'));
     if(r.statusCode!=200) throw Exception('positions_http_${r.statusCode}');

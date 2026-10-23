@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:web_socket_channel/web_socket_channel.dart';
+import '../platform/platform_services.dart';
 class RealtimeEvent {final String type;final Map<String,dynamic> data;const RealtimeEvent(this.type,this.data);}
 
 /// WebSocket of the event, reconnected automatically after a network loss
@@ -8,18 +9,20 @@ class RealtimeEvent {final String type;final Map<String,dynamic> data;const Real
 /// the status kept showing « Connecté »).
 class RealtimeService {
  WebSocketChannel? _channel; StreamSubscription? _sub; Timer? _retry; Uri? _uri; bool _closing=false;
+ /// Headers read at each (re)connection: the Access session may be renewed.
+ Map<String,String> Function()? _headers;
  final _events=StreamController<RealtimeEvent>.broadcast();
  /// True once the channel is open, false as soon as it closes or fails.
  bool connected=false;
  static const retryDelay=Duration(seconds:10);
  Stream<RealtimeEvent> get events=>_events.stream;
 
- void connect(Uri uri){disconnect();_uri=uri;_closing=false;_open();}
+ void connect(Uri uri,{Map<String,String> Function()? headers}){disconnect();_uri=uri;_headers=headers;_closing=false;_open();}
 
  void _open(){
    final uri=_uri; if(uri==null||_closing)return;
    try{
-     final ch=WebSocketChannel.connect(uri); _channel=ch;
+     final ch=openWebSocket(uri,_headers?.call()??const {}); _channel=ch;
      ch.ready.then((_){if(identical(_channel,ch))connected=true;}).catchError((_){_lost(ch);});
      _sub=ch.stream.listen((raw){
        connected=true;
