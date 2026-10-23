@@ -29,6 +29,8 @@ import '../../services/sarcade_api.dart';
 import '../../offline/local_store.dart';
 import '../../offline/sync_service.dart';
 import '../../offline/unsent_page.dart';
+import '../../access/access_login_page.dart';
+import '../../access/access_manager.dart';
 import '../../platform/platform_services.dart';
 import '../../l10n/strings.dart';
 import '../../operations/event_settings.dart';
@@ -59,7 +61,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   static const _compactWidth=600.0;
   @override void didChangeDependencies(){super.didChangeDependencies();if(!_layoutInitialized){_layoutInitialized=true;if(MediaQuery.sizeOf(context).width<_compactWidth)_showPanel=false;}}
 
-  @override void initState(){super.initState();_notifications.initialize();_sync=OfflineSyncService(api:widget.api,store:widget.store,eventId:widget.eventId,onRemoteChange:_onRemoteChange);_initDrawing();_loadLocal();_sync.start();_initOperations();_syncUiTimer=Timer.periodic(const Duration(seconds:2),(_){if(mounted)setState((){});});_start();}
+  @override void initState(){super.initState();_notifications.initialize();_sync=OfflineSyncService(api:widget.api,store:widget.store,eventId:widget.eventId,onRemoteChange:_onRemoteChange);_initDrawing();_loadLocal();_sync.start();_initOperations();_syncUiTimer=Timer.periodic(const Duration(seconds:2),(_){if(mounted)setState((){});});AccessManager.instance.addListener(_onAccessChanged);_start();}
   bool _validPosition(SarcadePosition p){
     final t=p.time.toUtc(), now=DateTime.now().toUtc();
     return t.isAfter(DateTime.utc(2020)) && t.isBefore(now.add(const Duration(days:1)));
@@ -72,7 +74,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       for(final p in data[0] as List<SarcadePosition>){if(_validPosition(p)){_positions[p.deviceId]=p;widget.store.cachePosition(p.toJson());}}
       for(final p in data[1] as List<SarcadePoi>){_pois[p.id]=p;}
       try{await _refreshReferences(silent:true);}catch(_){}
-      _realtime.connect(widget.api.websocketUri(widget.eventId));
+      _realtime.connect(widget.api.websocketUri(widget.eventId),headers:widget.api.realtimeHeaders);
+      await _rtSub?.cancel();
       _rtSub=_realtime.events.listen(_onRealtime);
       if(mounted){setState(()=>_started=true);WidgetsBinding.instance.addPostFrameCallback((_)=>_fitOperators());}
     } catch(e){if(mounted)setState((){});} finally {_starting=false;}
@@ -80,6 +83,9 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   /// Status at the top of the screen, from the last exchange with the server
   /// and the real-time channel, refreshed every 2 s.
   String get _status{
+    // Cloudflare Access answered instead of SARCADE: the server is reachable,
+    // the operator must sign in (not « Hors connexion »).
+    if(AccessManager.instance.requiredFor(widget.api.baseUrl))return S.t('status.accessRequired');
     if(!_sync.lastSyncOk)return S.t(_started||_sync.lastServerContact!=null?'status.offline':'status.connecting');
     if(_sync.eventUnknown)return S.t('status.eventUnknown');
     // Started without network: load the map data and open real time now.
@@ -95,7 +101,29 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     final n=_sync.inFlight;
     return n>0?'$_status · ${S.t('status.inFlight',{'n':n})}':_status;
   }
-  Color? get _statusColor=>_sync.lastSyncOk&&(_sync.unsent>0||_sync.eventUnknown)?Colors.deepOrange:null;
+  Color? get _statusColor=>AccessManager.instance.requiredFor(widget.api.baseUrl)||(_sync.lastSyncOk&&(_sync.unsent>0||_sync.eventUnknown))?Colors.deepOrange:null;
+
+  /// « Se connecter »: after the sign-in everything that waited leaves.
+  Future<void> _signIn() async {
+    if(!await signInToServer(context,widget.api.baseUrl))return;
+    _realtime.disconnect();
+    if(mounted)setState(()=>_started=false);
+    await _sync.syncNow();
+    unawaited(_ops.beat());
+    unawaited(_start());
+  }
+
+  /// Session ending within 24 h: date shown in the reminder banner.
+  DateTime? get _accessRenewBy{
+    final s=AccessManager.instance.sessionFor(widget.api.baseUrl);
+    return s!=null&&s.renewSoon(DateTime.now().toUtc())?s.expiresAt:null;
+  }
+  void _onAccessChanged(){if(mounted)setState((){});}
+
+  void _toggleDrawingTools(){
+    if(_drawingTools)_drawing.selectTool(null);
+    setState(()=>_drawingTools=!_drawingTools);
+  }
   void _openUnsent()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>UnsentPage(sync:_sync,actorId:widget.deviceId))).then((_){if(mounted)setState((){});});
   void _onRealtime(RealtimeEvent e){
     if(e.type=='position.updated'){final p=SarcadePosition.fromJson(e.data);if(_validPosition(p)){widget.store.cachePosition(p.toJson());if(mounted)setState((){_positions[p.deviceId]=p;if(_selectedDevice==p.deviceId)_trace.add(p);});}}
@@ -423,7 +451,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     child:child,
   );
 
-  @override void dispose(){_rtSub?.cancel();_tracking.removeListener(_onOperationsChanged);_ops.removeListener(_onOperationsChanged);_tracking.dispose();_ops.dispose();_syncUiTimer?.cancel();_sync.dispose();_realtime.dispose();_drawing.dispose();widget.api.close();super.dispose();}
+  @override void dispose(){AccessManager.instance.removeListener(_onAccessChanged);_rtSub?.cancel();_tracking.removeListener(_onOperationsChanged);_ops.removeListener(_onOperationsChanged);_tracking.dispose();_ops.dispose();_syncUiTimer?.cancel();_sync.dispose();_realtime.dispose();_drawing.dispose();widget.api.close();super.dispose();}
 
   @override Widget build(BuildContext context){
     final sorted=_positions.values.toList()..sort((a,b)=>a.deviceId.compareTo(b.deviceId));
@@ -470,7 +498,10 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           alert:syncAlert(_sync.currentItems,DateTime.now(),_ops.settings.syncAlertMinutes),
           heldPhotos:_sync.lowBandwidth?widget.store.pendingUploads().length:0,
           onSyncNow:() async {await _sync.syncNow();if(mounted)setState((){});},
-          onUpdate:()=>downloadUpdate(context,widget.api,_ops.update)),
+          onUpdate:()=>downloadUpdate(context,widget.api,_ops.update),
+          accessRequired:AccessManager.instance.requiredFor(widget.api.baseUrl),
+          accessRenewBy:_accessRenewBy,onSignIn:_signIn,
+          onReload:isWebPlatform&&!_sync.lastSyncOk&&_sync.lastServerContact!=null&&browserOnline?reloadApp:null),
         Expanded(child:_withDrawingShortcuts(Row(children:[
         if(_showReferencePanel)SizedBox(width:panelWidth(355),child:Material(elevation:3,child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
           Padding(padding:const EdgeInsets.fromLTRB(14,8,6,0),child:Row(children:[Expanded(child:Text('Référentiel radio (${_filteredReferences().length})',style:Theme.of(context).textTheme.titleMedium)),IconButton(tooltip:'Actualiser le référentiel',onPressed:()=>_refreshReferences(),icon:const Icon(Icons.refresh))])),
@@ -521,8 +552,21 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           child:CustomPaint(painter:_StrokePainter(_stroke,Color(_drawing.color),_drawing.strokeWidth)),
         )),
         Positioned(top:8,left:8,right:8,child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-          if(_drawingTools)DrawingToolbar(controller:_drawing,onExport:_exportGeoJson,onImport:_importFile,onClose:(){_drawing.selectTool(null);setState(()=>_drawingTools=false);})
-          else FloatingActionButton.small(heroTag:'drawing-tools',tooltip:'Dessiner sur la carte',onPressed:()=>setState(()=>_drawingTools=true),child:const Icon(Icons.draw_outlined)),
+          // The drawing button stays in place and toggles the toolbar
+          // (request of 23 October 2026: closing it after a tap by mistake
+          // meant reaching the small cross at the far right).
+          Row(crossAxisAlignment:CrossAxisAlignment.start,children:[
+            FloatingActionButton.small(heroTag:'drawing-tools',
+              tooltip:_drawingTools?'Fermer les outils de dessin':'Dessiner sur la carte',
+              backgroundColor:_drawingTools?Theme.of(context).colorScheme.primary:null,
+              foregroundColor:_drawingTools?Theme.of(context).colorScheme.onPrimary:null,
+              onPressed:_toggleDrawingTools,
+              child:Icon(_drawingTools?Icons.draw:Icons.draw_outlined)),
+            if(_drawingTools)...[
+              const SizedBox(width:8),
+              Flexible(child:DrawingToolbar(controller:_drawing,onExport:_exportGeoJson,onImport:_importFile,onClose:_toggleDrawingTools)),
+            ],
+          ]),
           if(_drawing.isDrawing)Padding(padding:const EdgeInsets.only(top:8),child:DraftBar(controller:_drawing)),
           if(_drawing.selected!=null)Padding(padding:const EdgeInsets.only(top:8),child:SelectionBar(controller:_drawing,onEditLabel:_editSelectedLabel)),
         ])),

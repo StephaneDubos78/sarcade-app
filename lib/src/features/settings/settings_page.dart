@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import '../../access/access_login_page.dart';
+import '../../access/access_manager.dart';
+import '../../access/access_session.dart';
 import '../../config/app_config.dart';
 import '../../config/version.dart';
 import '../../l10n/strings.dart';
@@ -36,7 +39,7 @@ class _SettingsPageState extends State<SettingsPage> {
   late bool _aprsConsent=widget.initial.aprsTxConsent;
   bool _saving=false;
   List<Map<String,dynamic>> _events=[];
-  bool _loadingEvents=false, _eventsOffline=false;
+  bool _loadingEvents=false, _eventsOffline=false, _accessRequired=false;
   String? _eventsError;
 
   @override void initState(){
@@ -57,7 +60,10 @@ class _SettingsPageState extends State<SettingsPage> {
     try{
       final list=await load(server);
       if(!mounted||server!=_serverText)return;
-      setState((){_events=list;_eventsOffline=false;});
+      setState((){_events=list;_eventsOffline=false;_accessRequired=false;});
+    }on AccessRequiredException{
+      // Protected by Cloudflare Access: sign in first, then the list comes.
+      if(mounted)setState((){_events=widget.cachedEvents?.call(server)??[];_accessRequired=true;});
     }on SarcadeHttpException catch(e){
       // An older server without the list: the advanced entry stays available.
       if(mounted)setState((){_events=widget.cachedEvents?.call(server)??[];_eventsError='HTTP ${e.statusCode}';});
@@ -66,6 +72,33 @@ class _SettingsPageState extends State<SettingsPage> {
     }finally{
       if(mounted)setState(()=>_loadingEvents=false);
     }
+  }
+
+  Future<void> _signIn() async {
+    if(_url(_server.text)!=null)return;
+    if(await signInToServer(context,_serverText)&&mounted){setState(()=>_accessRequired=false);_loadEvents();}
+  }
+
+  /// Sign-in state of the server (Cloudflare Access), with its buttons.
+  Widget _accessRow(){
+    if(_url(_server.text)!=null)return const SizedBox.shrink();
+    final server=_serverText;
+    final session=AccessManager.instance.sessionFor(server);
+    if(session==null&&!_accessRequired)return const SizedBox.shrink();
+    final now=DateTime.now().toUtc();
+    String fmt(DateTime t){final l=t.toLocal();String two(int v)=>v.toString().padLeft(2,'0');return '${two(l.day)}/${two(l.month)}/${l.year} ${two(l.hour)}:${two(l.minute)}';}
+    final expired=session==null||session.expired(now);
+    final text=session==null?S.t('access.required')
+      :expired?S.t('access.sessionExpired',{'email':session.email??''})
+      :S.t('access.session',{'email':session.email??'',
+          'date':session.expiresAt==null?'-':fmt(session.expiresAt!)});
+    final color=session==null||expired||session.renewSoon(now)?Colors.deepOrange:null;
+    return Padding(padding:const EdgeInsets.only(top:8),child:Wrap(crossAxisAlignment:WrapCrossAlignment.center,spacing:8,children:[
+      Icon(expired?Icons.lock_outline:Icons.lock_open,size:18,color:color),
+      Text(text,style:TextStyle(color:color)),
+      TextButton(onPressed:_signIn,child:Text(S.t(session==null?'access.signIn':'access.signInAgain'))),
+      if(session!=null)TextButton(onPressed:() async {await AccessManager.instance.signOut(server);if(mounted)setState((){});},child:Text(S.t('access.signOut'))),
+    ]));
   }
 
   static String _date(Object? v){
@@ -162,11 +195,12 @@ class _SettingsPageState extends State<SettingsPage> {
           onFocusChange:(f){if(!f)_loadEvents();},
           child:TextFormField(
             controller:_server,
-            decoration:InputDecoration(labelText:S.t('settings.server'),hintText:'http://192.168.1.20:8000',helperText:S.t('settings.serverHelp'),border:const OutlineInputBorder()),
+            decoration:InputDecoration(labelText:S.t('settings.server'),hintText:defaultServerUrl,helperText:S.t('settings.serverHelp'),border:const OutlineInputBorder()),
             keyboardType:TextInputType.url,autocorrect:false,validator:_url,
             onFieldSubmitted:(_)=>_loadEvents(),
           ),
         ),
+        _accessRow(),
         const SizedBox(height:16),
         if(widget.loadEvents!=null)...[
           _eventPicker(),
@@ -217,7 +251,7 @@ class _SettingsPageState extends State<SettingsPage> {
         const SizedBox(height:24),
         FilledButton.icon(onPressed:_saving?null:_save,icon:const Icon(Icons.check),label:Text(S.t('common.save'))),
         const SizedBox(height:16),
-        Text('SARCADE $appVersion',textAlign:TextAlign.center,style:Theme.of(context).textTheme.bodySmall),
+        SelectableText('SARCADE $appVersion${appBuild.isEmpty?'':' · $appBuild'}',textAlign:TextAlign.center,style:Theme.of(context).textTheme.bodySmall),
       ])),
     ))),
   );

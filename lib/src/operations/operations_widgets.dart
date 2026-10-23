@@ -13,8 +13,16 @@ class OperationsBanners extends StatelessWidget {
   final EventSettings settings; final ClientUpdate update;
   final ({int count,int minutes})? alert; final int heldPhotos;
   final VoidCallback onSyncNow; final VoidCallback onUpdate;
+  /// Cloudflare Access: sign-in required, or session ending within 24 h.
+  final bool accessRequired; final DateTime? accessRenewBy; final VoidCallback? onSignIn;
+  /// Web client: the server stopped answering while the browser is online,
+  /// usually an expired session; reloading the page signs in again.
+  final VoidCallback? onReload;
   const OperationsBanners({super.key,required this.settings,required this.update,required this.alert,
-    required this.heldPhotos,required this.onSyncNow,required this.onUpdate});
+    required this.heldPhotos,required this.onSyncNow,required this.onUpdate,
+    this.accessRequired=false,this.accessRenewBy,this.onSignIn,this.onReload});
+
+  static String _date(DateTime t){final l=t.toLocal();String two(int v)=>v.toString().padLeft(2,'0');return '${two(l.day)}/${two(l.month)} ${two(l.hour)}:${two(l.minute)}';}
 
   String _time(DateTime t){final l=t.toLocal();return '${l.hour.toString().padLeft(2,'0')}:${l.minute.toString().padLeft(2,'0')}';}
 
@@ -22,6 +30,15 @@ class OperationsBanners extends StatelessWidget {
   Widget build(BuildContext context){
     final scheme=Theme.of(context).colorScheme;
     final rows=<Widget>[
+      if(accessRequired)_Banner(icon:Icons.lock_outline,color:Colors.orange.shade200,
+        text:S.t('access.required'),
+        action:onSignIn==null?null:TextButton(onPressed:onSignIn,child:Text(S.t('access.signIn')))),
+      if(!accessRequired&&accessRenewBy!=null)_Banner(icon:Icons.lock_clock,color:Colors.amber.shade100,
+        text:S.t('access.renew',{'date':_date(accessRenewBy!)}),
+        action:onSignIn==null?null:TextButton(onPressed:onSignIn,child:Text(S.t('access.signInAgain')))),
+      if(onReload!=null)_Banner(icon:Icons.refresh,color:Colors.orange.shade100,
+        text:S.t('access.webExpired'),
+        action:TextButton(onPressed:onReload,child:Text(S.t('access.reload')))),
       if(settings.eventEnded)_Banner(icon:Icons.flag,color:scheme.tertiaryContainer,
         text:'${S.t('event.ended')} · ${S.t('event.endedDetail')}'),
       if(update.status==UpdateStatus.invited)_Banner(icon:Icons.system_update,color:scheme.secondaryContainer,
