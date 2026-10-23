@@ -15,6 +15,7 @@ import '../messages/messages_page.dart';
 import '../logbook/logbook_page.dart';
 import '../files/files_page.dart';
 import 'drawing/drawing_controller.dart';
+import 'reference_cluster_layer.dart';
 import 'drawing/drawing_layers.dart';
 import 'drawing/drawing_toolbar.dart';
 import 'drawing/geometry.dart';
@@ -281,17 +282,11 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     _drawing.select(hit?.id);
   }
 
-  Future<String?> _askText({required String title,required String initial}){
-    final controller=TextEditingController(text:initial);
-    return showDialog<String>(context:context,builder:(context)=>AlertDialog(
-      title:Text(title),
-      content:TextField(controller:controller,autofocus:true,textCapitalization:TextCapitalization.sentences,maxLength:80,onSubmitted:(v)=>Navigator.pop(context,v)),
-      actions:[
-        TextButton(onPressed:()=>Navigator.pop(context),child:const Text('Annuler')),
-        FilledButton(onPressed:()=>Navigator.pop(context,controller.text),child:const Text('OK')),
-      ],
-    )).whenComplete(controller.dispose);
-  }
+  // The dialog owns its text controller: disposing it when the Future
+  // completed freed it while the closing animation still used it
+  // ('_dependents.isEmpty' assertion, Windows test of 13 Oct 2026).
+  Future<String?> _askText({required String title,required String initial})=>
+    showDialog<String>(context:context,builder:(_)=>_TextPromptDialog(title:title,initial:initial));
 
   Future<void> _editSelectedLabel() async {
     final f=_drawing.selected;
@@ -399,10 +394,6 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     final markers=<Marker>[
       ...sorted.map((p)=>Marker(point:LatLng(p.lat,p.lon),width:130,height:62,alignment:Alignment.topCenter,child:GestureDetector(onTap:()=>_select(p),child:Column(mainAxisSize:MainAxisSize.min,children:[Icon(Icons.person_pin_circle,size:38,color:p.deviceId==widget.deviceId?Colors.orange:(_selectedDevice==p.deviceId?Colors.deepPurple:Colors.blue)),Container(padding:const EdgeInsets.symmetric(horizontal:6,vertical:2),decoration:BoxDecoration(color:Colors.white,borderRadius:BorderRadius.circular(5),boxShadow:const [BoxShadow(blurRadius:2)]),child:Text(p.deviceId,style:const TextStyle(fontSize:11,fontWeight:FontWeight.w600)))])))),
       ..._pois.values.map((p)=>Marker(point:LatLng(p.lat,p.lon),width:40,height:40,child:Tooltip(message:p.label??p.kind,child:const Icon(Icons.location_on,size:38,color:Colors.red)))),
-      ..._references.values.where((r)=>(r.isHighPoint&&_showHighPoints)||(r.isRelay&&_showRelays)).map((r)=>Marker(
-        point:LatLng(r.lat,r.lon),width:46,height:46,
-        child:Tooltip(message:r.name,child:GestureDetector(onTap:()=>_selectReference(r),child:Icon(r.isHighPoint?Icons.terrain:Icons.cell_tower,size:34,color:r.isHighPoint?Colors.indigo:Colors.deepOrange))),
-      )),
     ];
     final selected=_selectedDevice==null?null:_positions[_selectedDevice];
     final screenWidth=MediaQuery.sizeOf(context).width;
@@ -454,7 +445,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           Expanded(child:ListView.builder(itemCount:_filteredReferences().length,itemBuilder:(context,index){final r=_filteredReferences()[index];return ListTile(selected:_selectedReference?.id==r.id,leading:Icon(r.isHighPoint?Icons.terrain:Icons.cell_tower,color:r.isHighPoint?Colors.indigo:Colors.deepOrange),title:Text(r.name),subtitle:Text(r.subtitle),onTap:()=>_selectReference(r));})),
           if(_selectedReference!=null)Builder(builder:(context){final r=_selectedReference!;return Container(padding:const EdgeInsets.all(14),decoration:BoxDecoration(border:Border(top:BorderSide(color:Theme.of(context).dividerColor))),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
             Text(r.name,style:const TextStyle(fontWeight:FontWeight.bold)),
-            if(r.callsign?.isNotEmpty==true)Text('Indicatif : ${r.callsign}'),
+            if(r.callsign?.isNotEmpty==true)Text('${r.isHighPoint?'Référence':'Indicatif'} : ${r.callsign}'),
             if(r.isHighPoint&&r.altM!=null)Text('Altitude : ${r.altM!.toStringAsFixed(0)} m'),
             if(r.subtype?.isNotEmpty==true)Text('Type : ${r.subtype}'),
             if(r.mode?.isNotEmpty==true)Text('Mode : ${r.mode}'),
@@ -480,6 +471,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         ),children:[
           TileLayer(urlTemplate:widget.tileUrl,userAgentPackageName:'org.sarcade.app',maxZoom:19),
           if(_trace.length>1)PolylineLayer(polylines:_traceSegments().map((segment)=>Polyline(points:segment.map((p)=>LatLng(p.lat,p.lon)).toList(),strokeWidth:4,color:Colors.deepPurple)).toList()),
+          // Reference sites below the drawn objects, grouped when zoomed out.
+          ReferenceClusterLayer(sites:_references.values.where((r)=>(r.isHighPoint&&_showHighPoints)||(r.isRelay&&_showRelays)).toList(),onSelect:_selectReference),
           ...buildDrawingLayers(_drawing),
           MarkerLayer(markers:markers),
           buildHandleLayer(_drawing,_globalToLatLng),
@@ -517,4 +510,24 @@ class _StrokePainter extends CustomPainter {
     canvas.drawPath(path,Paint()..color=color..strokeWidth=width..style=PaintingStyle.stroke..strokeCap=StrokeCap.round..strokeJoin=StrokeJoin.round);
   }
   @override bool shouldRepaint(_StrokePainter old)=>true;
+}
+
+
+class _TextPromptDialog extends StatefulWidget {
+  const _TextPromptDialog({required this.title,required this.initial});
+  final String title, initial;
+  @override State<_TextPromptDialog> createState()=>_TextPromptDialogState();
+}
+
+class _TextPromptDialogState extends State<_TextPromptDialog> {
+  late final TextEditingController _controller=TextEditingController(text:widget.initial);
+  @override void dispose(){_controller.dispose();super.dispose();}
+  @override Widget build(BuildContext context)=>AlertDialog(
+    title:Text(widget.title),
+    content:TextField(controller:_controller,autofocus:true,textCapitalization:TextCapitalization.sentences,maxLength:80,onSubmitted:(v)=>Navigator.pop(context,v)),
+    actions:[
+      TextButton(onPressed:()=>Navigator.pop(context),child:const Text('Annuler')),
+      FilledButton(onPressed:()=>Navigator.pop(context,_controller.text),child:const Text('OK')),
+    ],
+  );
 }
