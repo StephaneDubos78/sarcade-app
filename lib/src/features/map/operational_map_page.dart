@@ -28,48 +28,83 @@ import '../../services/realtime_service.dart';
 import '../../services/sarcade_api.dart';
 import '../../offline/local_store.dart';
 import '../../offline/sync_service.dart';
+import '../../offline/unsent_page.dart';
 import '../../platform/platform_services.dart';
+import '../../l10n/strings.dart';
+import '../../operations/event_settings.dart';
+import '../../operations/operations_service.dart';
+import '../../operations/operations_widgets.dart';
+import '../../operations/tracking_service.dart';
 
 class OperationalMapPage extends StatefulWidget {
   final SarcadeApi api; final String eventId,deviceId,tileUrl,tileAttribution; final LocalStore store; final VoidCallback? onSettings;
-  const OperationalMapPage({super.key,required this.api,required this.eventId,required this.deviceId,required this.store,required this.tileUrl,required this.tileAttribution,this.onSettings});
+  /// Operator settings sent with the heartbeat (APRS callsign and consent).
+  final String callsign; final bool aprsTxConsent;
+  /// Platform name sent to the server (« windows », « android », « web »…).
+  final String platform;
+  const OperationalMapPage({super.key,required this.api,required this.eventId,required this.deviceId,required this.store,required this.tileUrl,required this.tileAttribution,this.onSettings,
+    this.callsign='',this.aprsTxConsent=false,this.platform='unknown'});
   @override State<OperationalMapPage> createState()=>_OperationalMapPageState();
 }
 
 class _OperationalMapPageState extends State<OperationalMapPage> {
   final _map=MapController(); final _realtime=RealtimeService(); final _location=LocationService(); final _notifications=NotificationService(); final _uuid=const Uuid();
   final Map<String,SarcadePosition> _positions={}; final Map<String,SarcadePoi> _pois={}; final Map<String,ReferenceSite> _references={};
-  StreamSubscription? _rtSub,_gpsSub; Timer? _syncUiTimer; String _status='Connexion…'; bool _tracking=false; bool _showPanel=true; bool _showReferencePanel=false; bool _showHighPoints=true; bool _showRelays=true; String _referenceQuery=''; String? _selectedDevice; ReferenceSite? _selectedReference; List<SarcadePosition> _trace=[]; bool _traceLoading=false; late final OfflineSyncService _sync; bool _layoutInitialized=false;
+  StreamSubscription? _rtSub; Timer? _syncUiTimer; bool _started=false, _starting=false; bool _showPanel=true; bool _showReferencePanel=false; bool _showHighPoints=true; bool _showRelays=true; String _referenceQuery=''; String? _selectedDevice; ReferenceSite? _selectedReference; List<SarcadePosition> _trace=[]; bool _traceLoading=false; late final OfflineSyncService _sync; bool _layoutInitialized=false;
   late final DrawingController _drawing; bool _drawingTools=false; final _mapKey=GlobalKey();
+  late final TrackingService _tracking; late final OperationsService _ops; bool _updatePageShown=false;
   final List<Offset> _stroke=[];
 
   // Phones get the map full width: side panels start closed and open as overlays.
   static const _compactWidth=600.0;
   @override void didChangeDependencies(){super.didChangeDependencies();if(!_layoutInitialized){_layoutInitialized=true;if(MediaQuery.sizeOf(context).width<_compactWidth)_showPanel=false;}}
 
-  @override void initState(){super.initState();_notifications.initialize();_sync=OfflineSyncService(api:widget.api,store:widget.store,eventId:widget.eventId,onRemoteChange:_onRemoteChange);_initDrawing();_loadLocal();_sync.start();_syncUiTimer=Timer.periodic(const Duration(seconds:2),(_){if(mounted)setState((){});});_start();}
+  @override void initState(){super.initState();_notifications.initialize();_sync=OfflineSyncService(api:widget.api,store:widget.store,eventId:widget.eventId,onRemoteChange:_onRemoteChange);_initDrawing();_loadLocal();_sync.start();_initOperations();_syncUiTimer=Timer.periodic(const Duration(seconds:2),(_){if(mounted)setState((){});});_start();}
   bool _validPosition(SarcadePosition p){
     final t=p.time.toUtc(), now=DateTime.now().toUtc();
     return t.isAfter(DateTime.utc(2020)) && t.isBefore(now.add(const Duration(days:1)));
   }
   void _loadLocal(){for(final j in widget.store.positions()){final p=SarcadePosition.fromJson(j);if(p.eventId==widget.eventId&&_validPosition(p))_positions[p.deviceId]=p;}for(final j in widget.store.pois()){final p=SarcadePoi.fromJson(j);if(p.eventId==widget.eventId)_pois[p.id]=p;}for(final j in widget.store.references()){final p=ReferenceSite.fromJson(j);if(p.status=='active')_references[p.id]=p;}}
   Future<void> _start() async {
+    if(_starting)return; _starting=true;
     try {
       final data=await Future.wait([widget.api.latestPositions(widget.eventId),widget.api.pois(widget.eventId)]);
       for(final p in data[0] as List<SarcadePosition>){if(_validPosition(p)){_positions[p.deviceId]=p;widget.store.cachePosition(p.toJson());}}
       for(final p in data[1] as List<SarcadePoi>){_pois[p.id]=p;}
       try{await _refreshReferences(silent:true);}catch(_){}
       _realtime.connect(widget.api.websocketUri(widget.eventId));
-      _rtSub=_realtime.events.listen(_onRealtime,onError:(_){if(mounted)setState(()=>_status='Temps réel indisponible');});
-      if(mounted){setState(()=>_status='Connecté');WidgetsBinding.instance.addPostFrameCallback((_)=>_fitOperators());}
-    } catch(e){if(mounted)setState(()=>_status='Hors connexion');}
+      _rtSub=_realtime.events.listen(_onRealtime);
+      if(mounted){setState(()=>_started=true);WidgetsBinding.instance.addPostFrameCallback((_)=>_fitOperators());}
+    } catch(e){if(mounted)setState((){});} finally {_starting=false;}
   }
+  /// Status at the top of the screen, from the last exchange with the server
+  /// and the real-time channel, refreshed every 2 s.
+  String get _status{
+    if(!_sync.lastSyncOk)return S.t(_started||_sync.lastServerContact!=null?'status.offline':'status.connecting');
+    if(_sync.eventUnknown)return S.t('status.eventUnknown');
+    // Started without network: load the map data and open real time now.
+    if(!_started){_start();return S.t('status.connecting');}
+    final unsent=_sync.unsent;
+    // Server reachable but items set aside: « Connecté · n non envoyés ».
+    if(unsent>0)return S.t('status.unsent',{'n':unsent});
+    if(!_realtime.connected){_realtime.reconnectNow();return S.t('status.realtimeUnavailable');}
+    return S.t('status.connected');
+  }
+  /// Status line: connection state, then the items on their way.
+  String get _statusLine{
+    final n=_sync.inFlight;
+    return n>0?'$_status · ${S.t('status.inFlight',{'n':n})}':_status;
+  }
+  Color? get _statusColor=>_sync.lastSyncOk&&(_sync.unsent>0||_sync.eventUnknown)?Colors.deepOrange:null;
+  void _openUnsent()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>UnsentPage(sync:_sync,actorId:widget.deviceId))).then((_){if(mounted)setState((){});});
   void _onRealtime(RealtimeEvent e){
     if(e.type=='position.updated'){final p=SarcadePosition.fromJson(e.data);if(_validPosition(p)){widget.store.cachePosition(p.toJson());if(mounted)setState((){_positions[p.deviceId]=p;if(_selectedDevice==p.deviceId)_trace.add(p);});}}
     if(e.type=='poi.created'){final p=SarcadePoi.fromJson(e.data);widget.store.cachePoi(e.data);setState(()=>_pois[p.id]=p);}
     if(e.type=='message.created'){_receiveMessage(e.data);}
     if(e.type=='map_feature.upserted'||e.type=='map_feature.deleted'){_applyRemoteFeature(e.data,persist:true);}
     if(e.type=='ack.created'){widget.store.cacheAck(e.data);if(mounted)setState((){});}
+    // PCO settings changed or event closed: the heartbeat brings the new state.
+    if(e.type=='event.settings.updated'||e.type=='event.closed'){unawaited(_ops.beat());}
   }
 
   Future<void> _receiveMessage(Map<String,dynamic> data) async {
@@ -88,17 +123,57 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     if(mounted)setState((){});
   }
 
-  Future<void> _toggleTracking() async {
-    if(_tracking){await _gpsSub?.cancel();setState(()=>_tracking=false);return;}
-    if(!await _location.ensurePermission()){if(mounted)ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Localisation non autorisée ou indisponible')));return;}
-    _gpsSub=_location.positions().listen((g) async {
-      final p=SarcadePosition(id:_uuid.v4(),eventId:widget.eventId,deviceId:widget.deviceId,lat:g.latitude,lon:g.longitude,time:g.timestamp,altM:g.altitude,accuracyM:g.accuracy,headingDeg:g.heading>=0?g.heading:null,speedMps:g.speed>=0?g.speed:null);
-      await widget.store.cachePosition(p.toJson());
-      if(mounted)setState(()=>_positions[widget.deviceId]=p);
-      await _sync.queue(objectId:p.id,objectType:'position',payload:p.toJson());
-    });
-    setState(()=>_tracking=true);
+  void _initOperations(){
+    final prefs=widget.store.trackingPrefs(widget.eventId);
+    _tracking=TrackingService(eventId:widget.eventId,deviceId:widget.deviceId,location:_location,
+      intervalS:prefs?.intervalS??30,onPosition:_sendOwnPosition);
+    _ops=OperationsService(api:widget.api,store:widget.store,sync:_sync,eventId:widget.eventId,deviceId:widget.deviceId,
+      platform:widget.platform,
+      tracking:()=>(enabled:_tracking.enabled,intervalS:_tracking.intervalS),
+      operator:()=>(callsign:widget.callsign,aprsTxConsent:widget.aprsTxConsent));
+    _tracking.setInterval(_ops.settings.clampInterval(prefs?.intervalS??_ops.settings.trackingDefaultS));
+    _tracking.addListener(_onOperationsChanged);
+    _ops.addListener(_onOperationsChanged);
+    _ops.start();
+    if(prefs?.enabled==true&&!_ops.settings.eventEnded)_setTracking(true,_tracking.intervalS,silent:true);
   }
+
+  /// Applies the PCO policy: tracking required during the event, stopped at
+  /// its end, interval kept within the bounds; and the minimal version.
+  void _onOperationsChanged(){
+    final s=_ops.settings;
+    if(s.eventEnded&&_tracking.enabled){_tracking.stop();}
+    else if(s.trackingRequired&&!_tracking.enabled&&!s.eventEnded){_setTracking(true,_tracking.intervalS,silent:true);}
+    final clamped=s.clampInterval(_tracking.intervalS);
+    if(clamped!=_tracking.intervalS)_tracking.setInterval(clamped);
+    if(_ops.update.status==UpdateStatus.required&&!_updatePageShown&&mounted){
+      _updatePageShown=true;
+      Navigator.of(context).push(MaterialPageRoute(builder:(_)=>UpdateRequiredPage(api:widget.api,update:_ops.update,platform:widget.platform)));
+    }
+    if(mounted)setState((){});
+  }
+
+  Future<void> _sendOwnPosition(SarcadePosition p) async {
+    await widget.store.cachePosition(p.toJson());
+    if(mounted)setState(()=>_positions[widget.deviceId]=p);
+    await _sync.queue(objectId:p.id,objectType:'position',payload:p.toJson());
+  }
+
+  Future<void> _setTracking(bool enabled,int intervalS,{bool silent=false}) async {
+    _tracking.setInterval(_ops.settings.clampInterval(intervalS));
+    if(enabled){
+      if(!await _tracking.start()){
+        if(!silent&&mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(S.t('tracking.permission'))));
+      }
+    }else{
+      await _tracking.stop();
+    }
+    await widget.store.saveTrackingPrefs(widget.eventId,_tracking.enabled,_tracking.intervalS);
+    unawaited(_ops.beat());
+  }
+
+  void _openTracking()=>showTrackingSheet(context,tracking:_tracking,settings:_ops.settings,onChange:(enabled,interval)=>_setTracking(enabled,interval));
+
   void _fitOperators(){
     if(_positions.isEmpty)return;
     final pts=_positions.values.map((p)=>LatLng(p.lat,p.lon)).toList();
@@ -176,8 +251,22 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     });
   }
 
+  /// Changes pulled by the automatic synchronisation (every 20 s): shown on
+  /// the map even when the real-time channel missed them (test of 23 Oct
+  /// 2026: the phone's positions reached the server but not the PC map).
   void _onRemoteChange(String objectType,Map<String,dynamic> payload){
     if(objectType=='map_feature')_applyRemoteFeature(payload);
+    if(objectType=='position'){
+      final p=SarcadePosition.fromJson(payload);
+      final current=_positions[p.deviceId];
+      if(p.eventId==widget.eventId&&_validPosition(p)&&(current==null||p.time.isAfter(current.time))&&mounted){
+        setState((){_positions[p.deviceId]=p;if(_selectedDevice==p.deviceId)_trace.add(p);});
+      }
+    }
+    if(objectType=='poi'){
+      final p=SarcadePoi.fromJson(payload);
+      if(p.eventId==widget.eventId&&mounted)setState(()=>_pois[p.id]=p);
+    }
   }
 
   /// Server state of a map object, from the change feed or realtime.
@@ -334,7 +423,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     child:child,
   );
 
-  @override void dispose(){_rtSub?.cancel();_gpsSub?.cancel();_syncUiTimer?.cancel();_sync.dispose();_realtime.dispose();_drawing.dispose();widget.api.close();super.dispose();}
+  @override void dispose(){_rtSub?.cancel();_tracking.removeListener(_onOperationsChanged);_ops.removeListener(_onOperationsChanged);_tracking.dispose();_ops.dispose();_syncUiTimer?.cancel();_sync.dispose();_realtime.dispose();_drawing.dispose();widget.api.close();super.dispose();}
 
   @override Widget build(BuildContext context){
     final sorted=_positions.values.toList()..sort((a,b)=>a.deviceId.compareTo(b.deviceId));
@@ -351,31 +440,38 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     void toggleReferences()=>setState((){_showReferencePanel=!_showReferencePanel;if(_showReferencePanel)_showPanel=false;});
     void openFiles()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>FilesPage(api:widget.api,eventId:widget.eventId,actorId:widget.deviceId)));
     void openLogbook()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>LogbookPage(api:widget.api,eventId:widget.eventId)));
-    final syncButton=IconButton(tooltip:'Synchroniser',onPressed:() async {await _sync.syncNow();if(mounted)setState((){});},icon:const Icon(Icons.sync));
-    final messagesButton=IconButton(tooltip:'Messages',onPressed:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>MessagesPage(api:widget.api,eventId:widget.eventId,actorId:widget.deviceId,sync:_sync,store:widget.store))),icon:Badge(label:Text('${widget.store.pendingCount()}'),child:const Icon(Icons.message)));
+    final syncButton=IconButton(tooltip:S.t('map.sync'),onPressed:() async {await _sync.syncNow();if(mounted)setState((){});},icon:const Icon(Icons.sync));
+    final messagesButton=IconButton(tooltip:S.t('map.messages'),onPressed:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>MessagesPage(api:widget.api,eventId:widget.eventId,actorId:widget.deviceId,sync:_sync,store:widget.store))),icon:Badge(isLabelVisible:_sync.inFlight>0,label:Text('${_sync.inFlight}'),child:const Icon(Icons.message)));
     return Scaffold(
       appBar:compact
         ? AppBar(
             titleSpacing:12,
-            title:Column(crossAxisAlignment:CrossAxisAlignment.start,mainAxisSize:MainAxisSize.min,children:[const Text('SARCADE'),Text('$_status · ${widget.store.pendingCount()} attente',style:Theme.of(context).textTheme.labelSmall,overflow:TextOverflow.ellipsis)]),
+            title:InkWell(onTap:_openUnsent,child:Column(crossAxisAlignment:CrossAxisAlignment.start,mainAxisSize:MainAxisSize.min,children:[const Text('SARCADE'),Text(_statusLine,style:Theme.of(context).textTheme.labelSmall?.copyWith(color:_statusColor),overflow:TextOverflow.ellipsis)])),
             actions:[
               syncButton,
               messagesButton,
               PopupMenuButton<String>(
-                tooltip:'Menu',
-                onSelected:(v){switch(v){case 'fit':_fitOperators();case 'operators':toggleOperators();case 'references':toggleReferences();case 'files':openFiles();case 'logbook':openLogbook();case 'settings':widget.onSettings?.call();}},
+                tooltip:S.t('map.menu'),
+                onSelected:(v){switch(v){case 'fit':_fitOperators();case 'operators':toggleOperators();case 'references':toggleReferences();case 'files':openFiles();case 'logbook':openLogbook();case 'settings':widget.onSettings?.call();case 'unsent':_openUnsent();}},
                 itemBuilder:(_)=>[
-                  const PopupMenuItem(value:'fit',child:ListTile(leading:Icon(Icons.center_focus_strong),title:Text('Cadrer les opérateurs'))),
-                  const PopupMenuItem(value:'operators',child:ListTile(leading:Icon(Icons.groups),title:Text('Opérateurs'))),
-                  const PopupMenuItem(value:'references',child:ListTile(leading:Icon(Icons.cell_tower),title:Text('Référentiel radio'))),
-                  const PopupMenuItem(value:'files',child:ListTile(leading:Icon(Icons.folder_copy_outlined),title:Text('Fichiers'))),
-                  const PopupMenuItem(value:'logbook',child:ListTile(leading:Icon(Icons.receipt_long),title:Text('Main courante'))),
-                  if(widget.onSettings!=null)const PopupMenuItem(value:'settings',child:ListTile(leading:Icon(Icons.settings),title:Text('Paramètres'))),
+                  PopupMenuItem(value:'fit',child:ListTile(leading:const Icon(Icons.center_focus_strong),title:Text(S.t('map.fit')))),
+                  PopupMenuItem(value:'operators',child:ListTile(leading:const Icon(Icons.groups),title:Text(S.t('map.operators')))),
+                  PopupMenuItem(value:'references',child:ListTile(leading:const Icon(Icons.cell_tower),title:Text(S.t('map.references')))),
+                  PopupMenuItem(value:'files',child:ListTile(leading:const Icon(Icons.folder_copy_outlined),title:Text(S.t('map.files')))),
+                  PopupMenuItem(value:'logbook',child:ListTile(leading:const Icon(Icons.receipt_long),title:Text(S.t('map.logbook')))),
+                  PopupMenuItem(value:'unsent',child:ListTile(leading:const Icon(Icons.outbox_outlined),title:Text('${S.t('unsent.title')} (${_sync.unsent})'))),
+                  if(widget.onSettings!=null)PopupMenuItem(value:'settings',child:ListTile(leading:const Icon(Icons.settings),title:Text(S.t('map.settings')))),
                 ],
               ),
             ])
-        : AppBar(title:const Text('SARCADE'),actions:[syncButton,IconButton(tooltip:'Cadrer les opérateurs',onPressed:_fitOperators,icon:const Icon(Icons.center_focus_strong)),IconButton(tooltip:'Opérateurs',onPressed:toggleOperators,icon:const Icon(Icons.groups)),IconButton(tooltip:'Référentiel radio',onPressed:toggleReferences,icon:const Icon(Icons.cell_tower)),messagesButton,IconButton(tooltip:'Fichiers',onPressed:openFiles,icon:const Icon(Icons.folder_copy_outlined)),IconButton(tooltip:'Main courante',onPressed:openLogbook,icon:const Icon(Icons.receipt_long)),if(widget.onSettings!=null)IconButton(tooltip:'Paramètres',onPressed:widget.onSettings,icon:const Icon(Icons.settings)),Padding(padding:const EdgeInsets.symmetric(horizontal:12),child:Center(child:Text('$_status · ${widget.store.pendingCount()} attente')))]),
-      body:_withDrawingShortcuts(Row(children:[
+        : AppBar(title:const Text('SARCADE'),actions:[syncButton,IconButton(tooltip:S.t('map.fit'),onPressed:_fitOperators,icon:const Icon(Icons.center_focus_strong)),IconButton(tooltip:S.t('map.operators'),onPressed:toggleOperators,icon:const Icon(Icons.groups)),IconButton(tooltip:S.t('map.references'),onPressed:toggleReferences,icon:const Icon(Icons.cell_tower)),messagesButton,IconButton(tooltip:S.t('map.files'),onPressed:openFiles,icon:const Icon(Icons.folder_copy_outlined)),IconButton(tooltip:S.t('map.logbook'),onPressed:openLogbook,icon:const Icon(Icons.receipt_long)),if(widget.onSettings!=null)IconButton(tooltip:S.t('map.settings'),onPressed:widget.onSettings,icon:const Icon(Icons.settings)),Padding(padding:const EdgeInsets.symmetric(horizontal:12),child:Center(child:InkWell(onTap:_openUnsent,child:Text(_statusLine,style:TextStyle(color:_statusColor)))))]),
+      body:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+        OperationsBanners(settings:_ops.settings,update:_ops.update,
+          alert:syncAlert(_sync.currentItems,DateTime.now(),_ops.settings.syncAlertMinutes),
+          heldPhotos:_sync.lowBandwidth?widget.store.pendingUploads().length:0,
+          onSyncNow:() async {await _sync.syncNow();if(mounted)setState((){});},
+          onUpdate:()=>downloadUpdate(context,widget.api,_ops.update)),
+        Expanded(child:_withDrawingShortcuts(Row(children:[
         if(_showReferencePanel)SizedBox(width:panelWidth(355),child:Material(elevation:3,child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
           Padding(padding:const EdgeInsets.fromLTRB(14,8,6,0),child:Row(children:[Expanded(child:Text('Référentiel radio (${_filteredReferences().length})',style:Theme.of(context).textTheme.titleMedium)),IconButton(tooltip:'Actualiser le référentiel',onPressed:()=>_refreshReferences(),icon:const Icon(Icons.refresh))])),
           Padding(padding:const EdgeInsets.symmetric(horizontal:12,vertical:4),child:TextField(decoration:const InputDecoration(prefixIcon:Icon(Icons.search),hintText:'Nom, indicatif, fréquence, mode…',isDense:true,border:OutlineInputBorder()),onChanged:(v)=>setState(()=>_referenceQuery=v))),
@@ -431,8 +527,11 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           if(_drawing.selected!=null)Padding(padding:const EdgeInsets.only(top:8),child:SelectionBar(controller:_drawing,onEditLabel:_editSelectedLabel)),
         ])),
       ]))
-      ])),
-      floatingActionButton:FloatingActionButton.extended(onPressed:_toggleTracking,icon:Icon(_tracking?Icons.location_off:Icons.my_location),label:Text(_tracking?'Arrêter GPS':'Partager position')),
+      ]))),
+      ]),
+      floatingActionButton:FloatingActionButton.extended(onPressed:_openTracking,
+        icon:Icon(_tracking.enabled?Icons.my_location:Icons.location_searching),
+        label:Text(_tracking.enabled?S.t('tracking.on',{'interval':intervalLabel(_tracking.intervalS,S.t)}):S.t('tracking.start'))),
     );
   }
 }

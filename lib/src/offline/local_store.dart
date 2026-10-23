@@ -41,7 +41,22 @@ class LocalStore {
   List<Map<String,dynamic>> pending()=>_outboxBox.values.map((e)=>Map<String,dynamic>.from(e)).toList()
     ..sort((a,b)=>(a['client_time'] as String).compareTo(b['client_time'] as String));
   Future<void> acknowledge(String operationId)=>_outboxBox.delete(operationId);
+  /// Replaces an Outbox item (state after an attempt, retry, new event).
+  Future<void> updatePending(Map<String,dynamic> op)=>_outboxBox.put(op['operation_id'],op);
   int pendingCount()=>_outboxBox.length;
+
+  /// Local journal of the device: deletions of unsent items by the operator
+  /// (decision 3 of « Robustesse de la synchronisation »).
+  List<Map<String,dynamic>> localJournal(){final v=_metaBox.get('local_journal');return v is List?v.map((e)=>Map<String,dynamic>.from(e as Map)).toList():[];}
+  Future<void> addLocalJournal(Map<String,dynamic> entry) async {
+    final all=localJournal()..add(entry);
+    await _metaBox.put('local_journal',all.length>500?all.sublist(all.length-500):all);
+  }
+
+  /// Last list of events received from a server, shown without network
+  /// (« Choix de l'événement dans une liste »).
+  List<Map<String,dynamic>> cachedEvents(String server){final v=_metaBox.get('events:${server.toLowerCase()}');return v is List?v.map((e)=>Map<String,dynamic>.from(e as Map)).toList():[];}
+  Future<void> saveEvents(String server,List<Map<String,dynamic>> events)=>_metaBox.put('events:${server.toLowerCase()}',events);
 
   // Drawn map objects, kept locally until the server exposes a map object API.
   List<Map<String,dynamic>> mapFeatures(String eventId)=>_featureBox.values.map((e)=>Map<String,dynamic>.from(e as Map)).where((j)=>j['event_id']==eventId).toList();
@@ -64,6 +79,18 @@ class LocalStore {
 
   Map<String,dynamic>? storedConfig(){final v=_metaBox.get('config');return v==null?null:Map<String,dynamic>.from(v as Map);}
   Future<void> saveConfig(Map<String,dynamic> v)=>_metaBox.put('config',v);
+
+  // Last event settings received from the server, kept for offline starts.
+  Map<String,dynamic>? eventSettings(String eventId){final v=_metaBox.get('settings:$eventId');return v==null?null:Map<String,dynamic>.from(v as Map);}
+  Future<void> saveEventSettings(String eventId,Map<String,dynamic> v)=>_metaBox.put('settings:$eventId',v);
+
+  // Position tracking (Beacon) chosen by the operator for an event.
+  ({bool enabled,int intervalS})? trackingPrefs(String eventId){
+    final v=_metaBox.get('tracking:$eventId');
+    if(v is! Map)return null;
+    return (enabled:v['enabled']==true,intervalS:(v['interval_s'] as num?)?.toInt()??30);
+  }
+  Future<void> saveTrackingPrefs(String eventId,bool enabled,int intervalS)=>_metaBox.put('tracking:$eventId',{'enabled':enabled,'interval_s':intervalS});
 
   String cursor(String eventId)=>_metaBox.get('cursor:$eventId',defaultValue:'0') as String;
   Future<void> setCursor(String eventId,String cursor)=>_metaBox.put('cursor:$eventId',cursor);

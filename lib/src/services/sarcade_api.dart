@@ -50,15 +50,22 @@ class SarcadeApi {
   }
   Future<List<Map<String,dynamic>>> sync(List<Map<String,dynamic>> operations) async {
     final r=await _client.post(Uri.parse('$baseUrl/api/v0.1/sync'),headers:{'content-type':'application/json'},body:jsonEncode(operations));
-    if(r.statusCode!=200) throw Exception('sync_http_${r.statusCode}');
+    if(r.statusCode!=200) throw SarcadeHttpException('sync',r.statusCode,r.body);
     return (jsonDecode(r.body) as List).map((e)=>Map<String,dynamic>.from(e)).toList();
   }
 
   Future<({List<Map<String,dynamic>> changes,String nextCursor})> changes(String eventId,int after) async {
     final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/events/$eventId/sync/changes?after=$after'));
-    if(r.statusCode!=200) throw Exception('changes_http_${r.statusCode}');
+    if(r.statusCode!=200) throw SarcadeHttpException('changes',r.statusCode,r.body);
     final j=jsonDecode(r.body) as Map<String,dynamic>;
     return (changes:(j['changes'] as List).map((e)=>Map<String,dynamic>.from(e)).toList(),nextCursor:j['next_cursor'] as String);
+  }
+
+  /// Events of the server, newest first, closed ones hidden unless asked.
+  Future<List<Map<String,dynamic>>> events({bool includeClosed=false}) async {
+    final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/events${includeClosed?'?include_closed=true':''}'));
+    if(r.statusCode!=200) throw SarcadeHttpException('events',r.statusCode,r.body);
+    return (jsonDecode(r.body) as List).map((e)=>Map<String,dynamic>.from(e as Map)).toList();
   }
 
   Future<List<SarcadeSharedFile>> files(String eventId) async {
@@ -93,6 +100,28 @@ class SarcadeApi {
     final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/events/$eventId/logbook?after=$after'));
     if(r.statusCode!=200) throw Exception('logbook_http_${r.statusCode}');
     return (jsonDecode(r.body) as List).map((e)=>LogbookEntry.fromJson(e)).toList();
+  }
+  /// Periodic contact of the device: the answer carries the PCO settings
+  /// (low-bandwidth mode, tracking policy), the end of the event and the
+  /// minimal client version.
+  Future<Map<String,dynamic>> heartbeat(String eventId,String deviceId,Map<String,dynamic> body) async {
+    final r=await _client.post(Uri.parse('$baseUrl/api/v0.1/events/$eventId/devices/${Uri.encodeComponent(deviceId)}/heartbeat'),
+      headers:{'content-type':'application/json'},body:jsonEncode(body));
+    if(r.statusCode!=200) throw SarcadeHttpException('heartbeat',r.statusCode,r.body);
+    return Map<String,dynamic>.from(jsonDecode(r.body) as Map);
+  }
+  /// Minimal client version, asked at start (note « Mises à jour et sécurité »).
+  Future<Map<String,dynamic>> clientCheck(String deviceId,String platform,String appVersion) async {
+    final r=await _client.post(Uri.parse('$baseUrl/api/v0.1/clients/check'),headers:{'content-type':'application/json'},
+      body:jsonEncode({'device_id':deviceId,'platform':platform,'app_version':appVersion}));
+    if(r.statusCode!=200) throw SarcadeHttpException('client_check',r.statusCode,r.body);
+    return Map<String,dynamic>.from(jsonDecode(r.body) as Map);
+  }
+  /// Bytes of a path of the server (client package, offline map package).
+  Future<List<int>> download(String path) async {
+    final r=await _client.get(Uri.parse('$baseUrl$path'));
+    if(r.statusCode!=200) throw SarcadeHttpException('download',r.statusCode);
+    return r.bodyBytes;
   }
   Uri websocketUri(String eventId){final u=Uri.parse(baseUrl);return u.replace(scheme:u.scheme=='https'?'wss':'ws',path:'/api/v0.1/events/$eventId/ws');}
   void close()=>_client.close();

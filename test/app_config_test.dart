@@ -26,4 +26,13 @@ void main(){
     expect(env.isComplete,isTrue);
     expect(env.copyWith(deviceId:' ').isComplete,isFalse);
   });
+
+  test('language, callsign and APRS consent are stored',(){
+    final c=env.copyWith(language:'en',callsign:'F4ABC-7',aprsTxConsent:true);
+    final back=AppConfig.fromStored(c.toStored(),env);
+    expect(back.language,'en');
+    expect(back.callsign,'F4ABC-7');
+    expect(back.aprsTxConsent,isTrue);
+    expect(env.language,'system');
+  });
 }

@@ -5,6 +5,10 @@ import 'features/map/operational_map_page.dart';
 import 'features/settings/settings_page.dart';
 import 'services/sarcade_api.dart';
 import 'offline/local_store.dart';
+import 'offline/outbox_policy.dart' as outbox;
+import 'offline/sync_service.dart';
+import 'l10n/strings.dart';
+import 'operations/event_settings.dart';
 
 class SarcadeApp extends StatefulWidget {
   final LocalStore store;
@@ -34,17 +38,54 @@ class _SarcadeAppState extends State<SarcadeApp> {
     // Desktop keeps the build-time configuration (run-windows-demo.ps1).
     // A phone cannot be given --dart-define values per operator, so it asks once.
     _needsSetup=!_config.isComplete||(_asksSettings&&stored==null);
+    _applyLanguage();
   }
+
+  void _applyLanguage()=>S.setLanguage(_config.language,
+    systemLanguage:WidgetsBinding.instance.platformDispatcher.locale.languageCode);
+
+  static String get _platform=>platformName(isWeb:kIsWeb,targetPlatform:defaultTargetPlatform.name);
 
   Future<void> _save(AppConfig c) async {
     await widget.store.saveConfig(c.toStored());
     final wasSetup=_needsSetup;
-    if(c.sessionKey==_config.sessionKey&&!wasSetup){_navigator.currentState?.pop();return;}
-    setState((){_config=c;_needsSetup=false;});
+    // Same session: language or operator settings changed, the map stays.
+    if(c.sessionKey==_config.sessionKey&&!wasSetup){setState((){_config=c;_applyLanguage();});_navigator.currentState?.pop();return;}
+    setState((){_config=c;_needsSetup=false;_applyLanguage();});
     if(!wasSetup)_navigator.currentState?.pop();
   }
 
-  void _openSettings()=>_navigator.currentState?.push(MaterialPageRoute(builder:(_)=>SettingsPage(initial:_config,onSave:_save)));
+  void _openSettings()=>_navigator.currentState?.push(MaterialPageRoute(builder:(_)=>_settingsPage(firstRun:false)));
+
+  SettingsPage _settingsPage({required bool firstRun})=>SettingsPage(
+    initial:_config,onSave:_save,firstRun:firstRun,
+    loadEvents:_loadEvents,cachedEvents:widget.store.cachedEvents,
+    waitingFor:(server,eventId)=>outbox.waitingFor(widget.store.pending(),server,eventId),
+    sendFirst:_sendFirst,
+  );
+
+  Future<List<Map<String,dynamic>>> _loadEvents(String server) async {
+    final api=SarcadeApi(baseUrl:server);
+    try{
+      final list=await api.events();
+      await widget.store.saveEvents(server,list);
+      return list;
+    }finally{api.close();}
+  }
+
+  /// « Envoyer d'abord »: the open map's sender when it is the same server
+  /// and event, otherwise a one-shot one. Returns what is still waiting.
+  Future<int> _sendFirst(String server,String eventId) async {
+    final live=OfflineSyncService.active;
+    if(live!=null&&outbox.normalServer(live.server)==outbox.normalServer(server)&&live.eventId==eventId){
+      await live.syncNow();
+    }else{
+      final api=SarcadeApi(baseUrl:server);
+      final once=OfflineSyncService(api:api,store:widget.store,eventId:eventId);
+      try{await once.syncNow();}finally{api.close();}
+    }
+    return outbox.waitingFor(widget.store.pending(),server,eventId);
+  }
 
   @override
   Widget build(BuildContext context)=>MaterialApp(
@@ -53,13 +94,14 @@ class _SarcadeAppState extends State<SarcadeApp> {
     debugShowCheckedModeBanner:false,
     theme:ThemeData(colorScheme:ColorScheme.fromSeed(seedColor:const Color(0xFF173A6A)),useMaterial3:true),
     home:_needsSetup
-      ? SettingsPage(initial:_config,onSave:_save,firstRun:true)
+      ? _settingsPage(firstRun:true)
       : OperationalMapPage(
           key:ValueKey(_config.sessionKey),
           api:_apiFor(_config),
           eventId:_config.eventId,deviceId:_config.deviceId,store:widget.store,
           tileUrl:_config.tileUrl,tileAttribution:_config.tileAttribution,
           onSettings:_openSettings,
+          callsign:_config.callsign,aprsTxConsent:_config.aprsTxConsent,platform:_platform,
         ),
   );
 }
