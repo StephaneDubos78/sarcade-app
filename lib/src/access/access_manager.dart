@@ -87,7 +87,7 @@ class AccessHttpClient extends http.BaseClient {
     final response=await _inner.send(request);
     // Redirections are followed: a call that ends on the Cloudflare sign-in
     // page (or is refused by Access) did not reach SARCADE.
-    final landed=response is http.BaseResponseWithUrl?response.url:null;
+    final Uri? landed=switch(response){http.BaseResponseWithUrl r=>r.url,_=>null};
     if(isAccessChallenge(response.statusCode,response.headers)||(landed!=null&&isAccessPage(landed))){
       access.markRequired(request.url);
       await response.stream.drain<void>();
