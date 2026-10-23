@@ -85,7 +85,7 @@ class _UnsentPageState extends State<UnsentPage> {
         ? Center(child:Text(S.t('unsent.empty')))
         : ListView.separated(
             itemCount:items.length,
-            separatorBuilder:(_,__)=>const Divider(height:1),
+            separatorBuilder:(_,_)=>const Divider(height:1),
             itemBuilder:(context,i){
               final op=items[i];
               final here=_here(op);

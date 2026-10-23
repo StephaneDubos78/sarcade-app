@@ -6,12 +6,13 @@ const local='http://localhost:8000';
 
 Map<String,dynamic> item(String id,{String type='position',String event='nas1',String? server=nas,
     String time='2026-10-23T10:00:00Z',String? priority,String? objectId,Map<String,dynamic>? payload}){
-  return {
+  final op=<String,dynamic>{
     'operation_id':id,'event_id':event,'object_id':objectId??'obj-$id','object_type':type,'action':'create',
     'client_time':time,
-    'payload':payload??{'id':objectId??'obj-$id','event_id':event,if(priority!=null)'priority':priority,'body':'texte $id','lat':48.8,'lon':2.1},
-    if(server!=null)localKey:newLocal(server),
+    'payload':payload??{'id':objectId??'obj-$id','event_id':event,'priority':priority,'body':'texte $id','lat':48.8,'lon':2.1},
   };
+  if(server!=null)op[localKey]=newLocal(server);
+  return op;
 }
 
 void main(){
