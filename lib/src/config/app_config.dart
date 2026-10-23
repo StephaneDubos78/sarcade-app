@@ -1,5 +1,9 @@
 import '../platform/platform_services.dart';
 
+/// Server of the applications by default (decision of 23 October 2026),
+/// always changeable in the settings; a local address works without sign-in.
+const defaultServerUrl='https://app.sarcade.org';
+
 class AppConfig {
   final String serverUrl, eventId, deviceId, tileUrl, tileAttribution;
   /// 'system', 'fr' or 'en' (note « Langues de l'application »).
@@ -12,7 +16,7 @@ class AppConfig {
     this.language='system',this.callsign='',this.aprsTxConsent=false});
   factory AppConfig.fromEnvironment()=>AppConfig(
     // The web app is served by the SARCADE server itself: same origin as the API.
-    serverUrl:const bool.hasEnvironment('SARCADE_SERVER_URL')?const String.fromEnvironment('SARCADE_SERVER_URL'):(servingOrigin()??'http://localhost:8000'),
+    serverUrl:const bool.hasEnvironment('SARCADE_SERVER_URL')?const String.fromEnvironment('SARCADE_SERVER_URL'):(servingOrigin()??defaultServerUrl),
     eventId:const String.fromEnvironment('SARCADE_EVENT_ID',defaultValue:'evt-demo'),
     deviceId:const String.fromEnvironment('SARCADE_DEVICE_ID',defaultValue:'device-demo'),
     tileUrl:const String.fromEnvironment('SARCADE_TILE_URL',defaultValue:'https://tile.openstreetmap.org/{z}/{x}/{y}.png'),

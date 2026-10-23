@@ -205,7 +205,7 @@ class _MessagesPageState extends State<MessagesPage>{
       Row(children:[
         DropdownButton<String>(value:_priority,items:[for(final p in const ['routine','urgent','immediate'])DropdownMenuItem(value:p,child:Text(S.t('priority.$p')))],onChanged:(v)=>setState(()=>_priority=v!)),
         const SizedBox(width:6),
-        Expanded(child:TextField(controller:_text,maxLength:2048,decoration:InputDecoration(hintText:S.t('messages.hint'),counterText:''))),
+        Expanded(child:TextField(controller:_text,maxLength:2048,minLines:1,maxLines:4,decoration:InputDecoration(hintText:S.t('messages.hint'),counterText:''))),
         IconButton(tooltip:S.t('messages.photo'),onPressed:_picking?null:_photo,icon:_picking?const SizedBox(width:20,height:20,child:CircularProgressIndicator(strokeWidth:2)):const Icon(Icons.photo_camera)),
         IconButton(tooltip:S.t('messages.send'),onPressed:_send,icon:const Icon(Icons.send)),
       ]),

@@ -4,6 +4,8 @@ import 'package:file_picker/file_picker.dart';
 import 'package:hive_ce_flutter/hive_ce_flutter.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:web_socket_channel/io.dart';
+import 'package:web_socket_channel/web_socket_channel.dart';
 
 /// Browser builds return true here; installed apps return false.
 const isWebPlatform=false;
@@ -68,3 +70,11 @@ const canOpenSavedFiles=true;
 
 /// Address of the server that served the app, only meaningful in a browser.
 String? servingOrigin()=>null;
+
+/// WebSocket with headers (Cloudflare Access session of the server).
+WebSocketChannel openWebSocket(Uri uri,Map<String,String> headers)=>
+  headers.isEmpty?WebSocketChannel.connect(uri):IOWebSocketChannel.connect(uri,headers:headers);
+
+/// Installed apps: no page to reload; the network state is unknown here.
+void reloadApp(){}
+bool get browserOnline=>false;
