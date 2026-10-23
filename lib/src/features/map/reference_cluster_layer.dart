@@ -14,7 +14,7 @@ import '../../models/reference_site.dart';
 /// zooms in on the group. From [clusterUntilZoom] every site is shown alone.
 class ReferenceClusterLayer extends StatelessWidget {
   const ReferenceClusterLayer({super.key, required this.sites, required this.onSelect,
-      this.cellPx = 56, this.clusterUntilZoom = 13});
+      this.cellPx = 90, this.clusterUntilZoom = 13});
 
   final List<ReferenceSite> sites;
   final void Function(ReferenceSite) onSelect;
