@@ -34,5 +34,7 @@ if(-not (Test-Path ".\windows")){
 }
 flutter pub get
 
-Write-Host "Launching event $EventId..."
-flutter run -d windows --dart-define=SARCADE_SERVER_URL=$ServerUrl --dart-define=SARCADE_EVENT_ID=$EventId --dart-define=SARCADE_DEVICE_ID=$DeviceId --dart-define=SARCADE_TILE_URL=$TileUrl --dart-define=SARCADE_TILE_ATTRIBUTION=$TileAttribution
+# Branch and commit shown in the settings, to know which version runs.
+$Build = "$(git rev-parse --abbrev-ref HEAD 2>$null)@$(git rev-parse --short HEAD 2>$null)"
+Write-Host "Launching event $EventId ($Build)..."
+flutter run -d windows --dart-define=SARCADE_BUILD=$Build --dart-define=SARCADE_SERVER_URL=$ServerUrl --dart-define=SARCADE_EVENT_ID=$EventId --dart-define=SARCADE_DEVICE_ID=$DeviceId --dart-define=SARCADE_TILE_URL=$TileUrl --dart-define=SARCADE_TILE_ATTRIBUTION=$TileAttribution
