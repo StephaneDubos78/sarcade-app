@@ -9,6 +9,10 @@ on:
 permissions:
   contents: read
 
+env:
+  # Shown in the settings to tell test builds apart (branch@commit).
+  SARCADE_BRANCH: ${{ github.head_ref || github.ref_name }}
+
 jobs:
   flutter:
     runs-on: ubuntu-latest
@@ -64,7 +68,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          flutter build windows --release 2>&1 | tee windows-build.log
+          flutter build windows --release --dart-define=SARCADE_BUILD="${SARCADE_BRANCH}@${GITHUB_SHA:0:7}" 2>&1 | tee windows-build.log
       - name: Report Windows build errors
         if: failure()
         shell: bash
@@ -138,7 +142,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          flutter build apk --release 2>&1 | tee android-build.log
+          flutter build apk --release --dart-define=SARCADE_BUILD="${SARCADE_BRANCH}@${GITHUB_SHA::7}" 2>&1 | tee android-build.log
       - name: Report Android build errors
         if: failure()
         shell: bash
@@ -187,7 +191,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          flutter build ios --release --no-codesign 2>&1 | tee ios-build.log
+          flutter build ios --release --no-codesign --dart-define=SARCADE_BUILD="${SARCADE_BRANCH}@${GITHUB_SHA::7}" 2>&1 | tee ios-build.log
       - name: Report iOS build errors
         if: failure()
         shell: bash
@@ -207,7 +211,7 @@ jobs:
       - name: Install Linux build dependencies
         run: |
           sudo apt-get update -q
-          sudo apt-get install -y -q clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev
+          sudo apt-get install -y -q clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libsecret-1-dev libjsoncpp-dev
       - name: Generate Linux runner
         run: |
           if [ ! -d linux ]; then flutter create --platforms=linux --org org.sarcade --no-pub .; fi
@@ -217,7 +221,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          flutter build linux --release 2>&1 | tee linux-build.log
+          flutter build linux --release --dart-define=SARCADE_BUILD="${SARCADE_BRANCH}@${GITHUB_SHA::7}" 2>&1 | tee linux-build.log
       - name: Report Linux build errors
         if: failure()
         shell: bash
@@ -260,7 +264,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          flutter build web --release --no-web-resources-cdn 2>&1 | tee web-build.log
+          flutter build web --release --no-web-resources-cdn --dart-define=SARCADE_BUILD="${SARCADE_BRANCH}@${GITHUB_SHA::7}" 2>&1 | tee web-build.log
       - name: Report web build errors
         if: failure()
         shell: bash
