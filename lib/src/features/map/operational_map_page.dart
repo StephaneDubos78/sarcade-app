@@ -17,6 +17,7 @@ import '../messages/messages_page.dart';
 import '../logbook/logbook_page.dart';
 import '../files/files_page.dart';
 import 'drawing/drawing_controller.dart';
+import 'reference_cluster_layer.dart';
 import 'drawing/drawing_layers.dart';
 import 'drawing/drawing_toolbar.dart';
 import 'drawing/geometry.dart';
@@ -29,6 +30,9 @@ import '../../services/realtime_service.dart';
 import '../../services/sarcade_api.dart';
 import '../../offline/local_store.dart';
 import '../../offline/sync_service.dart';
+import '../../offline/unsent_page.dart';
+import '../../access/access_login_page.dart';
+import '../../access/access_manager.dart';
 import '../../platform/platform_services.dart';
 import '../../l10n/strings.dart';
 import '../../operations/event_settings.dart';
@@ -67,7 +71,7 @@ class OperationalMapPage extends StatefulWidget {
 class _OperationalMapPageState extends State<OperationalMapPage> {
   final _map=MapController(); final _realtime=RealtimeService(); final _location=LocationService(); final _notifications=NotificationService(); final _uuid=const Uuid();
   final Map<String,SarcadePosition> _positions={}; final Map<String,SarcadePoi> _pois={}; final Map<String,ReferenceSite> _references={};
-  StreamSubscription? _rtSub; Timer? _syncUiTimer; String _status=S.t('status.connecting'); bool _showPanel=true; bool _showReferencePanel=false; bool _showHighPoints=true; bool _showRelays=true; String _referenceQuery=''; String? _selectedDevice; ReferenceSite? _selectedReference; List<SarcadePosition> _trace=[]; bool _traceLoading=false; late final OfflineSyncService _sync; bool _layoutInitialized=false;
+  StreamSubscription? _rtSub; Timer? _syncUiTimer; bool _started=false, _starting=false; bool _showPanel=true; bool _showReferencePanel=false; bool _showHighPoints=true; bool _showRelays=true; String _referenceQuery=''; String? _selectedDevice; ReferenceSite? _selectedReference; List<SarcadePosition> _trace=[]; bool _traceLoading=false; late final OfflineSyncService _sync; bool _layoutInitialized=false;
   late final DrawingController _drawing; bool _drawingTools=false; final _mapKey=GlobalKey();
   late final TrackingService _tracking; late final OperationsService _ops; bool _updatePageShown=false;
   late final RoutesController _routes; late final NavigationController _nav; late final RoadGraphService _graphs;
@@ -117,23 +121,70 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   void _openMessages()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>MessagesPage(api:widget.api,eventId:widget.eventId,
     actorId:widget.deviceId,sync:_sync,store:widget.store)));
 
-  @override void initState(){super.initState();_initNotificationActions();_sync=OfflineSyncService(api:widget.api,store:widget.store,eventId:widget.eventId,onRemoteChange:_onRemoteChange);_initDrawing();_loadLocal();_initRoutes();_initMeasure();_sync.start();_initOperations();_loadBasemaps();_syncUiTimer=Timer.periodic(const Duration(seconds:2),(t){if(t.tick%3==0)_drainAnswers();if(mounted)setState((){});});_start();}
+  @override void initState(){super.initState();_initNotificationActions();_sync=OfflineSyncService(api:widget.api,store:widget.store,eventId:widget.eventId,onRemoteChange:_onRemoteChange);_initDrawing();_loadLocal();_initRoutes();_initMeasure();_sync.start();_initOperations();_loadBasemaps();_syncUiTimer=Timer.periodic(const Duration(seconds:2),(t){if(t.tick%3==0)_drainAnswers();if(mounted)setState((){});});AccessManager.instance.addListener(_onAccessChanged);_start();}
   bool _validPosition(SarcadePosition p){
     final t=p.time.toUtc(), now=DateTime.now().toUtc();
     return t.isAfter(DateTime.utc(2020)) && t.isBefore(now.add(const Duration(days:1)));
   }
   void _loadLocal(){for(final j in widget.store.positions()){final p=SarcadePosition.fromJson(j);if(p.eventId==widget.eventId&&_validPosition(p))_positions[p.deviceId]=p;}for(final j in widget.store.pois()){final p=SarcadePoi.fromJson(j);if(p.eventId==widget.eventId)_pois[p.id]=p;}for(final j in widget.store.references()){final p=ReferenceSite.fromJson(j);if(p.status=='active')_references[p.id]=p;}}
   Future<void> _start() async {
+    if(_starting)return; _starting=true;
     try {
       final data=await Future.wait([widget.api.latestPositions(widget.eventId),widget.api.pois(widget.eventId)]);
       for(final p in data[0] as List<SarcadePosition>){if(_validPosition(p)){_positions[p.deviceId]=p;widget.store.cachePosition(p.toJson());}}
       for(final p in data[1] as List<SarcadePoi>){_pois[p.id]=p;}
       try{await _refreshReferences(silent:true);}catch(_){}
-      _realtime.connect(widget.api.websocketUri(widget.eventId));
-      _rtSub=_realtime.events.listen(_onRealtime,onError:(_){if(mounted)setState(()=>_status=S.t('status.realtimeUnavailable'));});
-      if(mounted){setState(()=>_status=S.t('status.connected'));WidgetsBinding.instance.addPostFrameCallback((_)=>_fitOperators());}
-    } catch(e){if(mounted)setState(()=>_status=S.t('status.offline'));}
+      _realtime.connect(widget.api.websocketUri(widget.eventId),headers:widget.api.realtimeHeaders);
+      await _rtSub?.cancel();
+      _rtSub=_realtime.events.listen(_onRealtime);
+      if(mounted){setState(()=>_started=true);WidgetsBinding.instance.addPostFrameCallback((_)=>_fitOperators());}
+    } catch(e){if(mounted)setState((){});} finally {_starting=false;}
   }
+  /// Status at the top of the screen, from the last exchange with the server
+  /// and the real-time channel, refreshed every 2 s.
+  String get _status{
+    // Cloudflare Access answered instead of SARCADE: the server is reachable,
+    // the operator must sign in (not « Hors connexion »).
+    if(AccessManager.instance.requiredFor(widget.api.baseUrl))return S.t('status.accessRequired');
+    if(!_sync.lastSyncOk)return S.t(_started||_sync.lastServerContact!=null?'status.offline':'status.connecting');
+    if(_sync.eventUnknown)return S.t('status.eventUnknown');
+    // Started without network: load the map data and open real time now.
+    if(!_started){_start();return S.t('status.connecting');}
+    final unsent=_sync.unsent;
+    // Server reachable but items set aside: « Connecté · n non envoyés ».
+    if(unsent>0)return S.t('status.unsent',{'n':unsent});
+    if(!_realtime.connected){_realtime.reconnectNow();return S.t('status.realtimeUnavailable');}
+    return S.t('status.connected');
+  }
+  /// Status line: connection state, then the items on their way.
+  String get _statusLine{
+    final n=_sync.inFlight;
+    return n>0?'$_status · ${S.t('status.inFlight',{'n':n})}':_status;
+  }
+  Color? get _statusColor=>AccessManager.instance.requiredFor(widget.api.baseUrl)||(_sync.lastSyncOk&&(_sync.unsent>0||_sync.eventUnknown))?Colors.deepOrange:null;
+
+  /// « Se connecter »: after the sign-in everything that waited leaves.
+  Future<void> _signIn() async {
+    if(!await signInToServer(context,widget.api.baseUrl))return;
+    _realtime.disconnect();
+    if(mounted)setState(()=>_started=false);
+    await _sync.syncNow();
+    unawaited(_ops.beat());
+    unawaited(_start());
+  }
+
+  /// Session ending within 24 h: date shown in the reminder banner.
+  DateTime? get _accessRenewBy{
+    final s=AccessManager.instance.sessionFor(widget.api.baseUrl);
+    return s!=null&&s.renewSoon(DateTime.now().toUtc())?s.expiresAt:null;
+  }
+  void _onAccessChanged(){if(mounted)setState((){});}
+
+  void _toggleDrawingTools(){
+    if(_drawingTools)_drawing.selectTool(null);
+    setState(()=>_drawingTools=!_drawingTools);
+  }
+  void _openUnsent()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>UnsentPage(sync:_sync,actorId:widget.deviceId))).then((_){if(mounted)setState((){});});
   void _onRealtime(RealtimeEvent e){
     if(e.type=='position.updated'){final p=SarcadePosition.fromJson(e.data);if(_validPosition(p)){widget.store.cachePosition(p.toJson());if(mounted)setState((){_positions[p.deviceId]=p;if(_selectedDevice==p.deviceId)_trace.add(p);});}}
     if(e.type=='poi.created'){final p=SarcadePoi.fromJson(e.data);widget.store.cachePoi(e.data);setState(()=>_pois[p.id]=p);}
@@ -558,9 +609,23 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     });
   }
 
+  /// Changes pulled by the automatic synchronisation (every 20 s): shown on
+  /// the map even when the real-time channel missed them (test of 23 Oct
+    if(routeObjectKinds.contains(objectType))_routes.applyRemote(objectType,payload);
+  /// 2026: the phone's positions reached the server but not the PC map).
   void _onRemoteChange(String objectType,Map<String,dynamic> payload){
     if(objectType=='map_feature')_applyRemoteFeature(payload);
-    if(routeObjectKinds.contains(objectType))_routes.applyRemote(objectType,payload);
+    if(objectType=='position'){
+      final p=SarcadePosition.fromJson(payload);
+      final current=_positions[p.deviceId];
+      if(p.eventId==widget.eventId&&_validPosition(p)&&(current==null||p.time.isAfter(current.time))&&mounted){
+        setState((){_positions[p.deviceId]=p;if(_selectedDevice==p.deviceId)_trace.add(p);});
+      }
+    }
+    if(objectType=='poi'){
+      final p=SarcadePoi.fromJson(payload);
+      if(p.eventId==widget.eventId&&mounted)setState(()=>_pois[p.id]=p);
+    }
   }
 
   /// Server state of a map object, from the change feed or realtime.
@@ -616,17 +681,11 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     _drawing.select(hit?.id);
   }
 
-  Future<String?> _askText({required String title,required String initial}){
-    final controller=TextEditingController(text:initial);
-    return showDialog<String>(context:context,builder:(context)=>AlertDialog(
-      title:Text(title),
-      content:TextField(controller:controller,autofocus:true,textCapitalization:TextCapitalization.sentences,maxLength:80,onSubmitted:(v)=>Navigator.pop(context,v)),
-      actions:[
-        TextButton(onPressed:()=>Navigator.pop(context),child:Text(S.t('common.cancel'))),
-        FilledButton(onPressed:()=>Navigator.pop(context,controller.text),child:Text(S.t('common.ok'))),
-      ],
-    )).whenComplete(controller.dispose);
-  }
+  // The dialog owns its text controller: disposing it when the Future
+  // completed freed it while the closing animation still used it
+  // ('_dependents.isEmpty' assertion, Windows test of 13 Oct 2026).
+  Future<String?> _askText({required String title,required String initial})=>
+    showDialog<String>(context:context,builder:(_)=>_TextPromptDialog(title:title,initial:initial));
 
   Future<void> _editSelectedLabel() async {
     final f=_drawing.selected;
@@ -727,17 +786,13 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     child:child,
   );
 
-  @override void dispose(){_opensSub?.cancel();_answersSub?.cancel();_rtSub?.cancel();_tracking.removeListener(_onOperationsChanged);_ops.removeListener(_onOperationsChanged);_tracking.dispose();_ops.dispose();_routes.removeListener(_onRoutesChanged);_nav.removeListener(_onNavigationChanged);_variantHits.dispose();_routes.dispose();_nav.dispose();_graphs.removeListener(_onRoutesChanged);_graphs.dispose();_measure.removeListener(_onRoutesChanged);_measure.dispose();_syncUiTimer?.cancel();_sync.dispose();_realtime.dispose();_drawing.dispose();widget.api.close();super.dispose();}
+  @override void dispose(){AccessManager.instance.removeListener(_onAccessChanged);_opensSub?.cancel();_answersSub?.cancel();_rtSub?.cancel();_tracking.removeListener(_onOperationsChanged);_ops.removeListener(_onOperationsChanged);_tracking.dispose();_ops.dispose();_routes.removeListener(_onRoutesChanged);_nav.removeListener(_onNavigationChanged);_variantHits.dispose();_routes.dispose();_nav.dispose();_graphs.removeListener(_onRoutesChanged);_graphs.dispose();_measure.removeListener(_onRoutesChanged);_measure.dispose();_syncUiTimer?.cancel();_sync.dispose();_realtime.dispose();_drawing.dispose();widget.api.close();super.dispose();}
 
   @override Widget build(BuildContext context){
     final sorted=_positions.values.where((p)=>_showAprs||!p.isAprs).toList()..sort((a,b)=>a.deviceId.compareTo(b.deviceId));
     final markers=<Marker>[
       ...sorted.map((p)=>Marker(point:LatLng(p.lat,p.lon),width:130,height:62,alignment:Alignment.topCenter,child:GestureDetector(onTap:()=>_select(p),child:Column(mainAxisSize:MainAxisSize.min,children:[Icon(p.isAprs?Icons.settings_input_antenna:Icons.person_pin_circle,size:p.isAprs?30:38,color:p.deviceId==widget.deviceId?Colors.orange:(_selectedDevice==p.deviceId?Colors.deepPurple:(p.isAprs?Colors.purple.shade400:Colors.blue))),Container(padding:const EdgeInsets.symmetric(horizontal:6,vertical:2),decoration:BoxDecoration(color:Colors.white,borderRadius:BorderRadius.circular(5),boxShadow:const [BoxShadow(blurRadius:2)]),child:Text(p.label,style:const TextStyle(fontSize:11,fontWeight:FontWeight.w600)))])))),
       ..._pois.values.map((p)=>Marker(point:LatLng(p.lat,p.lon),width:40,height:40,child:Tooltip(message:p.label??p.kind,child:const Icon(Icons.location_on,size:38,color:Colors.red)))),
-      ..._references.values.where((r)=>(r.isHighPoint&&_showHighPoints)||(r.isRelay&&_showRelays)).map((r)=>Marker(
-        point:LatLng(r.lat,r.lon),width:46,height:46,
-        child:Tooltip(message:r.name,child:GestureDetector(onTap:()=>_selectReference(r),child:Icon(r.isHighPoint?Icons.terrain:Icons.cell_tower,size:34,color:r.isHighPoint?Colors.indigo:Colors.deepOrange))),
-      )),
     ];
     final selected=_selectedDevice==null?null:_positions[_selectedDevice];
     final screenWidth=MediaQuery.sizeOf(context).width;
@@ -750,18 +805,18 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     void openFiles()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>FilesPage(api:widget.api,eventId:widget.eventId,actorId:widget.deviceId)));
     void openLogbook()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>LogbookPage(api:widget.api,eventId:widget.eventId)));
     final syncButton=IconButton(tooltip:S.t('map.sync'),onPressed:() async {await _sync.syncNow();if(mounted)setState((){});},icon:const Icon(Icons.sync));
-    final messagesButton=IconButton(tooltip:S.t('map.messages'),onPressed:_openMessages,icon:Badge(label:Text('${widget.store.pendingCount()}'),child:const Icon(Icons.message)));
+    final messagesButton=IconButton(tooltip:S.t('map.messages'),onPressed:_openMessages,icon:Badge(isLabelVisible:_sync.inFlight>0,label:Text('${_sync.inFlight}'),child:const Icon(Icons.message)));
     return Scaffold(
       appBar:compact
         ? AppBar(
             titleSpacing:12,
-            title:Column(crossAxisAlignment:CrossAxisAlignment.start,mainAxisSize:MainAxisSize.min,children:[const Text('SARCADE'),Text('$_status · ${S.t('status.pending',{'n':widget.store.pendingCount()})}',style:Theme.of(context).textTheme.labelSmall,overflow:TextOverflow.ellipsis)]),
+            title:InkWell(onTap:_openUnsent,child:Column(crossAxisAlignment:CrossAxisAlignment.start,mainAxisSize:MainAxisSize.min,children:[const Text('SARCADE'),Text(_statusLine,style:Theme.of(context).textTheme.labelSmall?.copyWith(color:_statusColor),overflow:TextOverflow.ellipsis)])),
             actions:[
               syncButton,
               messagesButton,
               PopupMenuButton<String>(
                 tooltip:S.t('map.menu'),
-                onSelected:(v){switch(v){case 'fit':_fitOperators();case 'operators':toggleOperators();case 'references':toggleReferences();case 'routes':toggleRoutes();case 'weather':_openWeather();case 'goto':_gotoCoordinates();case 'basemap':_chooseBasemap();case 'files':openFiles();case 'logbook':openLogbook();case 'settings':widget.onSettings?.call();}},
+                onSelected:(v){switch(v){case 'fit':_fitOperators();case 'operators':toggleOperators();case 'references':toggleReferences();case 'routes':toggleRoutes();case 'weather':_openWeather();case 'goto':_gotoCoordinates();case 'basemap':_chooseBasemap();case 'files':openFiles();case 'logbook':openLogbook();case 'settings':widget.onSettings?.call();case 'unsent':_openUnsent();}},
                 itemBuilder:(_)=>[
                   PopupMenuItem(value:'fit',child:ListTile(leading:const Icon(Icons.center_focus_strong),title:Text(S.t('map.fit')))),
                   PopupMenuItem(value:'operators',child:ListTile(leading:const Icon(Icons.groups),title:Text(S.t('map.operators')))),
@@ -772,23 +827,27 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
                   PopupMenuItem(value:'references',child:ListTile(leading:const Icon(Icons.cell_tower),title:Text(S.t('map.references')))),
                   PopupMenuItem(value:'files',child:ListTile(leading:const Icon(Icons.folder_copy_outlined),title:Text(S.t('map.files')))),
                   PopupMenuItem(value:'logbook',child:ListTile(leading:const Icon(Icons.receipt_long),title:Text(S.t('map.logbook')))),
+                  PopupMenuItem(value:'unsent',child:ListTile(leading:const Icon(Icons.outbox_outlined),title:Text('${S.t('unsent.title')} (${_sync.unsent})'))),
                   if(widget.onSettings!=null)PopupMenuItem(value:'settings',child:ListTile(leading:const Icon(Icons.settings),title:Text(S.t('map.settings')))),
                 ],
               ),
             ])
-        : AppBar(title:const Text('SARCADE'),actions:[syncButton,IconButton(tooltip:S.t('map.fit'),onPressed:_fitOperators,icon:const Icon(Icons.center_focus_strong)),IconButton(tooltip:S.t('map.operators'),onPressed:toggleOperators,icon:const Icon(Icons.groups)),IconButton(tooltip:S.t('map.references'),onPressed:toggleReferences,icon:const Icon(Icons.cell_tower)),IconButton(tooltip:S.t('routes.menu'),onPressed:toggleRoutes,icon:const Icon(Icons.route)),IconButton(tooltip:S.t('weather.menu'),onPressed:()=>_openWeather(),icon:const Icon(Icons.cloud_outlined)),IconButton(tooltip:S.t('measure.goto'),onPressed:_gotoCoordinates,icon:const Icon(Icons.pin_drop_outlined)),IconButton(tooltip:S.t('basemap.menu'),onPressed:_chooseBasemap,icon:const Icon(Icons.layers_outlined)),messagesButton,IconButton(tooltip:S.t('map.files'),onPressed:openFiles,icon:const Icon(Icons.folder_copy_outlined)),IconButton(tooltip:S.t('map.logbook'),onPressed:openLogbook,icon:const Icon(Icons.receipt_long)),if(widget.onSettings!=null)IconButton(tooltip:S.t('map.settings'),onPressed:widget.onSettings,icon:const Icon(Icons.settings)),Padding(padding:const EdgeInsets.symmetric(horizontal:12),child:Center(child:Text('$_status · ${S.t('status.pending',{'n':widget.store.pendingCount()})}')))]),
+        : AppBar(title:const Text('SARCADE'),actions:[syncButton,IconButton(tooltip:S.t('map.fit'),onPressed:_fitOperators,icon:const Icon(Icons.center_focus_strong)),IconButton(tooltip:S.t('map.operators'),onPressed:toggleOperators,icon:const Icon(Icons.groups)),IconButton(tooltip:S.t('map.references'),onPressed:toggleReferences,icon:const Icon(Icons.cell_tower)),IconButton(tooltip:S.t('routes.menu'),onPressed:toggleRoutes,icon:const Icon(Icons.route)),IconButton(tooltip:S.t('weather.menu'),onPressed:()=>_openWeather(),icon:const Icon(Icons.cloud_outlined)),IconButton(tooltip:S.t('measure.goto'),onPressed:_gotoCoordinates,icon:const Icon(Icons.pin_drop_outlined)),IconButton(tooltip:S.t('basemap.menu'),onPressed:_chooseBasemap,icon:const Icon(Icons.layers_outlined)),messagesButton,IconButton(tooltip:S.t('map.files'),onPressed:openFiles,icon:const Icon(Icons.folder_copy_outlined)),IconButton(tooltip:S.t('map.logbook'),onPressed:openLogbook,icon:const Icon(Icons.receipt_long)),if(widget.onSettings!=null)IconButton(tooltip:S.t('map.settings'),onPressed:widget.onSettings,icon:const Icon(Icons.settings)),Padding(padding:const EdgeInsets.symmetric(horizontal:12),child:Center(child:InkWell(onTap:_openUnsent,child:Text(_statusLine,style:TextStyle(color:_statusColor)))))]),
       body:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
-        OperationsBanners(settings:_ops.settings,update:_ops.update,
-          alert:syncAlert(widget.store.pending(),DateTime.now(),_ops.settings.syncAlertMinutes),
-          heldPhotos:_sync.lowBandwidth?widget.store.pendingUploads().length:0,
-          onSyncNow:() async {await _sync.syncNow();if(mounted)setState((){});},
-          onUpdate:()=>downloadUpdate(context,widget.api,_ops.update)),
         if(_graphs.pendingMobileBytes!=null&&!_graphs.downloading)Material(color:Theme.of(context).colorScheme.secondaryContainer,child:Padding(
           padding:const EdgeInsets.symmetric(horizontal:12,vertical:4),
           child:Row(children:[const Icon(Icons.alt_route,size:18),const SizedBox(width:8),
             Expanded(child:Text(S.t('graph.mobile',{'mb':(_graphs.pendingMobileBytes!/1048576).toStringAsFixed(1)}),style:Theme.of(context).textTheme.bodySmall)),
             TextButton(onPressed:()=>_graphs.check(allowMobile:true),child:Text(S.t('graph.download'))),
           ]))),
+        OperationsBanners(settings:_ops.settings,update:_ops.update,
+          alert:syncAlert(_sync.currentItems,DateTime.now(),_ops.settings.syncAlertMinutes),
+          heldPhotos:_sync.lowBandwidth?widget.store.pendingUploads().length:0,
+          onSyncNow:() async {await _sync.syncNow();if(mounted)setState((){});},
+          onUpdate:()=>downloadUpdate(context,widget.api,_ops.update),
+          accessRequired:AccessManager.instance.requiredFor(widget.api.baseUrl),
+          accessRenewBy:_accessRenewBy,onSignIn:_signIn,
+          onReload:isWebPlatform&&!_sync.lastSyncOk&&_sync.lastServerContact!=null&&browserOnline?reloadApp:null),
         Expanded(child:_withDrawingShortcuts(Row(children:[
         if(_showRoutesPanel)SizedBox(width:panelWidth(360),child:Material(elevation:3,child:RoutesPanel(
           controller:_routes,api:widget.api,actorId:widget.deviceId,selectedRouteId:_selectedRouteId,drawingRouteId:_drawingRouteId,
@@ -809,7 +868,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           Expanded(child:ListView.builder(itemCount:_filteredReferences().length,itemBuilder:(context,index){final r=_filteredReferences()[index];return ListTile(selected:_selectedReference?.id==r.id,leading:Icon(r.isHighPoint?Icons.terrain:Icons.cell_tower,color:r.isHighPoint?Colors.indigo:Colors.deepOrange),title:Text(r.name),subtitle:Text(r.subtitle),onTap:()=>_selectReference(r));})),
           if(_selectedReference!=null)Builder(builder:(context){final r=_selectedReference!;return Container(padding:const EdgeInsets.all(14),decoration:BoxDecoration(border:Border(top:BorderSide(color:Theme.of(context).dividerColor))),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
             Text(r.name,style:const TextStyle(fontWeight:FontWeight.bold)),
-            if(r.callsign?.isNotEmpty==true)Text(S.t('refs.callsign',{'v':r.callsign})),
+            if(r.callsign?.isNotEmpty==true)Text(S.t(r.isHighPoint?'refs.reference':'refs.callsign',{'v':r.callsign})),
             if(r.isHighPoint&&r.altM!=null)Text(S.t('refs.altitude',{'v':r.altM!.toStringAsFixed(0)})),
             if(r.subtype?.isNotEmpty==true)Text(S.t('refs.type',{'v':r.subtype})),
             if(r.mode?.isNotEmpty==true)Text(S.t('refs.mode',{'v':r.mode})),
@@ -840,6 +899,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         ),children:[
           TileLayer(key:ValueKey(_tileUrl),urlTemplate:_tileUrl,userAgentPackageName:'org.sarcade.app',maxZoom:_basemap.maxZoom.toDouble()),
           if(_trace.length>1)PolylineLayer(polylines:_traceSegments().map((segment)=>Polyline(points:segment.map((p)=>LatLng(p.lat,p.lon)).toList(),strokeWidth:4,color:Colors.deepPurple)).toList()),
+          // Reference sites below the drawn objects, grouped when zoomed out.
+          ReferenceClusterLayer(sites:_references.values.where((r)=>(r.isHighPoint&&_showHighPoints)||(r.isRelay&&_showRelays)).toList(),onSelect:_selectReference),
           ...buildDrawingLayers(_drawing),
           ..._variantLayers(),
           ...buildRouteLayers(_routes,selectedRouteId:_selectedRouteId,itinerary:_nav.itinerary?.geometry??const [],draftClosure:_closureDraft,
@@ -855,9 +916,22 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           child:CustomPaint(painter:_StrokePainter(_stroke,Color(_drawing.color),_drawing.strokeWidth)),
         )),
         Positioned(top:8,left:8,right:8,child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-          if(_follow)const SizedBox.shrink()
-          else if(_drawingTools)DrawingToolbar(controller:_drawing,onExport:_exportGeoJson,onImport:_importFile,onClose:(){_drawing.selectTool(null);setState(()=>_drawingTools=false);})
-          else FloatingActionButton.small(heroTag:'drawing-tools',tooltip:S.t('draw.open'),onPressed:()=>setState(()=>_drawingTools=true),child:const Icon(Icons.draw_outlined)),
+          // The drawing button stays in place and toggles the toolbar
+          // (request of 23 October 2026: closing it after a tap by mistake
+          // meant reaching the small cross at the far right). Hidden in
+          // follow mode (navigation variants), like the toolbar before.
+          if(!_follow)Row(crossAxisAlignment:CrossAxisAlignment.start,children:[
+            FloatingActionButton.small(heroTag:'drawing-tools',
+              tooltip:_drawingTools?S.t('draw.close'):S.t('draw.open'),
+              backgroundColor:_drawingTools?Theme.of(context).colorScheme.primary:null,
+              foregroundColor:_drawingTools?Theme.of(context).colorScheme.onPrimary:null,
+              onPressed:_toggleDrawingTools,
+              child:Icon(_drawingTools?Icons.draw:Icons.draw_outlined)),
+            if(_drawingTools)...[
+              const SizedBox(width:8),
+              Flexible(child:DrawingToolbar(controller:_drawing,onExport:_exportGeoJson,onImport:_importFile,onClose:_toggleDrawingTools)),
+            ],
+          ]),
           if(_drawing.isDrawing)Padding(padding:const EdgeInsets.only(top:8),child:DraftBar(controller:_drawing)),
           if(_drawing.selected!=null)Padding(padding:const EdgeInsets.only(top:8),child:SelectionBar(controller:_drawing,onEditLabel:_editSelectedLabel)),
           if(_drawingClosure)Padding(padding:const EdgeInsets.only(top:8),child:Card(child:Padding(padding:const EdgeInsets.symmetric(horizontal:12,vertical:6),child:Row(mainAxisSize:MainAxisSize.min,children:[
@@ -904,4 +978,24 @@ class _StrokePainter extends CustomPainter {
     canvas.drawPath(path,Paint()..color=color..strokeWidth=width..style=PaintingStyle.stroke..strokeCap=StrokeCap.round..strokeJoin=StrokeJoin.round);
   }
   @override bool shouldRepaint(_StrokePainter old)=>true;
+}
+
+
+class _TextPromptDialog extends StatefulWidget {
+  const _TextPromptDialog({required this.title,required this.initial});
+  final String title, initial;
+  @override State<_TextPromptDialog> createState()=>_TextPromptDialogState();
+}
+
+class _TextPromptDialogState extends State<_TextPromptDialog> {
+  late final TextEditingController _controller=TextEditingController(text:widget.initial);
+  @override void dispose(){_controller.dispose();super.dispose();}
+  @override Widget build(BuildContext context)=>AlertDialog(
+    title:Text(widget.title),
+    content:TextField(controller:_controller,autofocus:true,textCapitalization:TextCapitalization.sentences,maxLength:80,onSubmitted:(v)=>Navigator.pop(context,v)),
+    actions:[
+      TextButton(onPressed:()=>Navigator.pop(context),child:Text(S.t('common.cancel'))),
+      FilledButton(onPressed:()=>Navigator.pop(context,_controller.text),child:Text(S.t('common.ok'))),
+    ],
+  );
 }
