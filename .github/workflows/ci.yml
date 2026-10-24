@@ -132,7 +132,23 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+      - name: Fixed signing key (secrets placed by the project owner)
+        # Same key for every test APK: they install over the previous one.
+        # Absent (fork, secrets not yet created): debug signing, as before.
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        shell: bash
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/sarcade.jks"
+            echo "SARCADE_KEYSTORE=$RUNNER_TEMP/sarcade.jks" >> "$GITHUB_ENV"
+          else
+            echo "::warning::ANDROID_KEYSTORE_BASE64 absent: APK signed with a random debug key (uninstall needed to update)"
+          fi
       - name: Generate Android runner
+        env:
+          SARCADE_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          SARCADE_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
         run: |
           if [ ! -d android ]; then flutter create --platforms=android --org org.sarcade --no-pub .; fi
           rm -f test/widget_test.dart
@@ -140,6 +156,9 @@ jobs:
       - run: flutter pub get
       - name: Build APK
         shell: bash
+        env:
+          SARCADE_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          SARCADE_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
         run: |
           set -o pipefail
           flutter build apk --release --dart-define=SARCADE_BUILD="${SARCADE_BRANCH}@${GITHUB_SHA::7}" 2>&1 | tee android-build.log
@@ -168,7 +187,7 @@ jobs:
           if ! gh release view android-dev >/dev/null 2>&1; then
             gh release create android-dev --prerelease --target "$GITHUB_SHA" \
               --title "SARCADE Android (développement)" \
-              --notes "APK de développement V0.1, mis à jour automatiquement par la CI. Signé avec la clé de debug, réservé aux tests."
+              --notes "APK de développement V0.1, mis à jour automatiquement par la CI. Signé avec la clé SARCADE (installation par-dessus la version précédente), réservé aux tests."
           fi
           gh release upload android-dev sarcade-dev.apk --clobber
 
