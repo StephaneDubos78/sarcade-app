@@ -11,6 +11,7 @@ import '../../models/recipient.dart';
 import '../../offline/local_store.dart';
 import '../../offline/sync_service.dart';
 import '../../platform/platform_services.dart';
+import '../../services/notification_service.dart';
 import '../../services/sarcade_api.dart';
 import 'photo_attachment.dart';
 
@@ -126,6 +127,8 @@ class _MessagesPageState extends State<MessagesPage>{
    final a=SarcadeAck(id:_uuid.v4(),eventId:widget.eventId,messageId:m.id,actorId:widget.actorId,status:status,time:DateTime.now().toUtc());
    await widget.store.cacheAck(a.toJson());
    await widget.sync.queue(objectId:a.id,objectType:'ack',payload:a.toJson());
+   // An answer stops the reminders of an immediate message.
+   await NotificationService().answered(m.id,status);
    if(mounted)setState((){});
  }
 

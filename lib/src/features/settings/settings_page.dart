@@ -7,6 +7,7 @@ import '../../config/version.dart';
 import '../../l10n/strings.dart';
 import '../../offline/outbox_policy.dart' show normalServer;
 import '../../operations/event_settings.dart';
+import '../../services/notification_service.dart';
 import '../../services/sarcade_api.dart' show SarcadeHttpException;
 
 /// Operator settings: server address, event and terminal identifier,
@@ -37,6 +38,7 @@ class _SettingsPageState extends State<SettingsPage> {
   late final TextEditingController _callsign=TextEditingController(text:widget.initial.callsign);
   late String _language=widget.initial.language;
   late bool _aprsConsent=widget.initial.aprsTxConsent;
+  late bool _bypassDnd=widget.initial.immediateBypassDnd;
   bool _saving=false;
   List<Map<String,dynamic>> _events=[];
   bool _loadingEvents=false, _eventsOffline=false, _accessRequired=false;
@@ -176,7 +178,8 @@ class _SettingsPageState extends State<SettingsPage> {
     if(!mounted)return;
     setState(()=>_saving=true);
     await widget.onSave(widget.initial.copyWith(serverUrl:server,eventId:event,deviceId:_device.text.trim(),
-      language:_language,callsign:_callsign.text.trim().toUpperCase(),aprsTxConsent:_aprsConsent));
+      language:_language,callsign:_callsign.text.trim().toUpperCase(),aprsTxConsent:_aprsConsent,
+      immediateBypassDnd:_bypassDnd));
     if(mounted)setState(()=>_saving=false);
   }
 
@@ -247,6 +250,19 @@ class _SettingsPageState extends State<SettingsPage> {
           contentPadding:EdgeInsets.zero,
           value:_aprsConsent,onChanged:(v)=>setState(()=>_aprsConsent=v),
           title:Text(S.t('settings.aprsConsent')),subtitle:Text(S.t('settings.aprsConsentHelp')),
+        ),
+        if(NotificationService.supportsDndBypass)SwitchListTile(
+          contentPadding:EdgeInsets.zero,
+          value:_bypassDnd,
+          onChanged:(v) async {
+            setState(()=>_bypassDnd=v);
+            if(!v)return;
+            final granted=await NotificationService().enableDndBypass();
+            if(!granted&&context.mounted){
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(S.t('settings.dndPending'))));
+            }
+          },
+          title:Text(S.t('settings.dndBypass')),subtitle:Text(S.t('settings.dndBypassHelp')),
         ),
         const SizedBox(height:24),
         FilledButton.icon(onPressed:_saving?null:_save,icon:const Icon(Icons.check),label:Text(S.t('common.save'))),

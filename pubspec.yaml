@@ -25,6 +25,9 @@ dependencies:
   web: ^1.1.0
   # System notifications (Android, iOS, Windows, Linux, macOS).
   flutter_local_notifications: ^19.4.0
+  # Reminders of the immediate messages scheduled in UTC (same version as
+  # flutter_local_notifications).
+  timezone: ^0.10.0
   # Compass of the guidance arrow (measure to a designated point).
   sensors_plus: ^6.1.1
   # « Open in… » another map application (navigation level 1).
