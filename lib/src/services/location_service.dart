@@ -14,5 +14,11 @@ class LocationService {
     }
   }
 
+  /// Current position, null when unavailable.
+  Future<Position?> current() async {
+    try{return await Geolocator.getCurrentPosition(locationSettings:const LocationSettings(accuracy:LocationAccuracy.high,timeLimit:Duration(seconds:20)));}
+    catch(_){try{return await Geolocator.getLastKnownPosition();}catch(_){return null;}}
+  }
+
   Stream<Position> positions()=>Geolocator.getPositionStream(locationSettings:const LocationSettings(accuracy:LocationAccuracy.high,distanceFilter:5));
 }
