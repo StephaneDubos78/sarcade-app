@@ -7,6 +7,8 @@ import '../../services/sarcade_api.dart';
 import '../map/drawing/geometry.dart';
 import '../routes/route_models.dart';
 import '../routes/routes_controller.dart';
+import '../../l10n/strings.dart';
+import 'road_graph_service.dart';
 
 enum NavState{idle,computing,active,arrived}
 
@@ -16,7 +18,9 @@ enum NavState{idle,computing,active,arrived}
 /// is shared with the PCO (remaining distance and estimated arrival).
 class NavigationController extends ChangeNotifier {
   final SarcadeApi api; final RoutesController routes; final LocationService location; final String eventId;
-  NavigationController({required this.api,required this.routes,required this.location,required this.eventId});
+  /// Road graph for itineraries computed on the device (level 3).
+  final RoadGraphService? graphs;
+  NavigationController({required this.api,required this.routes,required this.location,required this.eventId,this.graphs});
 
   NavState state=NavState.idle;
   String mode='car'; String label=''; LatLng? destination;
@@ -46,12 +50,21 @@ class NavigationController extends ChangeNotifier {
   Future<Itinerary> _compute(LatLng from,LatLng to) async {
     final straightMode=mode=='straight';
     if(!straightMode){
+      // The server first: finer instructions, closed roads up to date.
       try{
         return Itinerary.fromJson(await api.routing(eventId,[[from.latitude,from.longitude],[to.latitude,to.longitude]],mode));
       }on SarcadeHttpException catch(e){
         notice=e.statusCode==422?'no_route':'engine_unavailable';
       }catch(_){
         notice='engine_unavailable';
+      }
+      // Server unreachable or without engine: computed on the device.
+      final graph=graphs?.graph;
+      if(graph!=null&&notice=='engine_unavailable'){
+        final closed=[for(final c in routes.closures) if(c.active&&c.points.length>1) c.points];
+        final local=graph.route(from,to,mode,closures:closed,t:S.t);
+        if(local!=null){notice='on_device';return local;}
+        notice='no_route';
       }
     }
     return Itinerary.straightLine(from,to,straightMode?'foot':mode);
@@ -62,6 +75,7 @@ class NavigationController extends ChangeNotifier {
     final it=itinerary, dest=destination;
     if(it==null||dest==null)return;
     remaining=it.straight?distanceM(p,dest):remainingM(it.geometry,p);
+    if(!it.straight&&state==NavState.active)_rerouteIfOff(p,it);
     final speed=it.lengthM>0&&it.durationS>0?it.lengthM/it.durationS:1.2;
     eta=DateTime.now().toUtc().add(Duration(seconds:(remaining/speed).round()));
     if(state==NavState.active&&distanceM(p,dest)<=arrivalRadiusM){
@@ -72,6 +86,20 @@ class NavigationController extends ChangeNotifier {
       _share();
     }
     notifyListeners();
+  }
+
+  DateTime _lastReroute=DateTime.fromMillisecondsSinceEpoch(0); bool _rerouting=false;
+
+  /// Automatic new itinerary when the operator leaves the planned one by
+  /// more than 60 m (at most every 30 s).
+  void _rerouteIfOff(LatLng p,Itinerary it){
+    if(_rerouting||DateTime.now().difference(_lastReroute).inSeconds<30)return;
+    var best=double.infinity;
+    for(final q in it.geometry){final d=distanceM(p,q);if(d<best)best=d;}
+    if(best<60)return;
+    _rerouting=true; _lastReroute=DateTime.now();
+    final dest=destination!;
+    _compute(p,dest).then((fresh){itinerary=fresh;notifyListeners();}).whenComplete(()=>_rerouting=false);
   }
 
   /// Bearing to the destination, for the straight-line mode.
