@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
 import 'package:hive_ce_flutter/hive_ce_flutter.dart';
 import 'package:web/web.dart' as web;
+import 'package:web_socket_channel/web_socket_channel.dart';
 
 /// Browser builds return true here; installed apps return false.
 const isWebPlatform=true;
@@ -40,3 +41,10 @@ const canOpenSavedFiles=false;
 
 /// The web app is served by the SARCADE server: same origin as the API.
 String? servingOrigin()=>web.window.location.origin;
+
+/// A browser sends the session cookie with the WebSocket itself.
+WebSocketChannel openWebSocket(Uri uri,Map<String,String> headers)=>WebSocketChannel.connect(uri);
+
+/// Reloads the page: Cloudflare Access asks to sign in again if needed.
+void reloadApp()=>web.window.location.reload();
+bool get browserOnline=>web.window.navigator.onLine;

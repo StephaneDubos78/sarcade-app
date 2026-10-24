@@ -5,6 +5,8 @@ import 'features/map/operational_map_page.dart';
 import 'features/settings/settings_page.dart';
 import 'services/sarcade_api.dart';
 import 'offline/local_store.dart';
+import 'offline/outbox_policy.dart' as outbox;
+import 'offline/sync_service.dart';
 import 'l10n/strings.dart';
 import 'operations/event_settings.dart';
 
@@ -53,7 +55,37 @@ class _SarcadeAppState extends State<SarcadeApp> {
     if(!wasSetup)_navigator.currentState?.pop();
   }
 
-  void _openSettings()=>_navigator.currentState?.push(MaterialPageRoute(builder:(_)=>SettingsPage(initial:_config,onSave:_save)));
+  void _openSettings()=>_navigator.currentState?.push(MaterialPageRoute(builder:(_)=>_settingsPage(firstRun:false)));
+
+  SettingsPage _settingsPage({required bool firstRun})=>SettingsPage(
+    initial:_config,onSave:_save,firstRun:firstRun,
+    loadEvents:_loadEvents,cachedEvents:widget.store.cachedEvents,
+    waitingFor:(server,eventId)=>outbox.waitingFor(widget.store.pending(),server,eventId),
+    sendFirst:_sendFirst,
+  );
+
+  Future<List<Map<String,dynamic>>> _loadEvents(String server) async {
+    final api=SarcadeApi(baseUrl:server);
+    try{
+      final list=await api.events();
+      await widget.store.saveEvents(server,list);
+      return list;
+    }finally{api.close();}
+  }
+
+  /// « Envoyer d'abord »: the open map's sender when it is the same server
+  /// and event, otherwise a one-shot one. Returns what is still waiting.
+  Future<int> _sendFirst(String server,String eventId) async {
+    final live=OfflineSyncService.active;
+    if(live!=null&&outbox.normalServer(live.server)==outbox.normalServer(server)&&live.eventId==eventId){
+      await live.syncNow();
+    }else{
+      final api=SarcadeApi(baseUrl:server);
+      final once=OfflineSyncService(api:api,store:widget.store,eventId:eventId);
+      try{await once.syncNow();}finally{api.close();}
+    }
+    return outbox.waitingFor(widget.store.pending(),server,eventId);
+  }
 
   @override
   Widget build(BuildContext context)=>MaterialApp(
@@ -62,7 +94,7 @@ class _SarcadeAppState extends State<SarcadeApp> {
     debugShowCheckedModeBanner:false,
     theme:ThemeData(colorScheme:ColorScheme.fromSeed(seedColor:const Color(0xFF173A6A)),useMaterial3:true),
     home:_needsSetup
-      ? SettingsPage(initial:_config,onSave:_save,firstRun:true)
+      ? _settingsPage(firstRun:true)
       : OperationalMapPage(
           key:ValueKey(_config.sessionKey),
           api:_apiFor(_config),

@@ -18,7 +18,9 @@ class TrackingService extends ChangeNotifier {
 
   bool _enabled=false; int _intervalS;
   StreamSubscription<Position>? _gps; Timer? _timer;
-  Position? _last; DateTime? _lastSentFix;
+  Position? _last;
+  /// A new GPS fix arrived since the last position sent.
+  bool _fresh=false;
 
   TrackingService({required this.eventId,required this.deviceId,required this.location,required this.onPosition,this._intervalS=30});
 
@@ -32,7 +34,7 @@ class TrackingService extends ChangeNotifier {
     if(!await location.ensurePermission())return false;
     _gps=location.positions(background:true,title:S.t('tracking.title'),text:S.t('tracking.notification')).listen((p){
       final first=_last==null;
-      _last=p;
+      _last=p; _fresh=true;
       if(first)_send();
     },onError:(_){});
     _enabled=true;
@@ -65,13 +67,22 @@ class TrackingService extends ChangeNotifier {
   /// standing still without a new fix does not repeat the same position.
   Future<void> _send() async {
     final g=_last;
-    if(g==null||(_lastSentFix!=null&&!g.timestamp.isAfter(_lastSentFix!)))return;
-    _lastSentFix=g.timestamp;
+    if(g==null||!_fresh)return;
+    _fresh=false;
     await onPosition(SarcadePosition(id:_uuid.v4(),eventId:eventId,deviceId:deviceId,lat:g.latitude,lon:g.longitude,
-      time:g.timestamp,altM:g.altitude,accuracyM:g.accuracy,headingDeg:g.heading>=0?g.heading:null,speedMps:g.speed>=0?g.speed:null));
+      time:fixTime(g.timestamp,DateTime.now().toUtc()),altM:g.altitude,accuracyM:g.accuracy,headingDeg:g.heading>=0?g.heading:null,speedMps:g.speed>=0?g.speed:null));
   }
 
   @override void dispose(){_timer?.cancel();_gps?.cancel();super.dispose();}
+}
+
+/// Time of a GPS fix, or now when the fix carries a time that cannot be
+/// right: Windows gave positions dated January 1970 (recettes of 13 and
+/// 23 October 2026, « Dernière position : 497258 h »).
+DateTime fixTime(DateTime gps,DateTime now){
+  final t=gps.toUtc();
+  if(t.isBefore(DateTime.utc(2020))||t.difference(now).abs()>const Duration(hours:12))return now;
+  return t;
 }
 
 /// « 30 s », « 2 min ».
