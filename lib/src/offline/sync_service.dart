@@ -7,6 +7,9 @@ import 'local_store.dart';
 import 'outbox_policy.dart';
 import 'sync_operation.dart';
 
+/// Object types of routes and navigation, cached in one box.
+const routeObjectKinds={'route','route_waypoint','route_passage','road_closure','itinerary'};
+
 class OfflineSyncService {
   final SarcadeApi api; final LocalStore store; final String eventId;
   /// Called for every change of the feed, after it is cached locally.
@@ -108,6 +111,10 @@ class OfflineSyncService {
         if(c['object_type']=='map_feature'&&!isPending(c['object_id'] as String)){
           if(p['deleted']==true){await store.deleteMapFeature(c['object_id'] as String);}
           else{await store.saveMapFeature(p);}
+        }
+        if(routeObjectKinds.contains(c['object_type'])&&!isPending(c['object_id'] as String)){
+          if(p['deleted']==true){await store.deleteRouteObject(c['object_id'] as String);}
+          else{await store.saveRouteObject({...p,'kind':c['object_type']});}
         }
         if(c['object_type']=='comm_group'&&!isPending(c['object_id'] as String)){
           if(p['deleted']==true){await store.deleteGroup(c['object_id'] as String);}
