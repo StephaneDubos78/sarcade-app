@@ -28,7 +28,6 @@ from pathlib import Path
 import os
 
 MANIFEST = Path("android/app/src/main/AndroidManifest.xml")
-GRADLE = Path("android/app/build.gradle.kts")
 SIGNING = """    signingConfigs {
         create("sarcade") {
             storeFile = file(System.getenv("SARCADE_KEYSTORE")!!)
@@ -45,10 +44,10 @@ def patch_signing() -> int:
     if not os.environ.get("SARCADE_KEYSTORE"):
         print("signing: no SARCADE_KEYSTORE, debug signing kept")
         return 0
-    if not GRADLE.exists():
-        print(f"error: {GRADLE} not found (template changed?)", file=sys.stderr)
+    if not GRADLE_KTS.exists():
+        print(f"error: {GRADLE_KTS} not found (template changed?)", file=sys.stderr)
         return 1
-    gradle = GRADLE.read_text(encoding="utf-8")
+    gradle = GRADLE_KTS.read_text(encoding="utf-8")
     if 'create("sarcade")' not in gradle:
         gradle, n = re.subn(r"(\n\s*buildTypes\s*\{)", "\n" + SIGNING.rstrip("\n") + r"\1", gradle, count=1)
         if n != 1:
@@ -59,8 +58,8 @@ def patch_signing() -> int:
     if n == 0 and 'getByName("sarcade")' not in gradle:
         print("error: release signingConfig not found in build.gradle.kts", file=sys.stderr)
         return 1
-    GRADLE.write_text(gradle, encoding="utf-8")
-    print(f"signing: release signed with the SARCADE key ({GRADLE})")
+    GRADLE_KTS.write_text(gradle, encoding="utf-8")
+    print(f"signing: release signed with the SARCADE key ({GRADLE_KTS})")
     return 0
 OPTIONAL_FEATURES = [
     "android.hardware.touchscreen",
