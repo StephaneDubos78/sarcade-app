@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
+import '../config/https_switch.dart';
 import '../config/version.dart';
 import '../offline/local_store.dart';
 import '../offline/sync_service.dart';
@@ -16,6 +17,8 @@ class OperationsService extends ChangeNotifier {
   /// Current tracking state and operator settings, read at each heartbeat.
   final ({bool enabled,int intervalS}) Function() tracking;
   final ({String callsign,bool aprsTxConsent}) Function() operator;
+  /// The server announces an HTTPS address while this device uses plain HTTP.
+  final void Function(String httpsUrl)? onHttpsAvailable;
 
   EventSettings settings=const EventSettings();
   ClientUpdate update=const ClientUpdate();
@@ -25,7 +28,7 @@ class OperationsService extends ChangeNotifier {
   bool _busy=false;
 
   OperationsService({required this.api,required this.store,required this.sync,required this.eventId,
-    required this.deviceId,required this.platform,required this.tracking,required this.operator}){
+    required this.deviceId,required this.platform,required this.tracking,required this.operator,this.onHttpsAvailable}){
     final cached=store.eventSettings(eventId);
     if(cached!=null){settings=EventSettings.fromHeartbeat(cached);_applyToSync();}
   }
@@ -84,12 +87,27 @@ class OperationsService extends ChangeNotifier {
     }catch(_){/* checked again with the heartbeats */}
   }
 
-  /// Navigation app chosen by the organisation (« Open in… »), kept offline.
+  /// Settings of the organisation, kept offline: navigation app (« Open
+  /// in… »), HTTPS address, Pro modules enabled by the licence of the server.
   Future<void> _saveOrganization(Object? organization) async {
-    if(organization is! Map||organization['navigation'] is! Map)return;
-    final nav=organization['navigation'] as Map;
-    await store.setPreference('nav_app','${nav['app']??'operator'}');
-    await store.setPreference('nav_hide_tracking',nav['hide_tracking_apps']==true?'1':null);
+    if(organization is! Map)return;
+    if(organization['navigation'] is Map){
+      final nav=organization['navigation'] as Map;
+      await store.setPreference('nav_app','${nav['app']??'operator'}');
+      await store.setPreference('nav_hide_tracking',nav['hide_tracking_apps']==true?'1':null);
+    }
+    if(organization['https'] is Map){
+      final https=organization['https'] as Map;
+      final url=https['url'] as String?;
+      await store.setPreference('https_url',url);
+      await store.setPreference('https_root_certificate_url',https['root_certificate_url'] as String?);
+      final target=httpsTarget(api.baseUrl,url);
+      if(target!=null)onHttpsAvailable?.call(target);
+    }
+    if(organization['pro'] is Map){
+      final modules=(organization['pro'] as Map)['modules'];
+      await store.setPreference('pro_modules',modules is List&&modules.isNotEmpty?modules.join(','):null);
+    }
   }
 
   void _applyToSync()=>sync.setLowBandwidth(settings.lowBandwidth,intervalS:settings.lowBandwidthIntervalS);
