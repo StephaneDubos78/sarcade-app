@@ -57,6 +57,8 @@ class _SarcadeAppState extends State<SarcadeApp> {
     if(c.sessionKey==_config.sessionKey&&!wasSetup){setState((){_config=c;_applyLanguage();});_navigator.currentState?.pop();return;}
     setState((){_config=c;_needsSetup=false;_applyLanguage();});
     if(!wasSetup)_navigator.currentState?.pop();
+  }
+
   final _httpsTried=<String>{};
 
   /// Switch to the HTTPS address announced by the server, kept when it
@@ -75,7 +77,6 @@ class _SarcadeAppState extends State<SarcadeApp> {
     }
   }
 
-  }
 
   void _openSettings()=>_navigator.currentState?.push(MaterialPageRoute(builder:(_)=>_settingsPage(firstRun:false)));
 
