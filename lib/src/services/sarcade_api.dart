@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import '../access/access_manager.dart';
 import '../models/poi.dart';
 import '../models/position.dart';
 import '../models/message.dart';
@@ -17,7 +18,9 @@ class SarcadeHttpException implements Exception {
 
 class SarcadeApi {
   final String baseUrl; final http.Client _client;
-  SarcadeApi({required this.baseUrl,http.Client? client}):_client=client??http.Client();
+  SarcadeApi({required this.baseUrl,http.Client? client}):_client=client??AccessHttpClient();
+  /// Headers of the Cloudflare Access session, for the real-time channel.
+  Map<String,String> realtimeHeaders()=>AccessManager.instance.headersFor(Uri.parse(baseUrl));
   Future<List<SarcadePosition>> latestPositions(String eventId) async {
     final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/events/$eventId/positions/latest'));
     if(r.statusCode!=200) throw Exception('positions_http_${r.statusCode}');
@@ -50,15 +53,22 @@ class SarcadeApi {
   }
   Future<List<Map<String,dynamic>>> sync(List<Map<String,dynamic>> operations) async {
     final r=await _client.post(Uri.parse('$baseUrl/api/v0.1/sync'),headers:{'content-type':'application/json'},body:jsonEncode(operations));
-    if(r.statusCode!=200) throw Exception('sync_http_${r.statusCode}');
+    if(r.statusCode!=200) throw SarcadeHttpException('sync',r.statusCode,r.body);
     return (jsonDecode(r.body) as List).map((e)=>Map<String,dynamic>.from(e)).toList();
   }
 
   Future<({List<Map<String,dynamic>> changes,String nextCursor})> changes(String eventId,int after) async {
     final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/events/$eventId/sync/changes?after=$after'));
-    if(r.statusCode!=200) throw Exception('changes_http_${r.statusCode}');
+    if(r.statusCode!=200) throw SarcadeHttpException('changes',r.statusCode,r.body);
     final j=jsonDecode(r.body) as Map<String,dynamic>;
     return (changes:(j['changes'] as List).map((e)=>Map<String,dynamic>.from(e)).toList(),nextCursor:j['next_cursor'] as String);
+  }
+
+  /// Events of the server, newest first, closed ones hidden unless asked.
+  Future<List<Map<String,dynamic>>> events({bool includeClosed=false}) async {
+    final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/events${includeClosed?'?include_closed=true':''}'));
+    if(r.statusCode!=200) throw SarcadeHttpException('events',r.statusCode,r.body);
+    return (jsonDecode(r.body) as List).map((e)=>Map<String,dynamic>.from(e as Map)).toList();
   }
 
   Future<List<SarcadeSharedFile>> files(String eventId) async {

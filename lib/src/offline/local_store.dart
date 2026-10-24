@@ -33,6 +33,9 @@ class LocalStore {
   List<Map<String,dynamic>> positions()=>_positionBox.values.map((e)=>Map<String,dynamic>.from(e)).toList();
   List<Map<String,dynamic>> pois()=>_poiBox.values.map((e)=>Map<String,dynamic>.from(e)).toList();
   List<Map<String,dynamic>> messages()=>_messageBox.values.map((e)=>Map<String,dynamic>.from(e)).toList();
+  /// Changes of messages and acknowledgements, from any source (real time,
+  /// synchronisation, this device), so open screens can refresh.
+  List<Stream<BoxEvent>> messageChanges()=>[_messageBox.watch(),_ackBox.watch()];
   List<Map<String,dynamic>> acks()=>_ackBox.values.map((e)=>Map<String,dynamic>.from(e)).toList();
   List<Map<String,dynamic>> references()=>_referenceBox.values.map((e)=>Map<String,dynamic>.from(e)).toList();
 
@@ -40,7 +43,22 @@ class LocalStore {
   List<Map<String,dynamic>> pending()=>_outboxBox.values.map((e)=>Map<String,dynamic>.from(e)).toList()
     ..sort((a,b)=>(a['client_time'] as String).compareTo(b['client_time'] as String));
   Future<void> acknowledge(String operationId)=>_outboxBox.delete(operationId);
+  /// Replaces an Outbox item (state after an attempt, retry, new event).
+  Future<void> updatePending(Map<String,dynamic> op)=>_outboxBox.put(op['operation_id'],op);
   int pendingCount()=>_outboxBox.length;
+
+  /// Local journal of the device: deletions of unsent items by the operator
+  /// (decision 3 of « Robustesse de la synchronisation »).
+  List<Map<String,dynamic>> localJournal(){final v=_metaBox.get('local_journal');return v is List?v.map((e)=>Map<String,dynamic>.from(e as Map)).toList():[];}
+  Future<void> addLocalJournal(Map<String,dynamic> entry) async {
+    final all=localJournal()..add(entry);
+    await _metaBox.put('local_journal',all.length>500?all.sublist(all.length-500):all);
+  }
+
+  /// Last list of events received from a server, shown without network
+  /// (« Choix de l'événement dans une liste »).
+  List<Map<String,dynamic>> cachedEvents(String server){final v=_metaBox.get('events:${server.toLowerCase()}');return v is List?v.map((e)=>Map<String,dynamic>.from(e as Map)).toList():[];}
+  Future<void> saveEvents(String server,List<Map<String,dynamic>> events)=>_metaBox.put('events:${server.toLowerCase()}',events);
 
   // Drawn map objects, kept locally until the server exposes a map object API.
   List<Map<String,dynamic>> mapFeatures(String eventId)=>_featureBox.values.map((e)=>Map<String,dynamic>.from(e as Map)).where((j)=>j['event_id']==eventId).toList();
