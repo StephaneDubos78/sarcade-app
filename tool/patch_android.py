@@ -11,6 +11,8 @@ CI generates android/ and this script applies the SARCADE-specific settings:
 - hardware features declared optional (touchscreen, GPS, location), so the
   Play Store also offers the app on Chromebooks without touch screen or GPS:
   a location permission otherwise implies a required GPS feature
+- notifications (POST_NOTIFICATIONS, Android 13+) and core library
+  desugaring in the Gradle build, required by flutter_local_notifications
 
 - release signing with the fixed SARCADE key when the CI provides it
   (SARCADE_KEYSTORE and passwords in the environment, from GitHub secrets):
@@ -26,7 +28,6 @@ from pathlib import Path
 import os
 
 MANIFEST = Path("android/app/src/main/AndroidManifest.xml")
-GRADLE = Path("android/app/build.gradle.kts")
 SIGNING = """    signingConfigs {
         create("sarcade") {
             storeFile = file(System.getenv("SARCADE_KEYSTORE")!!)
@@ -43,10 +44,10 @@ def patch_signing() -> int:
     if not os.environ.get("SARCADE_KEYSTORE"):
         print("signing: no SARCADE_KEYSTORE, debug signing kept")
         return 0
-    if not GRADLE.exists():
-        print(f"error: {GRADLE} not found (template changed?)", file=sys.stderr)
+    if not GRADLE_KTS.exists():
+        print(f"error: {GRADLE_KTS} not found (template changed?)", file=sys.stderr)
         return 1
-    gradle = GRADLE.read_text(encoding="utf-8")
+    gradle = GRADLE_KTS.read_text(encoding="utf-8")
     if 'create("sarcade")' not in gradle:
         gradle, n = re.subn(r"(\n\s*buildTypes\s*\{)", "\n" + SIGNING.rstrip("\n") + r"\1", gradle, count=1)
         if n != 1:
@@ -57,8 +58,8 @@ def patch_signing() -> int:
     if n == 0 and 'getByName("sarcade")' not in gradle:
         print("error: release signingConfig not found in build.gradle.kts", file=sys.stderr)
         return 1
-    GRADLE.write_text(gradle, encoding="utf-8")
-    print(f"signing: release signed with the SARCADE key ({GRADLE})")
+    GRADLE_KTS.write_text(gradle, encoding="utf-8")
+    print(f"signing: release signed with the SARCADE key ({GRADLE_KTS})")
     return 0
 OPTIONAL_FEATURES = [
     "android.hardware.touchscreen",
@@ -71,7 +72,38 @@ PERMISSIONS = [
     "android.permission.ACCESS_NETWORK_STATE",
     "android.permission.ACCESS_FINE_LOCATION",
     "android.permission.ACCESS_COARSE_LOCATION",
+    "android.permission.POST_NOTIFICATIONS",
 ]
+GRADLE_KTS = Path("android/app/build.gradle.kts")
+GRADLE = Path("android/app/build.gradle")
+DESUGAR = "com.android.tools:desugar_jdk_libs:2.1.5"
+
+
+def patch_gradle() -> bool:
+    """Core library desugaring (Java 8+ APIs on older Android versions)."""
+    if GRADLE_KTS.exists():
+        path, kts = GRADLE_KTS, True
+    elif GRADLE.exists():
+        path, kts = GRADLE, False
+    else:
+        print("error: android/app/build.gradle(.kts) not found", file=sys.stderr)
+        return False
+    text = path.read_text(encoding="utf-8")
+    flag = "isCoreLibraryDesugaringEnabled = true" if kts else "coreLibraryDesugaringEnabled true"
+    if flag not in text:
+        text, n = re.subn(r"(compileOptions\s*\{)", r"\1\n        " + flag, text, count=1)
+        if n != 1:
+            print("error: compileOptions block not found", file=sys.stderr)
+            return False
+    dep = f'coreLibraryDesugaring("{DESUGAR}")' if kts else f"coreLibraryDesugaring '{DESUGAR}'"
+    if "coreLibraryDesugaring(" not in text and "coreLibraryDesugaring '" not in text:
+        if re.search(r"^dependencies\s*\{", text, flags=re.M):
+            text = re.sub(r"^dependencies\s*\{", "dependencies {\n    " + dep, text, count=1, flags=re.M)
+        else:
+            text += "\ndependencies {\n    " + dep + "\n}\n"
+    path.write_text(text, encoding="utf-8")
+    print(f"patched {path}")
+    return True
 
 
 def main() -> int:
@@ -104,6 +136,8 @@ def main() -> int:
 
     MANIFEST.write_text(xml, encoding="utf-8")
     print(f"patched {MANIFEST}")
+    if not patch_gradle():
+        return 1
     return patch_signing()
 
 
