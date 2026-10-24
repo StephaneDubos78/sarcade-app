@@ -55,7 +55,14 @@ class MeasureController extends ChangeNotifier {
 
   double? get distanceM=>origin==null||target==null?null:geo.distanceM(origin!.point,target!);
   double? get trueAzimuth=>origin==null||target==null?null:geo.bearingDeg(origin!.point,target!);
-  double get declination=>declinationOverride??(origin==null?0:magneticDeclination(origin!.point.latitude,origin!.point.longitude,DateTime.now()));
+  /// Declination of the World Magnetic Model at the origin, always computed
+  /// so that it is shown next to a manual value.
+  double get wmmDeclination=>origin==null?0:magneticDeclination(origin!.point.latitude,origin!.point.longitude,DateTime.now());
+  double get declination=>declinationOverride??wmmDeclination;
+  bool get manualDeclination=>declinationOverride!=null;
+  /// WMM2025 is valid until 2030.0: afterwards a warning asks for an update
+  /// of the application (decision of 10 Oct 2026).
+  static bool wmmExpired([DateTime? now])=>decimalYear(now??DateTime.now())>=wmmValidUntil;
   double? get magneticAzimuth{final t=trueAzimuth;return t==null?null:(t-declination+360)%360;}
   /// Age of my position, for « position ancienne de X min ».
   Duration? get originAge=>origin?.time==null?null:DateTime.now().toUtc().difference(origin!.time!.toUtc());
@@ -113,3 +120,18 @@ double? compassHeading(List<double> gravity,List<double> field){
   final my=naz*hx-nax*hz;
   return (math.atan2(hy,my)*180/math.pi+360)%360;
 }
+
+/// Declination typed by the operator: « 2,5 », « -1.2 », « 2.5 E », « 1,2 O »,
+/// « 1.2W ». Positive east. Null when not understood or beyond 90°.
+double? parseDeclination(String text){
+  final m=RegExp(r'^\s*([+-]?\d{1,2}(?:[.,]\d+)?)\s*°?\s*([EOW])?\s*$').firstMatch(text.trim().toUpperCase());
+  if(m==null)return null;
+  var v=double.parse(m[1]!.replaceAll(',','.'));
+  if(m[2]=='O'||m[2]=='W')v=-v.abs();
+  if(m[2]=='E')v=v.abs();
+  return v.abs()<=90?v:null;
+}
+
+/// « 2,0° E », « 1,5° O » (French), « 1.5° W » (English).
+String formatDeclination(double d,{String decimal=',',String east='E',String west='O'})=>
+  '${d.abs().toStringAsFixed(1).replaceAll('.',decimal)}° ${d>=0?east:west}';
