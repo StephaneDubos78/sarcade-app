@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -26,7 +27,9 @@ class _MessagesPageState extends State<MessagesPage>{
  /// Target when no group is selected: general broadcast or a direct recipient.
  bool _direct=false; String _recipientType='user';
 
- @override void initState(){super.initState();_refreshGroups();}
+ final _watch=<StreamSubscription>[];
+ // Messages received while this screen is open appear without the button.
+ @override void initState(){super.initState();_refreshGroups();for(final s in widget.store.messageChanges()){_watch.add(s.listen((_){if(mounted)setState((){});}));}}
 
  List<CommGroup> get _groups=>widget.store.groups(widget.eventId).map(CommGroup.fromJson).toList();
  CommGroup? get _group{if(_groupId==null)return null;for(final g in _groups){if(g.id==_groupId)return g;}return null;}
@@ -145,7 +148,7 @@ class _MessagesPageState extends State<MessagesPage>{
    return ids.map((r)=>r.startsWith('group:')?(groups[r.substring(6)]?.name??r):r.replaceFirst(RegExp(r'^(user|team):'),'')).join(', ');
  }
 
- @override void dispose(){_text.dispose();_recipient.dispose();super.dispose();}
+ @override void dispose(){for(final w in _watch){w.cancel();}_text.dispose();_recipient.dispose();super.dispose();}
 
  @override Widget build(BuildContext context){
    final messages=_messages,acks=_acks;
@@ -202,7 +205,7 @@ class _MessagesPageState extends State<MessagesPage>{
       Row(children:[
         DropdownButton<String>(value:_priority,items:[for(final p in const ['routine','urgent','immediate'])DropdownMenuItem(value:p,child:Text(S.t('priority.$p')))],onChanged:(v)=>setState(()=>_priority=v!)),
         const SizedBox(width:6),
-        Expanded(child:TextField(controller:_text,maxLength:2048,decoration:InputDecoration(hintText:S.t('messages.hint'),counterText:''))),
+        Expanded(child:TextField(controller:_text,maxLength:2048,minLines:1,maxLines:4,decoration:InputDecoration(hintText:S.t('messages.hint'),counterText:''))),
         IconButton(tooltip:S.t('messages.photo'),onPressed:_picking?null:_photo,icon:_picking?const SizedBox(width:20,height:20,child:CircularProgressIndicator(strokeWidth:2)):const Icon(Icons.photo_camera)),
         IconButton(tooltip:S.t('messages.send'),onPressed:_send,icon:const Icon(Icons.send)),
       ]),
@@ -242,29 +245,46 @@ class _PhotoThumb extends StatefulWidget {
  @override State<_PhotoThumb> createState()=>_PhotoThumbState();
 }
 class _PhotoThumbState extends State<_PhotoThumb>{
- late Future<Uint8List> _bytes=_load();
- Future<Uint8List> _load() async {
+ // The photo can reach the server long after its message: sender still
+ // uploading, or photo held on the sender's device by the low-bandwidth mode
+ // until the PCO lifts it (test of 23 Oct 2026). The thumbnail shows
+ // « Photo en attente » and retries by itself, every 5 s then every 20 s,
+ // for an hour; after that, a tap retries.
+ Uint8List? _bytes; bool _waiting=false, _gaveUp=false; Timer? _retry; int _attempt=0;
+ @override void initState(){super.initState();_load();}
+ @override void dispose(){_retry?.cancel();super.dispose();}
+ Future<void> _load() async {
    final id=widget.attachment.fileId;
    final local=await widget.store.attachment(id);
-   if(local!=null)return local;
-   final bytes=Uint8List.fromList(await widget.api.downloadFile(widget.eventId,id));
-   await widget.store.saveAttachment(id,bytes);
-   return bytes;
+   if(local!=null){if(mounted)setState(()=>_bytes=local);return;}
+   try{
+     final bytes=Uint8List.fromList(await widget.api.downloadFile(widget.eventId,id));
+     await widget.store.saveAttachment(id,bytes);
+     if(mounted)setState((){_bytes=bytes;_waiting=false;_gaveUp=false;});
+   }catch(_){
+     if(!mounted)return;
+     _attempt++;
+     final elapsed=_attempt<=12?_attempt*5:60+(_attempt-12)*20;
+     if(elapsed>=3600){setState((){_waiting=false;_gaveUp=true;});return;}
+     setState(()=>_waiting=true);
+     _retry=Timer(Duration(seconds:_attempt<12?5:20),_load);
+   }
  }
+ void _retryNow(){_retry?.cancel();setState((){_attempt=0;_gaveUp=false;_waiting=true;});_load();}
  @override Widget build(BuildContext context){
    final pending=widget.store.isUploadPending(widget.attachment.fileId);
-   return SizedBox(width:160,height:120,child:FutureBuilder<Uint8List>(future:_bytes,builder:(c,s){
-     if(s.hasError){
-       return InkWell(onTap:()=>setState((){_bytes=_load();}),child:Container(color:Colors.black12,alignment:Alignment.center,
-         child:Column(mainAxisSize:MainAxisSize.min,children:[const Icon(Icons.broken_image_outlined),Text(S.t('messages.photoUnavailable'),style:const TextStyle(fontSize:12)),Text(S.t('messages.tapRetry'),style:const TextStyle(fontSize:11))])));
-     }
-     if(!s.hasData)return Container(color:Colors.black12,alignment:Alignment.center,child:const CircularProgressIndicator(strokeWidth:2));
-     return Stack(fit:StackFit.expand,children:[
-       InkWell(onTap:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>_PhotoViewer(attachment:widget.attachment,bytes:s.data!))),
-         child:ClipRRect(borderRadius:BorderRadius.circular(6),child:Image.memory(s.data!,fit:BoxFit.cover,cacheWidth:320))),
+   final bytes=_bytes;
+   Widget placeholder(IconData icon,String title,String? hint)=>InkWell(onTap:_retryNow,child:Container(color:Colors.black12,alignment:Alignment.center,padding:const EdgeInsets.all(6),
+     child:Column(mainAxisSize:MainAxisSize.min,children:[Icon(icon),Text(title,textAlign:TextAlign.center,style:const TextStyle(fontSize:12)),if(hint!=null)Text(hint,textAlign:TextAlign.center,style:const TextStyle(fontSize:11))])));
+   return SizedBox(width:160,height:120,child:bytes!=null
+     ?Stack(fit:StackFit.expand,children:[
+       InkWell(onTap:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>_PhotoViewer(attachment:widget.attachment,bytes:bytes))),
+         child:ClipRRect(borderRadius:BorderRadius.circular(6),child:Image.memory(bytes,fit:BoxFit.cover,cacheWidth:320))),
        if(pending)Positioned(right:4,top:4,child:Tooltip(message:S.t('messages.pendingUpload'),child:const CircleAvatar(radius:12,child:Icon(Icons.cloud_upload_outlined,size:16)))),
-     ]);
-   }));
+     ])
+     :_gaveUp?placeholder(Icons.broken_image_outlined,S.t('messages.photoUnavailable'),S.t('messages.tapRetry'))
+     :_waiting?placeholder(Icons.hourglass_top,'Photo en attente','envoi différé par l’expéditeur (liaison faible)')
+     :Container(color:Colors.black12,alignment:Alignment.center,child:const CircularProgressIndicator(strokeWidth:2)));
  }
 }
 
