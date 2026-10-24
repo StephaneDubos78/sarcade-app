@@ -12,13 +12,54 @@ CI generates android/ and this script applies the SARCADE-specific settings:
   Play Store also offers the app on Chromebooks without touch screen or GPS:
   a location permission otherwise implies a required GPS feature
 
+- release signing with the fixed SARCADE key when the CI provides it
+  (SARCADE_KEYSTORE and passwords in the environment, from GitHub secrets):
+  test APKs then update in place instead of requiring an uninstall. Without
+  it, the template's debug signing stays (random key on each CI machine).
+
 The script is idempotent and fails loudly if the template changed shape.
 """
 import re
 import sys
 from pathlib import Path
 
+import os
+
 MANIFEST = Path("android/app/src/main/AndroidManifest.xml")
+GRADLE = Path("android/app/build.gradle.kts")
+SIGNING = """    signingConfigs {
+        create("sarcade") {
+            storeFile = file(System.getenv("SARCADE_KEYSTORE")!!)
+            storePassword = System.getenv("SARCADE_KEYSTORE_PASSWORD")
+            keyAlias = System.getenv("SARCADE_KEY_ALIAS")
+            keyPassword = System.getenv("SARCADE_KEYSTORE_PASSWORD")
+        }
+    }
+"""
+
+
+def patch_signing() -> int:
+    """Release builds signed with the fixed SARCADE key (CI only)."""
+    if not os.environ.get("SARCADE_KEYSTORE"):
+        print("signing: no SARCADE_KEYSTORE, debug signing kept")
+        return 0
+    if not GRADLE.exists():
+        print(f"error: {GRADLE} not found (template changed?)", file=sys.stderr)
+        return 1
+    gradle = GRADLE.read_text(encoding="utf-8")
+    if 'create("sarcade")' not in gradle:
+        gradle, n = re.subn(r"(\n\s*buildTypes\s*\{)", "\n" + SIGNING.rstrip("\n") + r"\1", gradle, count=1)
+        if n != 1:
+            print("error: buildTypes block not found in build.gradle.kts", file=sys.stderr)
+            return 1
+    gradle, n = re.subn(r'signingConfig\s*=\s*signingConfigs\.getByName\("debug"\)',
+                        'signingConfig = signingConfigs.getByName("sarcade")', gradle)
+    if n == 0 and 'getByName("sarcade")' not in gradle:
+        print("error: release signingConfig not found in build.gradle.kts", file=sys.stderr)
+        return 1
+    GRADLE.write_text(gradle, encoding="utf-8")
+    print(f"signing: release signed with the SARCADE key ({GRADLE})")
+    return 0
 OPTIONAL_FEATURES = [
     "android.hardware.touchscreen",
     "android.hardware.location",
@@ -63,7 +104,7 @@ def main() -> int:
 
     MANIFEST.write_text(xml, encoding="utf-8")
     print(f"patched {MANIFEST}")
-    return 0
+    return patch_signing()
 
 
 if __name__ == "__main__":
