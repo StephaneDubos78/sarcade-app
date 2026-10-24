@@ -459,10 +459,10 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
 
   /// Changes pulled by the automatic synchronisation (every 20 s): shown on
   /// the map even when the real-time channel missed them (test of 23 Oct
-    if(routeObjectKinds.contains(objectType))_routes.applyRemote(objectType,payload);
   /// 2026: the phone's positions reached the server but not the PC map).
   void _onRemoteChange(String objectType,Map<String,dynamic> payload){
     if(objectType=='map_feature')_applyRemoteFeature(payload);
+    if(routeObjectKinds.contains(objectType))_routes.applyRemote(objectType,payload);
     if(objectType=='position'){
       final p=SarcadePosition.fromJson(payload);
       final current=_positions[p.deviceId];
