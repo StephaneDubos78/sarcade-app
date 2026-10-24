@@ -9,6 +9,10 @@ manifest and the page for that use:
 - display "standalone": the app opens in its own window, without browser UI
 - orientation "any": usable in landscape and portrait, docked or split screen
 - categories for the ChromeOS launcher
+- a SARCADE service worker (web/sarcade_sw.js): network first, cached copy
+  when the server cannot be reached, so the installed app still starts
+  offline (the Flutter service worker is deprecated). The API is never
+  cached: offline data lives in IndexedDB. Needs HTTPS, like installation.
 
 Idempotent, and fails loudly if the template changed shape.
 """
@@ -20,6 +24,34 @@ from pathlib import Path
 MANIFEST = Path("web/manifest.json")
 INDEX = Path("web/index.html")
 THEME = "#173A6A"
+SERVICE_WORKER = Path("web/sarcade_sw.js")
+SW_JS = """// SARCADE service worker: the app starts without network once installed.
+const CACHE = 'sarcade-shell-v1';
+const SHELL = ['./', 'index.html', 'manifest.json', 'flutter_bootstrap.js', 'main.dart.js'];
+self.addEventListener('install', (event) => {
+  self.skipWaiting();
+  event.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).catch(() => undefined));
+});
+self.addEventListener('activate', (event) => {
+  event.waitUntil(caches.keys()
+    .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
+    .then(() => self.clients.claim()));
+});
+self.addEventListener('fetch', (event) => {
+  const url = new URL(event.request.url);
+  // The API and other origins are never cached: offline data is in IndexedDB.
+  if (event.request.method !== 'GET' || url.origin !== self.location.origin || url.pathname.startsWith('/api/')) return;
+  event.respondWith(fetch(event.request).then((response) => {
+    if (response.ok) {
+      const copy = response.clone();
+      caches.open(CACHE).then((c) => c.put(event.request, copy));
+    }
+    return response;
+  }).catch(() => caches.match(event.request).then((r) => r || caches.match('index.html'))));
+});
+"""
+REGISTER = ("<script>if ('serviceWorker' in navigator) { window.addEventListener('load', "
+            "() => navigator.serviceWorker.register('sarcade_sw.js')); }</script>")
 
 
 def main() -> int:
@@ -54,8 +86,11 @@ def main() -> int:
                   '<meta name="apple-mobile-web-app-title" content="SARCADE">', html, count=1)
     if 'name="theme-color"' not in html:
         html = html.replace("</head>", f'  <meta name="theme-color" content="{THEME}">\n</head>', 1)
+    if "sarcade_sw.js" not in html:
+        html = html.replace("</body>", f"  {REGISTER}\n</body>", 1)
     INDEX.write_text(html, encoding="utf-8")
-    print(f"patched {MANIFEST} and {INDEX}")
+    SERVICE_WORKER.write_text(SW_JS, encoding="utf-8")
+    print(f"patched {MANIFEST}, {INDEX} and wrote {SERVICE_WORKER}")
     return 0
 
 
