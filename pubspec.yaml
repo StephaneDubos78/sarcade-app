@@ -29,6 +29,13 @@ dependencies:
   sensors_plus: ^6.1.1
   # « Open in… » another map application (navigation level 1).
   url_launcher: ^6.3.1
+  flutter_secure_storage: ^9.2.4
+  webview_flutter: ^4.13.0
+dependency_overrides:
+  # Windows storage of the Access session without the native ATL part
+  # (third_party/flutter_secure_storage_windows/README.md).
+  flutter_secure_storage_windows:
+    path: third_party/flutter_secure_storage_windows
 dev_dependencies:
   flutter_test:
     sdk: flutter
