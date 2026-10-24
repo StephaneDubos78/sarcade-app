@@ -127,13 +127,19 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
+          # One pre-release per branch (android-<branch>), plus android-dev
+          # for main: the APK of a PR under test is never replaced by
+          # another PR built at the same time.
+          branch="${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}"
+          if [ "$branch" = main ]; then tag=android-dev; else tag="android-$(echo "$branch" | tr '/' '-' | tr -cd 'A-Za-z0-9._-')"; fi
           cp build/app/outputs/flutter-apk/app-release.apk sarcade-dev.apk
-          if ! gh release view android-dev >/dev/null 2>&1; then
-            gh release create android-dev --prerelease --target "$GITHUB_SHA" \
-              --title "SARCADE Android (développement)" \
-              --notes "APK de développement V0.1, mis à jour automatiquement par la CI. Signé avec la clé SARCADE (installation par-dessus la version précédente), réservé aux tests."
+          if ! gh release view "$tag" >/dev/null 2>&1; then
+            gh release create "$tag" --prerelease --target "$GITHUB_SHA" \
+              --title "SARCADE Android ($branch)" \
+              --notes "APK de test de la branche $branch, mis à jour automatiquement par la CI. Signé avec la clé SARCADE (installation par-dessus la version précédente)."
           fi
-          gh release upload android-dev sarcade-dev.apk --clobber
+          gh release upload "$tag" sarcade-dev.apk --clobber
+          echo "::notice::APK : https://github.com/${GITHUB_REPOSITORY}/releases/download/${tag}/sarcade-dev.apk"
 
   ios-build:
     # Unsigned build: proves the app compiles for iPhone. Signing and the
