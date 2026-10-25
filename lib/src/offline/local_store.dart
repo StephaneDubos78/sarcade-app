@@ -110,6 +110,13 @@ class LocalStore {
   String? preference(String key)=>_metaBox.get('pref:$key') as String?;
   Future<void> setPreference(String key,String? v)=>v==null?_metaBox.delete('pref:$key'):_metaBox.put('pref:$key',v);
 
+  /// Messages already shown on the messages screen (null: never opened on
+  /// this device for this event).
+  Set<String>? seenMessages(String eventId){final v=_metaBox.get('seen:$eventId');return v is List?v.map((e)=>'$e').toSet():null;}
+  Future<void> markMessagesSeen(String eventId,Iterable<String> ids) async {
+    final all={...?seenMessages(eventId),...ids};
+    await _metaBox.put('seen:$eventId',all.toList());
+  }
   String cursor(String eventId)=>_metaBox.get('cursor:$eventId',defaultValue:'0') as String;
   Future<void> setCursor(String eventId,String cursor)=>_metaBox.put('cursor:$eventId',cursor);
 }
