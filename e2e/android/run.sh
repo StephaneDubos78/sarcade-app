@@ -17,6 +17,15 @@ PKG=org.sarcade.sarcade_app
   done
 ) &
 GRANTER=$!
+# Notifications are read while the test runs: the app is removed at the end.
+mkdir -p e2e/android/out
+(
+  for i in $(seq 1 600); do
+    adb shell dumpsys notification --noredact 2>/dev/null | grep -E "android.title=|android.text=" >> e2e/android/out/notifications.txt
+    sleep 3
+  done
+) &
+WATCHER=$!
 adb emu geo fix 2.1204 48.8049 >/dev/null 2>&1 || true
 
 flutter test integration_test/field_terminal_test.dart -d emulator-5554 \
@@ -29,19 +38,18 @@ if [ "$status" -ne 0 ]; then
   msg=$(awk '/EXCEPTION CAUGHT/{on=1} on && NF{print; n++} n>=40{exit}' /tmp/e2e-android.log | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
   echo "::error title=integration test::${msg}"
 fi
-kill $GRANTER 2>/dev/null
+kill $GRANTER $WATCHER 2>/dev/null
 
 mkdir -p e2e/android/out
-pk=$(adb shell pm list packages | grep -i sarcade | tr -d '\r' | tr '\n' ' ')
-perms=$(adb shell dumpsys package "$PKG" | grep -E "POST_NOTIFICATIONS|ACCESS_FINE_LOCATION" | tr -d '\r' | tr -s ' ' | tr '\n' ';')
-echo "::notice title=emulator::packages: ${pk:-none} / permissions: ${perms:-none}"
-logs=$(adb logcat -d -s flutter:V | tail -40 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
-echo "::notice title=flutter logcat::${logs}"
-adb shell dumpsys notification --noredact > e2e/android/out/notifications.txt 2>&1 || true
+if [ "$status" -ne 0 ]; then
+  logs=$(adb logcat -d -s flutter:V | tail -40 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+  echo "::notice title=flutter logcat::${logs}"
+fi
 adb exec-out screencap -p > e2e/android/out/last-screen.png 2>/dev/null || true
 if grep -q "E2E urgent from PCO" e2e/android/out/notifications.txt; then
-  echo "Notification of the urgent message found"
+  echo "::notice title=notification::$(grep -m1 -B1 'E2E urgent from PCO' e2e/android/out/notifications.txt | tr -d '\r' | tr '\n' ' ')"
 else
-  echo "::warning::Urgent message notification not found in dumpsys (app closed at the end of the test?) - see notifications.txt"
+  echo "::error title=notification::urgent message notification not shown by the app"
+  status=1
 fi
 exit $status
