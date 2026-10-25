@@ -1,0 +1,12 @@
+# Overrides the server's demo stack (sarcade-server/demo/docker-compose.demo.yml)
+# for the end-to-end tests: the server serves the web client built from this
+# branch instead of downloading the web-dev pre-release.
+services:
+  server:
+    build:
+      args:
+        SARCADE_WEB_URL: ""
+    environment:
+      SARCADE_WEB_ROOT: /e2e-web
+    volumes:
+      - ${SARCADE_E2E_WEB:?path of the web build}:/e2e-web:ro
