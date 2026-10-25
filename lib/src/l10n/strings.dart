@@ -60,6 +60,7 @@ const Texts _fr={
   'update.download':'Télécharger la mise à jour','update.downloaded':'Mise à jour téléchargée',
   'update.downloadFailed':'Téléchargement impossible','update.store':'Mets l’application à jour depuis le magasin d’applications ou demande le fichier au PCO.',
   // Messages
+  'messages.status.pending':'En attente d’envoi','messages.status.sent':'Envoyé','messages.status.received':'Reçu','messages.status.read':'Lu','messages.readBy':'lu par {n}','messages.unreadSeparator':'{n} messages non lus','messages.toBottom':'Aller aux derniers messages',
   'messages.title':'Messages · {n} en attente','messages.all':'Tous les messages','messages.broadcast':'Diffusion générale',
   'messages.direct':'Direct','messages.directHint':'Identifiant de l’agent ou de l’équipe','messages.hint':'Message court',
   'messages.send':'Envoyer','messages.photo':'Envoyer une photo','messages.takePhoto':'Prendre une photo',
@@ -231,6 +232,7 @@ const Texts _en={
   'update.required':'Update required','update.requiredDetail':'This version ({current}) is no longer accepted by the server. Install version {version} to reconnect.',
   'update.download':'Download the update','update.downloaded':'Update downloaded',
   'update.downloadFailed':'Download failed','update.store':'Update the application from the app store or ask the command post for the file.',
+  'messages.status.pending':'Waiting to be sent','messages.status.sent':'Sent','messages.status.received':'Received','messages.status.read':'Read','messages.readBy':'read by {n}','messages.unreadSeparator':'{n} unread messages','messages.toBottom':'Go to the latest messages',
   'messages.title':'Messages · {n} pending','messages.all':'All messages','messages.broadcast':'General broadcast',
   'messages.direct':'Direct','messages.directHint':'Agent or team identifier','messages.hint':'Short message',
   'messages.send':'Send','messages.photo':'Send a photo','messages.takePhoto':'Take a photo',
