@@ -316,3 +316,66 @@ jobs:
               --notes "Client Web V0.1, mis à jour automatiquement par la CI. Intégré à l'image Docker de sarcade-server."
           fi
           gh release upload web-dev sarcade-web.tar.gz --clobber
+
+  e2e:
+    # End-to-end tests (vault note « Tests automatiques de bout en bout »):
+    # real SARCADE server (demo stack of sarcade-server), web client of this
+    # branch driven by Playwright as the PCO, field terminal simulated
+    # through the API. Server branch: main, or « server-branch: feat/... »
+    # in the pull request description.
+    needs: web-build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Server branch
+        id: server
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        shell: bash
+        run: |
+          branch=$(printf '%s' "$PR_BODY" | sed -n 's/^[[:space:]]*server-branch:[[:space:]]*\([^[:space:]]*\).*/\1/p' | head -1)
+          echo "branch=${branch:-main}" >> "$GITHUB_OUTPUT"
+          echo "Server branch: ${branch:-main}"
+      - uses: actions/checkout@v4
+        with:
+          repository: sdubos-consulting/sarcade-server
+          ref: ${{ steps.server.outputs.branch }}
+          path: sarcade-server
+      - uses: actions/download-artifact@v4
+        with:
+          name: sarcade-web
+      - name: Web client of this branch
+        run: mkdir -p e2e/web && tar -xzf sarcade-web.tar.gz -C e2e/web && test -f e2e/web/index.html
+      - name: Start the SARCADE server
+        env:
+          SARCADE_E2E_WEB: ${{ github.workspace }}/e2e/web
+        run: |
+          docker compose -f sarcade-server/demo/docker-compose.demo.yml -f e2e/compose.e2e.yml up -d --build postgres services-stub server
+          for i in $(seq 1 60); do curl -fsS http://localhost:8000/health && break; sleep 2; done
+          curl -fsS http://localhost:8000/health
+          curl -fsS http://localhost:8000/ | grep -q SARCADE
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install Playwright
+        working-directory: e2e
+        run: npm install --no-audit --no-fund && npx playwright install --with-deps chromium
+      - name: Run the scenarios
+        working-directory: e2e
+        env:
+          SARCADE_URL: http://localhost:8000
+        run: npx playwright test
+      - name: Server logs on failure
+        if: failure()
+        env:
+          SARCADE_E2E_WEB: ${{ github.workspace }}/e2e/web
+        run: docker compose -f sarcade-server/demo/docker-compose.demo.yml -f e2e/compose.e2e.yml logs --tail 200 server
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e2e-report
+          path: |
+            e2e/report
+            e2e/test-results
+          retention-days: 30
