@@ -98,10 +98,22 @@ void main() {
     await pumpUntil(t, find.text(S.t('settings.server')));
     await t.enterText(field('settings.server'), server);
     await t.pump();
-    await t.tap(find.byTooltip(S.t('settings.eventsRefresh')));
-    await pumpUntil(t, find.byType(DropdownButtonFormField<String>));
-    await t.tap(find.byType(DropdownButtonFormField<String>).first);
-    await pumpUntil(t, find.textContaining(eventName));
+    // The list loads when the server is entered (a spinner replaces the
+    // refresh button meanwhile); reload until the test event is offered.
+    var listed = false;
+    for (var attempt = 0; attempt < 5 && !listed; attempt++) {
+      await pumpUntil(t, find.byTooltip(S.t('settings.eventsRefresh')));
+      await t.tap(find.byType(DropdownButtonFormField<String>).first);
+      await t.pump(const Duration(seconds: 1));
+      listed = find.textContaining(eventName).evaluate().isNotEmpty;
+      if (!listed) {
+        await t.tapAt(const Offset(5, 5)); // closes the menu
+        await t.pump(const Duration(milliseconds: 500));
+        await t.tap(find.byTooltip(S.t('settings.eventsRefresh')));
+        await t.pump(const Duration(seconds: 2));
+      }
+    }
+    expect(listed, isTrue, reason: 'event « $eventName » offered in the list');
     await t.tap(find.textContaining(eventName).last);
     await t.pump(const Duration(seconds: 1));
     await t.enterText(field('settings.device'), device);
