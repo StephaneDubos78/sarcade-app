@@ -104,6 +104,9 @@ void main() {
     await pumpUntil(t, find.text(S.t('settings.server')));
     await t.enterText(field('settings.server'), server);
     await t.pump();
+    // Leaving the field loads the events of that server.
+    FocusManager.instance.primaryFocus?.unfocus();
+    await t.pump(const Duration(seconds: 1));
     // The list loads when the server is entered (a spinner replaces the
     // refresh button meanwhile); reload until the test event is offered.
     var listed = false;
@@ -119,7 +122,7 @@ void main() {
         await t.pump(const Duration(seconds: 2));
       }
     }
-    expect(listed, isTrue, reason: 'event « $eventName » offered in the list');
+    expect(listed, isTrue, reason: 'event « $eventName » offered in the list\nOn screen: ${screenTexts()}');
     await t.tap(find.textContaining(eventName).last);
     await t.pump(const Duration(seconds: 1));
     // Fields below the fold are built only once scrolled to.
