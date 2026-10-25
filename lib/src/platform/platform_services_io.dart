@@ -78,3 +78,6 @@ WebSocketChannel openWebSocket(Uri uri,Map<String,String> headers)=>
 /// Installed apps: no page to reload; the network state is unknown here.
 void reloadApp(){}
 bool get browserOnline=>false;
+
+/// Installed apps keep their data in their own folder.
+Future<bool> requestPersistentStorage() async=>true;

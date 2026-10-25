@@ -99,6 +99,10 @@ class NotificationService {
   static bool get _schedules=>const {TargetPlatform.android,TargetPlatform.iOS,TargetPlatform.macOS,TargetPlatform.windows}
     .contains(defaultTargetPlatform);
 
+  /// Installed apps ask the system at start (Android 13+): no banner.
+  bool get needsUserAction=>false;
+  Future<bool> requestFromUser() async=>true;
+
   Future<void> initialize()=>_init??=_initialize();
 
   Future<void> _initialize() async {
