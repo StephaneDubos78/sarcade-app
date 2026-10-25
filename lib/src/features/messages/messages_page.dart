@@ -16,7 +16,9 @@ import 'photo_attachment.dart';
 
 class MessagesPage extends StatefulWidget {
  final SarcadeApi api; final String eventId,actorId; final OfflineSyncService sync; final LocalStore store;
- const MessagesPage({super.key,required this.api,required this.eventId,required this.actorId,required this.sync,required this.store});
+ /// Text prepared by another screen (a point sent from the measure).
+ final String? initialText;
+ const MessagesPage({super.key,required this.api,required this.eventId,required this.actorId,required this.sync,required this.store,this.initialText});
  @override State<MessagesPage> createState()=>_MessagesPageState();
 }
 class _MessagesPageState extends State<MessagesPage>{
@@ -29,7 +31,7 @@ class _MessagesPageState extends State<MessagesPage>{
 
  final _watch=<StreamSubscription>[];
  // Messages received while this screen is open appear without the button.
- @override void initState(){super.initState();_refreshGroups();for(final s in widget.store.messageChanges()){_watch.add(s.listen((_){if(mounted)setState((){});}));}}
+ @override void initState(){super.initState();if(widget.initialText!=null)_text.text=widget.initialText!;_refreshGroups();for(final s in widget.store.messageChanges()){_watch.add(s.listen((_){if(mounted)setState((){});}));}}
 
  List<CommGroup> get _groups=>widget.store.groups(widget.eventId).map(CommGroup.fromJson).toList();
  CommGroup? get _group{if(_groupId==null)return null;for(final g in _groups){if(g.id==_groupId)return g;}return null;}
@@ -205,7 +207,7 @@ class _MessagesPageState extends State<MessagesPage>{
       Row(children:[
         DropdownButton<String>(value:_priority,items:[for(final p in const ['routine','urgent','immediate'])DropdownMenuItem(value:p,child:Text(S.t('priority.$p')))],onChanged:(v)=>setState(()=>_priority=v!)),
         const SizedBox(width:6),
-        Expanded(child:TextField(controller:_text,maxLength:2048,minLines:1,maxLines:4,decoration:InputDecoration(hintText:S.t('messages.hint'),counterText:''))),
+        Expanded(child:TextField(controller:_text,maxLength:2048,minLines:1,maxLines:widget.initialText==null?4:6,decoration:InputDecoration(hintText:S.t('messages.hint'),counterText:''))),
         IconButton(tooltip:S.t('messages.photo'),onPressed:_picking?null:_photo,icon:_picking?const SizedBox(width:20,height:20,child:CircularProgressIndicator(strokeWidth:2)):const Icon(Icons.photo_camera)),
         IconButton(tooltip:S.t('messages.send'),onPressed:_send,icon:const Icon(Icons.send)),
       ]),
