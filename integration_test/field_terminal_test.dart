@@ -127,8 +127,15 @@ void main() {
     await t.pump(const Duration(seconds: 1));
     // Fields below the fold are built only once scrolled to.
     await t.scrollUntilVisible(find.text(S.t('settings.device')), 200, scrollable: find.byType(Scrollable).first);
-    await t.enterText(field('settings.device'), device);
-    await t.pump();
+    // Retyped until the field really holds it (a first entry was sometimes
+    // lost while the list reload rebuilt the form, leaving « device-demo »).
+    for (var attempt = 0; attempt < 5; attempt++) {
+      await t.enterText(field('settings.device'), device);
+      await t.pump(const Duration(milliseconds: 500));
+      final value = t.widget<TextField>(field('settings.device')).controller?.text;
+      if (value == device) break;
+    }
+    expect(t.widget<TextField>(field('settings.device')).controller?.text, device, reason: 'terminal identifier entered');
     final save = find.text(S.t('common.save'));
     await t.scrollUntilVisible(save, 200, scrollable: find.byType(Scrollable).first);
     FocusManager.instance.primaryFocus?.unfocus(); // keyboard down
