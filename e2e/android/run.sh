@@ -25,8 +25,9 @@ flutter test integration_test/field_terminal_test.dart -d emulator-5554 \
 status=${PIPESTATUS[0]}
 # The raw log is not always readable: surface the failure as annotations.
 if [ "$status" -ne 0 ]; then
-  awk '/EXCEPTION CAUGHT/{on=1} on{print; n++} n>=30{exit}' /tmp/e2e-android.log \
-    | sed 's/%/%25/g' | while IFS= read -r line; do [ -n "${line// }" ] && echo "::error::${line}"; done
+  # One annotation (GitHub keeps 10 per step): lines joined with %0A.
+  msg=$(awk '/EXCEPTION CAUGHT/{on=1} on && NF{print; n++} n>=40{exit}' /tmp/e2e-android.log | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+  echo "::error title=integration test::${msg}"
 fi
 kill $GRANTER 2>/dev/null
 
