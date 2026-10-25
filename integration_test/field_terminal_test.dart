@@ -116,10 +116,12 @@ void main() {
     expect(listed, isTrue, reason: 'event « $eventName » offered in the list');
     await t.tap(find.textContaining(eventName).last);
     await t.pump(const Duration(seconds: 1));
+    // Fields below the fold are built only once scrolled to.
+    await t.scrollUntilVisible(find.text(S.t('settings.device')), 200, scrollable: find.byType(Scrollable).first);
     await t.enterText(field('settings.device'), device);
     await t.pump();
     final save = find.text(S.t('common.save'));
-    await t.ensureVisible(save);
+    await t.scrollUntilVisible(save, 200, scrollable: find.byType(Scrollable).first);
     await t.tap(save);
     await pumpUntil(t, find.byTooltip(S.t('map.messages')));
     await pumpUntilTrue(t, () async => (await pco.devices()).contains(device), 'the server knows $device');
