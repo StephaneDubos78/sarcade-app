@@ -1,0 +1,11 @@
+{
+  "name": "sarcade-e2e",
+  "private": true,
+  "description": "SARCADE end-to-end tests: real server, web client driven by Playwright, terminals simulated through the API",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0"
+  }
+}

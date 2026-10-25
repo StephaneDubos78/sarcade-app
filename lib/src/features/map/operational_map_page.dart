@@ -8,6 +8,8 @@ import 'package:latlong2/latlong.dart' hide Path;
 import 'package:uuid/uuid.dart';
 
 import '../../models/comm_group.dart';
+import '../../models/message_reception.dart';
+import '../../models/message_unread.dart';
 import '../../models/poi.dart';
 import '../../models/message.dart';
 import '../../models/position.dart';
@@ -83,7 +85,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   static const _compactWidth=600.0;
   @override void didChangeDependencies(){super.didChangeDependencies();if(!_layoutInitialized){_layoutInitialized=true;if(MediaQuery.sizeOf(context).width<_compactWidth)_showPanel=false;}}
 
-  @override void initState(){super.initState();_notifications.initialize();_sync=OfflineSyncService(api:widget.api,store:widget.store,eventId:widget.eventId,onRemoteChange:_onRemoteChange);_initDrawing();_loadLocal();_initRoutes();_initMeasure();_sync.start();_initOperations();_loadBasemaps();_syncUiTimer=Timer.periodic(const Duration(seconds:2),(_){if(mounted)setState((){});});AccessManager.instance.addListener(_onAccessChanged);_start();}
+  @override void initState(){super.initState();_notifications.initialize();unawaited(requestPersistentStorage());_sync=OfflineSyncService(api:widget.api,store:widget.store,eventId:widget.eventId,onRemoteChange:_onRemoteChange);_initDrawing();_loadLocal();_initRoutes();_initMeasure();_sync.start();_initOperations();_loadBasemaps();_syncUiTimer=Timer.periodic(const Duration(seconds:2),(_){if(mounted)setState((){});});AccessManager.instance.addListener(_onAccessChanged);_start();}
   bool _validPosition(SarcadePosition p){
     final t=p.time.toUtc(), now=DateTime.now().toUtc();
     return t.isAfter(DateTime.utc(2020)) && t.isBefore(now.add(const Duration(days:1)));
@@ -169,8 +171,15 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     if(e.type=='event.settings.updated'||e.type=='event.closed'){unawaited(_ops.beat());}
   }
 
+  /// Messages being handled: realtime and synchronisation may deliver the
+  /// same one at the same moment.
+  final _receiving=<String>{};
   Future<void> _receiveMessage(Map<String,dynamic> data) async {
     final m=SarcadeMessage.fromJson(data);
+    if(!_receiving.add(m.id))return;
+    try{await _handleMessage(m,data);}finally{_receiving.remove(m.id);}
+  }
+  Future<void> _handleMessage(SarcadeMessage m,Map<String,dynamic> data) async {
     await widget.store.cacheMessage(data);
     final groups={for(final j in widget.store.groups(widget.eventId)) j['id'] as String:CommGroup.fromJson(j)};
     final addressed=addressedTo(m.recipientIds,widget.deviceId,groups);
@@ -181,7 +190,11 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         await widget.store.cacheAck(ack.toJson());
         await _sync.queue(objectId:ack.id,objectType:'ack',payload:ack.toJson());
       }
-      await _notifications.message(title:'SARCADE · ${S.t('priority.${m.priority}')} · ${m.senderId}',body:m.body,priority:m.priority);
+      // Realtime and synchronisation may both bring the message: only the
+      // first arrival notifies; an old message caught up later stays silent.
+      if(shouldNotifyMessage(alreadyReceived:existing,createdAt:m.createdAt,now:DateTime.now().toUtc())){
+        await _notifications.message(title:'SARCADE · ${S.t('priority.${m.priority}')} · ${m.senderId}',body:m.body,priority:m.priority);
+      }
     }
     if(mounted)setState((){});
   }
@@ -328,6 +341,29 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     if(mounted)setState((){_drawingClosure=false;_closureDraft.clear();});
   }
 
+  /// Web client: « Activer les notifications » until the operator answers
+  /// (or chooses « Plus tard » for this session).
+  bool _notificationsDismissed=false;
+  bool get _notificationsBanner=>!_notificationsDismissed&&_notifications.needsUserAction;
+  Future<void> _enableNotifications() async {
+    final ok=await _notifications.requestFromUser();
+    if(!mounted)return;
+    setState((){});
+    if(!ok)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(S.t('notifications.refused'))));
+  }
+
+  /// Unread messages: count on the Messages button, red when one is urgent.
+  /// The first time on this device every existing message counts as seen.
+  Widget _messagesIcon(){
+    final all=widget.store.messages().map(SarcadeMessage.fromJson).where((m)=>m.eventId==widget.eventId).toList();
+    final seen=widget.store.seenMessages(widget.eventId);
+    if(seen==null){unawaited(widget.store.markMessagesSeen(widget.eventId,all.map((m)=>m.id)));return const Icon(Icons.message);}
+    final groups={for(final j in widget.store.groups(widget.eventId)) j['id'] as String:CommGroup.fromJson(j)};
+    final unread=unreadMessages(messages:all,seen:seen,deviceId:widget.deviceId,groups:groups);
+    return Badge(isLabelVisible:unread.isNotEmpty,label:Text('${unread.length}'),
+      backgroundColor:anyUrgent(unread)?Colors.red:Colors.blueGrey,child:const Icon(Icons.message));
+  }
+
   void _initOperations(){
     final prefs=widget.store.trackingPrefs(widget.eventId);
     _tracking=TrackingService(eventId:widget.eventId,deviceId:widget.deviceId,location:_location,
@@ -461,6 +497,9 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   /// the map even when the real-time channel missed them (test of 23 Oct
   /// 2026: the phone's positions reached the server but not the PC map).
   void _onRemoteChange(String objectType,Map<String,dynamic> payload){
+    // Messages brought by the synchronisation (realtime closed, app back in
+    // the foreground) get the same acknowledgement and notification.
+    if(objectType=='message'&&payload['event_id']==widget.eventId)unawaited(_receiveMessage(payload));
     if(objectType=='map_feature')_applyRemoteFeature(payload);
     if(routeObjectKinds.contains(objectType))_routes.applyRemote(objectType,payload);
     if(objectType=='position'){
@@ -653,7 +692,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     void openFiles()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>FilesPage(api:widget.api,eventId:widget.eventId,actorId:widget.deviceId)));
     void openLogbook()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>LogbookPage(api:widget.api,eventId:widget.eventId)));
     final syncButton=IconButton(tooltip:S.t('map.sync'),onPressed:() async {await _sync.syncNow();if(mounted)setState((){});},icon:const Icon(Icons.sync));
-    final messagesButton=IconButton(tooltip:S.t('map.messages'),onPressed:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>MessagesPage(api:widget.api,eventId:widget.eventId,actorId:widget.deviceId,sync:_sync,store:widget.store))),icon:Badge(isLabelVisible:_sync.inFlight>0,label:Text('${_sync.inFlight}'),child:const Icon(Icons.message)));
+    final messagesButton=IconButton(tooltip:S.t('map.messages'),onPressed:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>MessagesPage(api:widget.api,eventId:widget.eventId,actorId:widget.deviceId,sync:_sync,store:widget.store))),icon:_messagesIcon());
     return Scaffold(
       appBar:compact
         ? AppBar(
@@ -689,7 +728,9 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           onUpdate:()=>downloadUpdate(context,widget.api,_ops.update),
           accessRequired:AccessManager.instance.requiredFor(widget.api.baseUrl),
           accessRenewBy:_accessRenewBy,onSignIn:_signIn,
-          onReload:isWebPlatform&&!_sync.lastSyncOk&&_sync.lastServerContact!=null&&browserOnline?reloadApp:null),
+          onReload:isWebPlatform&&!_sync.lastSyncOk&&_sync.lastServerContact!=null&&browserOnline?reloadApp:null,
+          onEnableNotifications:_notificationsBanner?_enableNotifications:null,
+          onDismissNotifications:()=>setState(()=>_notificationsDismissed=true)),
         if(_graphs.pendingMobileBytes!=null&&!_graphs.downloading)Material(color:Theme.of(context).colorScheme.secondaryContainer,child:Padding(
           padding:const EdgeInsets.symmetric(horizontal:12,vertical:4),
           child:Row(children:[const Icon(Icons.alt_route,size:18),const SizedBox(width:8),
