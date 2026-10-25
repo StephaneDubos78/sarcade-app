@@ -14,6 +14,10 @@ class NotificationService {
   final _plugin=FlutterLocalNotificationsPlugin();
   bool _ready=false; int _id=0;
 
+  /// Installed apps ask the system at start (Android 13+): no banner.
+  bool get needsUserAction=>false;
+  Future<bool> requestFromUser() async=>true;
+
   Future<void> initialize() async {
     try{
       await _plugin.initialize(const InitializationSettings(

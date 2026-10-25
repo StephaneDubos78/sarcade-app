@@ -85,7 +85,14 @@ async function joinEvent(page, { eventName, deviceId }) {
   await page.getByRole('button', { name: 'Reload the event list' }).click();
   await page.getByRole('button', { name: /^Event/ }).click();
   await page.getByRole('menuitem', { name: new RegExp(`^${eventName}`) }).click();
-  await page.getByLabel('Terminal identifier').fill(deviceId);
+  // Typed again until Flutter holds it: a first entry is sometimes lost
+  // while the event list reloads (« device-demo » seen on main).
+  const idField = page.getByLabel('Terminal identifier');
+  await expect(async () => {
+    await idField.click();
+    await idField.fill(deviceId);
+    await expect(idField).toHaveValue(deviceId, { timeout: 2_000 });
+  }).toPass({ timeout: 30_000 });
   await page.getByRole('button', { name: 'Save' }).click();
   await expect(page.getByRole('button', { name: 'Messages', exact: true })).toBeVisible();
 }
