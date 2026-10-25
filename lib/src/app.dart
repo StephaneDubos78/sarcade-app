@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'config/app_config.dart';
+import 'config/saved_servers.dart';
 import 'features/map/operational_map_page.dart';
 import 'features/settings/settings_page.dart';
 import 'services/sarcade_api.dart';
@@ -46,8 +47,15 @@ class _SarcadeAppState extends State<SarcadeApp> {
 
   static String get _platform=>platformName(isWeb:kIsWeb,targetPlatform:defaultTargetPlatform.name);
 
+  List<SavedServer> _readServers()=>parseSavedServers(widget.store.preference('servers'));
+  Future<void> _saveServers(List<SavedServer> list)=>widget.store.setPreference('servers',encodeSavedServers(list));
+  Future<void> _rememberServer(String url,{String? eventId,String? deviceId})=>
+    _saveServers(rememberServer(_readServers(),url,eventId:eventId,deviceId:deviceId,now:DateTime.now().toUtc()));
+
   Future<void> _save(AppConfig c) async {
     await widget.store.saveConfig(c.toStored());
+    // Last event and terminal of this server, taken back when switching to it.
+    await _rememberServer(c.serverUrl,eventId:c.eventId,deviceId:c.deviceId);
     final wasSetup=_needsSetup;
     // Same session: language or operator settings changed, the map stays.
     if(c.sessionKey==_config.sessionKey&&!wasSetup){setState((){_config=c;_applyLanguage();});_navigator.currentState?.pop();return;}
@@ -62,6 +70,7 @@ class _SarcadeAppState extends State<SarcadeApp> {
     loadEvents:_loadEvents,cachedEvents:widget.store.cachedEvents,
     waitingFor:(server,eventId)=>outbox.waitingFor(widget.store.pending(),server,eventId),
     sendFirst:_sendFirst,
+    readServers:_readServers,saveServers:_saveServers,
   );
 
   Future<List<Map<String,dynamic>>> _loadEvents(String server) async {
@@ -69,6 +78,8 @@ class _SarcadeAppState extends State<SarcadeApp> {
     try{
       final list=await api.events();
       await widget.store.saveEvents(server,list);
+      // First successful connection: the server is remembered.
+      await _rememberServer(server);
       return list;
     }finally{api.close();}
   }

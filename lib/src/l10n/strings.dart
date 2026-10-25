@@ -60,6 +60,7 @@ const Texts _fr={
   'update.download':'Télécharger la mise à jour','update.downloaded':'Mise à jour téléchargée',
   'update.downloadFailed':'Téléchargement impossible','update.store':'Mets l’application à jour depuis le magasin d’applications ou demande le fichier au PCO.',
   // Messages
+  'servers.saved':'Serveurs mémorisés','servers.newHelp':'Nouvelle adresse : mémorisée à la première connexion réussie','servers.rename':'Renommer le serveur','servers.label':'Libellé','servers.remove':'Oublier ce serveur','servers.removeBody':'Oublier « {label} » ({url}) sur cet appareil ? La session de connexion de ce serveur est effacée.','servers.removeWaiting':'Attention : {n} éléments attendent encore d’être envoyés vers ce serveur ; ils partiront si vous y revenez.','servers.removeConfirm':'Oublier',
   'messages.title':'Messages · {n} en attente','messages.all':'Tous les messages','messages.broadcast':'Diffusion générale',
   'messages.direct':'Direct','messages.directHint':'Identifiant de l’agent ou de l’équipe','messages.hint':'Message court',
   'messages.send':'Envoyer','messages.photo':'Envoyer une photo','messages.takePhoto':'Prendre une photo',
@@ -231,6 +232,7 @@ const Texts _en={
   'update.required':'Update required','update.requiredDetail':'This version ({current}) is no longer accepted by the server. Install version {version} to reconnect.',
   'update.download':'Download the update','update.downloaded':'Update downloaded',
   'update.downloadFailed':'Download failed','update.store':'Update the application from the app store or ask the command post for the file.',
+  'servers.saved':'Remembered servers','servers.newHelp':'New address: remembered at the first successful connection','servers.rename':'Rename the server','servers.label':'Label','servers.remove':'Forget this server','servers.removeBody':'Forget « {label} » ({url}) on this device? The sign-in session of this server is deleted.','servers.removeWaiting':'Warning: {n} items are still waiting to be sent to this server; they will go if you come back to it.','servers.removeConfirm':'Forget',
   'messages.title':'Messages · {n} pending','messages.all':'All messages','messages.broadcast':'General broadcast',
   'messages.direct':'Direct','messages.directHint':'Agent or team identifier','messages.hint':'Short message',
   'messages.send':'Send','messages.photo':'Send a photo','messages.takePhoto':'Take a photo',
