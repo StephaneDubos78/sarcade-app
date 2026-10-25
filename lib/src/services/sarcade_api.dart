@@ -110,6 +110,49 @@ class SarcadeApi {
     if(r.statusCode!=200) throw SarcadeHttpException('groups',r.statusCode);
     return (jsonDecode(r.body) as List).map((e)=>Map<String,dynamic>.from(e as Map)).toList();
   }
+  // APRS (doc aprs-v0.1 of the server): callsign groups, event settings, status.
+  Map<String,String> get _json=>const {'Content-Type':'application/json'};
+  Future<List<Map<String,dynamic>>> aprsGroups() async {
+    final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/aprs/groups'));
+    if(r.statusCode!=200) throw SarcadeHttpException('aprs_groups',r.statusCode);
+    return (jsonDecode(r.body) as List).map((e)=>Map<String,dynamic>.from(e as Map)).toList();
+  }
+  /// Creates ([id] null) or updates a callsign group.
+  Future<Map<String,dynamic>> saveAprsGroup({String? id,required String name,required List<String> callsigns,required String actorId}) async {
+    final body=jsonEncode({'name':name,'callsigns':callsigns,'actor_id':actorId});
+    final r=id==null
+      ?await _client.post(Uri.parse('$baseUrl/api/v0.1/aprs/groups'),headers:_json,body:body)
+      :await _client.put(Uri.parse('$baseUrl/api/v0.1/aprs/groups/$id'),headers:_json,body:body);
+    if(r.statusCode!=200&&r.statusCode!=201) throw SarcadeHttpException('aprs_group',r.statusCode,r.body);
+    return Map<String,dynamic>.from(jsonDecode(r.body) as Map);
+  }
+  Future<void> deleteAprsGroup(String id) async {
+    final r=await _client.delete(Uri.parse('$baseUrl/api/v0.1/aprs/groups/$id'));
+    if(r.statusCode!=204&&r.statusCode!=404) throw SarcadeHttpException('aprs_group_delete',r.statusCode);
+  }
+  Future<Map<String,dynamic>> aprsStatus() async {
+    final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/aprs/status'));
+    if(r.statusCode!=200) throw SarcadeHttpException('aprs_status',r.statusCode);
+    return Map<String,dynamic>.from(jsonDecode(r.body) as Map);
+  }
+  /// Callsigns actually followed by the event (groups + additions).
+  Future<List<String>> followedCallsigns(String eventId) async {
+    final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/events/$eventId/aprs/callsigns'));
+    if(r.statusCode!=200) throw SarcadeHttpException('aprs_callsigns',r.statusCode);
+    return ((jsonDecode(r.body) as Map)['callsigns'] as List).map((e)=>'$e').toList();
+  }
+  Future<Map<String,dynamic>> event(String eventId) async {
+    final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/events/$eventId'));
+    if(r.statusCode!=200) throw SarcadeHttpException('event',r.statusCode);
+    return Map<String,dynamic>.from(jsonDecode(r.body) as Map);
+  }
+  /// Changes event settings (PCO); 409 when the event is closed, 422 refused.
+  Future<Map<String,dynamic>> patchEventSettings(String eventId,String actorId,Map<String,dynamic> settings) async {
+    final r=await _client.patch(Uri.parse('$baseUrl/api/v0.1/events/$eventId/settings'),headers:_json,
+      body:jsonEncode({'actor_id':actorId,'settings':settings}));
+    if(r.statusCode!=200) throw SarcadeHttpException('event_settings',r.statusCode,r.body);
+    return Map<String,dynamic>.from(jsonDecode(r.body) as Map);
+  }
   /// Routes with ordered waypoints, lengths and passages.
   Future<List<Map<String,dynamic>>> routes(String eventId) async {
     final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/events/$eventId/routes'));
