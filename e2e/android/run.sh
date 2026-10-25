@@ -21,8 +21,13 @@ adb emu geo fix 2.1204 48.8049 >/dev/null 2>&1 || true
 
 flutter test integration_test/field_terminal_test.dart -d emulator-5554 \
   --dart-define=SARCADE_E2E_URL=http://10.0.2.2:8000 \
-  --dart-define=SARCADE_E2E_EVENT_NAME="$SARCADE_E2E_EVENT_NAME"
-status=$?
+  --dart-define=SARCADE_E2E_EVENT_NAME="$SARCADE_E2E_EVENT_NAME" 2>&1 | tee /tmp/e2e-android.log
+status=${PIPESTATUS[0]}
+# The raw log is not always readable: surface the failure as annotations.
+if [ "$status" -ne 0 ]; then
+  grep -n -E "not shown|not true|Expected|Actual|Exception|Error|══|Which:|reason|\.dart [0-9]+:[0-9]+" /tmp/e2e-android.log \
+    | head -40 | sed 's/%/%25/g' | while IFS= read -r line; do echo "::error::${line}"; done
+fi
 kill $GRANTER 2>/dev/null
 
 mkdir -p e2e/android/out
