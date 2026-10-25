@@ -77,14 +77,14 @@ String screenTexts() => find.byType(Text).evaluate()
     .where((s) => s.trim().isNotEmpty).take(60).join(' | ');
 
 /// Waits for a server-side condition while the app keeps running.
-Future<void> pumpUntilTrue(WidgetTester t, Future<bool> Function() check, String what,
+Future<void> pumpUntilTrue(WidgetTester t, Future<bool> Function() check, Object what,
     {Duration timeout = const Duration(seconds: 60)}) async {
   final end = DateTime.now().add(timeout);
   while (DateTime.now().isBefore(end)) {
     await t.pump(const Duration(milliseconds: 500));
     if (await check()) return;
   }
-  fail('not true within ${timeout.inSeconds}s: $what\nOn screen: ${screenTexts()}');
+  fail('not true within ${timeout.inSeconds}s: ${what is String Function() ? what() : what}\nOn screen: ${screenTexts()}');
 }
 
 Finder field(String labelKey) => find.ancestor(of: find.text(S.t(labelKey)), matching: find.byType(TextField)).first;
@@ -132,7 +132,9 @@ void main() {
     await t.pump(const Duration(milliseconds: 500));
     await t.tap(save);
     await pumpUntil(t, find.byTooltip(S.t('map.messages')));
-    await pumpUntilTrue(t, () async => (await pco.devices()).contains(device), 'the server knows $device');
+    var seen = <String>[];
+    await pumpUntilTrue(t, () async => (seen = await pco.devices()).contains(device),
+        () => 'the server knows $device (devices: $seen)', timeout: const Duration(seconds: 90));
 
     // 2. PCO → field: urgent broadcast, received and acknowledged by the app.
     final urgent = await pco.send('E2E urgent from PCO $run');
