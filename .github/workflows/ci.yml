@@ -379,3 +379,73 @@ jobs:
             e2e/report
             e2e/test-results
           retention-days: 30
+
+  e2e-android:
+    # Step 2 of the end-to-end tests: the real Android app in an emulator is
+    # the field terminal ADR78-01 (integration_test), against a real server
+    # on this machine (10.0.2.2 from the emulator); the PCO is simulated
+    # through the API by the test.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Server branch
+        id: server
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        shell: bash
+        run: |
+          branch=$(printf '%s' "$PR_BODY" | sed -n 's/^[[:space:]]*server-branch:[[:space:]]*\([^[:space:]]*\).*/\1/p' | head -1)
+          echo "branch=${branch:-main}" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+        with:
+          repository: sdubos-consulting/sarcade-server
+          ref: ${{ steps.server.outputs.branch }}
+          path: sarcade-server
+      - name: Start the SARCADE server and create the test event
+        id: event
+        run: |
+          docker compose -f sarcade-server/demo/docker-compose.demo.yml up -d --build postgres services-stub server
+          for i in $(seq 1 60); do curl -fsS http://localhost:8000/health && break; sleep 2; done
+          name="E2E android ${GITHUB_RUN_ID}"
+          curl -fsS -X POST http://localhost:8000/api/v0.1/events -H 'Content-Type: application/json' \
+            -d "{\"name\":\"$name\",\"kind\":\"exercise\"}"
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - name: Generate Android runner
+        run: |
+          if [ ! -d android ]; then flutter create --platforms=android --org org.sarcade --no-pub .; fi
+          rm -f test/widget_test.dart
+          python3 tool/patch_android.py
+          flutter pub get
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Run the field terminal in the emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        env:
+          SARCADE_E2E_EVENT_NAME: ${{ steps.event.outputs.name }}
+        with:
+          api-level: 33
+          target: google_apis
+          arch: x86_64
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot
+          script: bash e2e/android/run.sh
+      - name: Server logs on failure
+        if: failure()
+        run: docker compose -f sarcade-server/demo/docker-compose.demo.yml logs --tail 200 server
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e2e-android
+          path: e2e/android/out
+          retention-days: 30
