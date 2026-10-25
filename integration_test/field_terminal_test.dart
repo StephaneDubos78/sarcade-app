@@ -67,8 +67,14 @@ Future<void> pumpUntil(WidgetTester t, Finder finder, {Duration timeout = const 
     await t.pump(const Duration(milliseconds: 250));
     if (finder.evaluate().isNotEmpty) return;
   }
-  fail('not shown within ${timeout.inSeconds}s: $finder');
+  fail('not shown within ${timeout.inSeconds}s: $finder\nOn screen: ${screenTexts()}');
 }
+
+/// Texts currently on screen, for the failure message (the CI screenshots
+/// are not always reachable).
+String screenTexts() => find.byType(Text).evaluate()
+    .map((e) => (e.widget as Text).data ?? (e.widget as Text).textSpan?.toPlainText() ?? '')
+    .where((s) => s.trim().isNotEmpty).take(60).join(' | ');
 
 /// Waits for a server-side condition while the app keeps running.
 Future<void> pumpUntilTrue(WidgetTester t, Future<bool> Function() check, String what,
@@ -122,6 +128,8 @@ void main() {
     await t.pump();
     final save = find.text(S.t('common.save'));
     await t.scrollUntilVisible(save, 200, scrollable: find.byType(Scrollable).first);
+    FocusManager.instance.primaryFocus?.unfocus(); // keyboard down
+    await t.pump(const Duration(milliseconds: 500));
     await t.tap(save);
     await pumpUntil(t, find.byTooltip(S.t('map.messages')));
     await pumpUntilTrue(t, () async => (await pco.devices()).contains(device), 'the server knows $device');
