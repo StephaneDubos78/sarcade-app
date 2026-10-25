@@ -10,8 +10,12 @@ export 'notification_actions.dart' show isUrgentPriority, NotificationPayload, P
 /// Nothing waits in a file on the web: answers are given in the application.
 Future<List<PendingAnswer>> takePendingAnswers() async=>const [];
 
-/// Browser notifications (installed PWA on ChromeOS, any browser): shown
-/// when the operator allowed them; urgent ones stay until dismissed. A click
+/// Browser notifications (installed PWA on ChromeOS and Windows, any
+/// browser): shown when the operator allowed them; urgent ones stay until
+/// dismissed. Browsers ignore a permission request that does not follow a
+/// click (recette of lot 2, 25 October 2026): the request is made from the
+/// « Activer les notifications » banner, and the permission is read again
+/// for every message. A click
 /// brings the application to the front on the message; browsers do not offer
 /// reliable action buttons outside a service worker, so the answer is given
 /// in the messages screen. Immediate messages are reminded while the
@@ -21,7 +25,10 @@ class NotificationService {
   factory NotificationService()=>_instance;
   NotificationService._();
 
-  bool _allowed=false; Future<void>? _init;
+  String get _permission{try{return web.Notification.permission;}catch(_){return 'unsupported';}}
+
+  /// The operator has not answered yet: show the banner.
+  bool get needsUserAction=>_permission=='default';
   bool bypassDnd=false;
   final _opens=StreamController<String>.broadcast();
   final _answers=StreamController<void>.broadcast();
@@ -31,18 +38,16 @@ class NotificationService {
   Stream<void> get answers=>_answers.stream;
   static bool get supportsDndBypass=>false;
 
-  Future<void> initialize()=>_init??=_initialize();
+  Future<void> initialize() async {}
 
-  Future<void> _initialize() async {
+  /// From a click on the banner.
+  Future<bool> requestFromUser() async {
     try{
-      final current=web.Notification.permission;
-      if(current=='granted'){_allowed=true;return;}
-      if(current=='default'){
-        final answer=await web.Notification.requestPermission().toDart;
-        _allowed=answer.toDart=='granted';
-      }
+      final answer=await web.Notification.requestPermission().toDart;
+      return answer.toDart=='granted';
     }catch(e){
       debugPrint('SARCADE notifications unavailable: $e');
+      return false;
     }
   }
 
@@ -62,7 +67,7 @@ class NotificationService {
   }
 
   Future<void> message({required String title,required String body,required String priority,NotificationPayload? payload}) async {
-    if(!_allowed){debugPrint('SARCADE notification [$priority] $title: $body');return;}
+    if(_permission!='granted'){debugPrint('SARCADE notification [$priority] $title: $body');return;}
     try{
       _show(title,body,priority,payload);
       if(priority=='immediate'&&payload!=null){

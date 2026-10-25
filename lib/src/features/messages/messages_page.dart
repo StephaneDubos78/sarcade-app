@@ -6,6 +6,8 @@ import 'package:uuid/uuid.dart';
 import '../../l10n/strings.dart';
 import '../../models/comm_group.dart';
 import '../../models/message.dart';
+import '../../models/message_unread.dart';
+import 'package:flutter/services.dart';
 import '../groups/group_editor_page.dart';
 import '../../models/recipient.dart';
 import '../../offline/local_store.dart';
@@ -31,8 +33,40 @@ class _MessagesPageState extends State<MessagesPage>{
  bool _direct=false; String _recipientType='user';
 
  final _watch=<StreamSubscription>[];
+ /// Unread when the screen opened: shown in bold; everything shown counts as
+ /// seen (the pastille of the map goes back to zero).
+ Set<String> _unreadAtOpen={};
+ /// Computer keyboard: Enter sends, Alt+Enter or Shift+Enter adds a line.
+ final bool _enterSends=enterSends(defaultTargetPlatform.name);
  // Messages received while this screen is open appear without the button.
- @override void initState(){super.initState();if(widget.initialText!=null)_text.text=widget.initialText!;_refreshGroups();for(final s in widget.store.messageChanges()){_watch.add(s.listen((_){if(mounted)setState((){});}));}}
+ @override void initState(){
+   super.initState();
+   if(widget.initialText!=null)_text.text=widget.initialText!;
+   _refreshGroups();
+   _unreadAtOpen=unreadMessages(messages:_eventMessages,seen:widget.store.seenMessages(widget.eventId)??{},
+     deviceId:widget.actorId,groups:{for(final g in _groups)g.id:g}).map((m)=>m.id).toSet();
+   _markSeen();
+   for(final s in widget.store.messageChanges()){_watch.add(s.listen((_){_markSeen();if(mounted)setState((){});}));}
+ }
+ Iterable<SarcadeMessage> get _eventMessages=>widget.store.messages().map(SarcadeMessage.fromJson).where((m)=>m.eventId==widget.eventId);
+ void _markSeen()=>unawaited(widget.store.markMessagesSeen(widget.eventId,_eventMessages.map((m)=>m.id)));
+
+ /// Enter on a computer keyboard sends; Alt+Enter and Shift+Enter insert a
+ /// new line. Text being composed (accents, IME) is left alone.
+ KeyEventResult _onKey(FocusNode node,KeyEvent event){
+   if(!_enterSends||event is! KeyDownEvent)return KeyEventResult.ignored;
+   if(event.logicalKey!=LogicalKeyboardKey.enter&&event.logicalKey!=LogicalKeyboardKey.numpadEnter)return KeyEventResult.ignored;
+   if(_text.value.composing.isValid)return KeyEventResult.ignored;
+   final keys=HardwareKeyboard.instance;
+   if(keys.isAltPressed||keys.isShiftPressed){
+     final v=_text.value; final sel=v.selection.isValid?v.selection:TextSelection.collapsed(offset:v.text.length);
+     final text=v.text.replaceRange(sel.start,sel.end,'\n');
+     _text.value=TextEditingValue(text:text,selection:TextSelection.collapsed(offset:sel.start+1));
+     return KeyEventResult.handled;
+   }
+   _send();
+   return KeyEventResult.handled;
+ }
 
  List<CommGroup> get _groups=>widget.store.groups(widget.eventId).map(CommGroup.fromJson).toList();
  CommGroup? get _group{if(_groupId==null)return null;for(final g in _groups){if(g.id==_groupId)return g;}return null;}
@@ -186,7 +220,7 @@ class _MessagesPageState extends State<MessagesPage>{
           if(photos.isNotEmpty)Padding(padding:const EdgeInsets.only(bottom:6),child:Wrap(spacing:6,runSpacing:6,children:[
             for(final p in photos)_PhotoThumb(key:ValueKey(p.fileId),attachment:p,api:widget.api,store:widget.store,eventId:widget.eventId),
           ])),
-          Text(m.body),
+          Text(m.body,style:_unreadAtOpen.contains(m.id)?const TextStyle(fontWeight:FontWeight.bold):null),
         ]),
         subtitle:Text('${m.senderId} · ${S.t('priority.${m.priority}')} · ${S.t('messages.to',{'to':_recipientLabel(m.recipientIds,byId)})}\nACK: ${ma.map((a)=>S.t('ack.${a.status}')).join(', ')}'),
         trailing:mine?null:PopupMenuButton<String>(onSelected:(s)=>_ack(m,s),itemBuilder:(_)=>[
@@ -210,7 +244,8 @@ class _MessagesPageState extends State<MessagesPage>{
       Row(children:[
         DropdownButton<String>(value:_priority,items:[for(final p in const ['routine','urgent','immediate'])DropdownMenuItem(value:p,child:Text(S.t('priority.$p')))],onChanged:(v)=>setState(()=>_priority=v!)),
         const SizedBox(width:6),
-        Expanded(child:TextField(controller:_text,maxLength:2048,minLines:1,maxLines:widget.initialText==null?4:6,decoration:InputDecoration(hintText:S.t('messages.hint'),counterText:''))),
+        Expanded(child:Focus(onKeyEvent:_onKey,child:TextField(controller:_text,maxLength:2048,minLines:1,maxLines:widget.initialText==null?4:6,
+          decoration:InputDecoration(hintText:S.t('messages.hint'),counterText:'',helperText:_enterSends?S.t('messages.enterHint'):null)))),
         IconButton(tooltip:S.t('messages.photo'),onPressed:_picking?null:_photo,icon:_picking?const SizedBox(width:20,height:20,child:CircularProgressIndicator(strokeWidth:2)):const Icon(Icons.photo_camera)),
         IconButton(tooltip:S.t('messages.send'),onPressed:_send,icon:const Icon(Icons.send)),
       ]),

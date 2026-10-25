@@ -32,6 +32,8 @@ const Texts _fr={
   'app.title':'SARCADE',
   'common.cancel':'Annuler','common.ok':'OK','common.save':'Enregistrer','common.close':'Fermer',
   'common.retry':'Réessayer','common.copy':'Copier','common.copied':'Copié',
+  'notifications.prompt':'Activer les notifications pour être averti des messages, même quand SARCADE est en arrière-plan.','notifications.enable':'Activer les notifications','notifications.later':'Plus tard','notifications.refused':'Notifications refusées : les autoriser dans les paramètres du site du navigateur.',
+  'messages.enterHint':'Entrée : envoyer · Alt+Entrée : nouvelle ligne',
   'status.connecting':'Connexion…','status.connected':'Connecté','status.offline':'Hors connexion',
   'status.realtimeUnavailable':'Temps réel indisponible','status.pending':'{n} attente',
   // Map page
@@ -230,6 +232,8 @@ const Texts _en={
   'app.title':'SARCADE',
   'common.cancel':'Cancel','common.ok':'OK','common.save':'Save','common.close':'Close',
   'common.retry':'Retry','common.copy':'Copy','common.copied':'Copied',
+  'notifications.prompt':'Turn on notifications to be told about messages, even when SARCADE is in the background.','notifications.enable':'Turn on notifications','notifications.later':'Later','notifications.refused':'Notifications refused: allow them in the browser site settings.',
+  'messages.enterHint':'Enter: send · Alt+Enter: new line',
   'status.connecting':'Connecting…','status.connected':'Connected','status.offline':'Offline',
   'status.realtimeUnavailable':'Real time unavailable','status.pending':'{n} pending',
   'map.sync':'Synchronise','map.messages':'Messages','map.menu':'Menu','map.fit':'Fit operators',

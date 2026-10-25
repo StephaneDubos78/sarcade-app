@@ -9,6 +9,7 @@ manifest and the page for that use:
 - display "standalone": the app opens in its own window, without browser UI
 - orientation "any": usable in landscape and portrait, docked or split screen
 - categories for the ChromeOS launcher
+- the manifest fetched with the Cloudflare Access cookie (crossorigin)
 - a SARCADE service worker (web/sarcade_sw.js): network first, cached copy
   when the server cannot be reached, so the installed app still starts
   offline (the Flutter service worker is deprecated). The API is never
@@ -86,6 +87,14 @@ def main() -> int:
                   '<meta name="apple-mobile-web-app-title" content="SARCADE">', html, count=1)
     if 'name="theme-color"' not in html:
         html = html.replace("</head>", f'  <meta name="theme-color" content="{THEME}">\n</head>', 1)
+    # The manifest is fetched without credentials by default: behind
+    # Cloudflare Access it is redirected to the sign-in page and blocked
+    # (CORS), and the app is no longer offered for installation.
+    html = re.sub(r'<link rel="manifest" href="manifest.json"\s*/?>',
+                  '<link rel="manifest" href="manifest.json" crossorigin="use-credentials">', html, count=1)
+    if 'crossorigin="use-credentials"' not in html:
+        print("error: manifest link not found in web/index.html", file=sys.stderr)
+        return 1
     if "sarcade_sw.js" not in html:
         html = html.replace("</body>", f"  {REGISTER}\n</body>", 1)
     INDEX.write_text(html, encoding="utf-8")
