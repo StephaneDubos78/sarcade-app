@@ -7,7 +7,13 @@ import 'import_formats.dart';
 import 'map_feature.dart';
 
 /// Operational palette, ARGB. Red first: it is the default for SAR annotations.
-const drawingPalette=<int>[0xFFE53935,0xFFFB8C00,0xFFFDD835,0xFF43A047,0xFF1E88E5,0xFF8E24AA,0xFF212121];
+/// Fixed palette, readable on the OSM, IGN and satellite maps: red, orange,
+/// yellow, green, blue, purple, black, white (note « Couleur de dessin par
+/// défaut »).
+const drawingPalette=<int>[0xFFE53935,0xFFFB8C00,0xFFFDD835,0xFF43A047,0xFF1E88E5,0xFF8E24AA,0xFF212121,0xFFFFFFFF];
+
+/// Colour of new drawings chosen in the profile; red when none or unknown.
+int defaultDrawColor(int? chosen)=>chosen!=null&&drawingPalette.contains(chosen)?chosen:drawingPalette.first;
 const drawingWidths=<double>[2,4,7];
 
 /// One undoable action: the state of each touched object before and after.

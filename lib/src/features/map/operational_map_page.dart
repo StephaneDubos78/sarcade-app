@@ -144,7 +144,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   void _onAccessChanged(){if(mounted)setState((){});}
 
   void _toggleDrawingTools(){
-    if(_drawingTools)_drawing.selectTool(null);
+    // Each opening of the tools starts from the profile colour.
+    if(_drawingTools){_drawing.selectTool(null);}else{_drawing.color=_profileDrawColor;}
     setState(()=>_drawingTools=!_drawingTools);
   }
   void _openUnsent()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>UnsentPage(sync:_sync,actorId:widget.deviceId))).then((_){if(mounted)setState((){});});
@@ -468,8 +469,11 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       onChanged:_onLocalFeatureChanged,
       onDeleted:_onLocalFeatureDeleted,
     );
+    _drawing.color=_profileDrawColor;
     _drawing.addListener(_onDrawingChanged);
   }
+  /// Colour of new drawings chosen in the profile (Paramètres).
+  int get _profileDrawColor=>defaultDrawColor(widget.store.storedConfig()?['draw_color'] as int?);
   void _onDrawingChanged(){if(mounted)setState((){});}
 
   // Local edits: stored at once, then sent through the Outbox (ADR-001).
