@@ -32,6 +32,11 @@ fi
 kill $GRANTER 2>/dev/null
 
 mkdir -p e2e/android/out
+pk=$(adb shell pm list packages | grep -i sarcade | tr -d '\r' | tr '\n' ' ')
+perms=$(adb shell dumpsys package "$PKG" | grep -E "POST_NOTIFICATIONS|ACCESS_FINE_LOCATION" | tr -d '\r' | tr -s ' ' | tr '\n' ';')
+echo "::notice title=emulator::packages: ${pk:-none} / permissions: ${perms:-none}"
+logs=$(adb logcat -d -s flutter:V | tail -40 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+echo "::notice title=flutter logcat::${logs}"
 adb shell dumpsys notification --noredact > e2e/android/out/notifications.txt 2>&1 || true
 adb exec-out screencap -p > e2e/android/out/last-screen.png 2>/dev/null || true
 if grep -q "E2E urgent from PCO" e2e/android/out/notifications.txt; then

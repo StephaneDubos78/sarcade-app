@@ -84,7 +84,7 @@ Future<void> pumpUntilTrue(WidgetTester t, Future<bool> Function() check, String
     await t.pump(const Duration(milliseconds: 500));
     if (await check()) return;
   }
-  fail('not true within ${timeout.inSeconds}s: $what');
+  fail('not true within ${timeout.inSeconds}s: $what\nOn screen: ${screenTexts()}');
 }
 
 Finder field(String labelKey) => find.ancestor(of: find.text(S.t(labelKey)), matching: find.byType(TextField)).first;
