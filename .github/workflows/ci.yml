@@ -107,7 +107,7 @@ jobs:
           if-no-files-found: error
           retention-days: 30
       - name: Publish to the windows-dev pre-release
-        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'  # only what is merged: the NAS and testers fetch this link
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -305,7 +305,7 @@ jobs:
           retention-days: 30
       - name: Publish to the web-dev pre-release
         # Stable link used by the sarcade-server Docker image to embed the web client.
-        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'  # only what is merged: the NAS and testers fetch this link
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
