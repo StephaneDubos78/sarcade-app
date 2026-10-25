@@ -57,11 +57,22 @@ jobs:
         run: |
           if (-not (Test-Path ".\windows")) { flutter create --platforms=windows --no-pub . }
           if (Test-Path ".\test\widget_test.dart") { Remove-Item ".\test\widget_test.dart" -Force }
+          python tool/patch_windows.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - run: flutter pub get
       - run: flutter analyze
       - run: flutter test
-      - run: flutter build windows --release --dart-define=SARCADE_BUILD="$($env:SARCADE_BRANCH)@$($env:GITHUB_SHA.Substring(0,7))"
-        shell: pwsh
+      - name: Build Windows
+        shell: bash
+        run: |
+          set -o pipefail
+          flutter build windows --release --dart-define=SARCADE_BUILD="${SARCADE_BRANCH}@${GITHUB_SHA:0:7}" 2>&1 | tee windows-build.log
+      - name: Report Windows build errors
+        if: failure()
+        shell: bash
+        run: |
+          grep -n -B2 -A6 -E "error|Error|FAILED|fatal" windows-build.log \
+            | head -80 | sed 's/%/%25/g' | while IFS= read -r line; do echo "::error::${line}"; done || true
 
   android-build:
     runs-on: ubuntu-latest

@@ -8,6 +8,7 @@ import 'package:latlong2/latlong.dart' hide Path;
 import 'package:uuid/uuid.dart';
 
 import '../../models/comm_group.dart';
+import '../../models/message_reception.dart';
 import '../../models/poi.dart';
 import '../../models/message.dart';
 import '../../models/position.dart';
@@ -162,8 +163,15 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     if(e.type=='event.settings.updated'||e.type=='event.closed'){unawaited(_ops.beat());}
   }
 
+  /// Messages being handled: realtime and synchronisation may deliver the
+  /// same one at the same moment.
+  final _receiving=<String>{};
   Future<void> _receiveMessage(Map<String,dynamic> data) async {
     final m=SarcadeMessage.fromJson(data);
+    if(!_receiving.add(m.id))return;
+    try{await _handleMessage(m,data);}finally{_receiving.remove(m.id);}
+  }
+  Future<void> _handleMessage(SarcadeMessage m,Map<String,dynamic> data) async {
     await widget.store.cacheMessage(data);
     final groups={for(final j in widget.store.groups(widget.eventId)) j['id'] as String:CommGroup.fromJson(j)};
     final addressed=addressedTo(m.recipientIds,widget.deviceId,groups);
@@ -174,7 +182,11 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         await widget.store.cacheAck(ack.toJson());
         await _sync.queue(objectId:ack.id,objectType:'ack',payload:ack.toJson());
       }
-      await _notifications.message(title:'SARCADE · ${m.priority}',body:m.body,priority:m.priority);
+      // Realtime and synchronisation may both bring the message: only the
+      // first arrival notifies; an old message caught up later stays silent.
+      if(shouldNotifyMessage(alreadyReceived:existing,createdAt:m.createdAt,now:DateTime.now().toUtc())){
+        await _notifications.message(title:'SARCADE · ${S.t('priority.${m.priority}')} · ${m.senderId}',body:m.body,priority:m.priority);
+      }
     }
     if(mounted)setState((){});
   }
@@ -389,6 +401,9 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   /// the map even when the real-time channel missed them (test of 23 Oct
   /// 2026: the phone's positions reached the server but not the PC map).
   void _onRemoteChange(String objectType,Map<String,dynamic> payload){
+    // Messages brought by the synchronisation (realtime closed, app back in
+    // the foreground) get the same acknowledgement and notification.
+    if(objectType=='message'&&payload['event_id']==widget.eventId)unawaited(_receiveMessage(payload));
     if(objectType=='map_feature')_applyRemoteFeature(payload);
     if(routeObjectKinds.contains(objectType))_routes.applyRemote(objectType,payload);
     if(objectType=='position'){
