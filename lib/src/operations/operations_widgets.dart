@@ -18,9 +18,13 @@ class OperationsBanners extends StatelessWidget {
   /// Web client: the server stopped answering while the browser is online,
   /// usually an expired session; reloading the page signs in again.
   final VoidCallback? onReload;
+  /// Web client: notifications not yet allowed; the browser only asks after
+  /// a click, hence this banner.
+  final VoidCallback? onEnableNotifications; final VoidCallback? onDismissNotifications;
   const OperationsBanners({super.key,required this.settings,required this.update,required this.alert,
     required this.heldPhotos,required this.onSyncNow,required this.onUpdate,
-    this.accessRequired=false,this.accessRenewBy,this.onSignIn,this.onReload});
+    this.accessRequired=false,this.accessRenewBy,this.onSignIn,this.onReload,
+    this.onEnableNotifications,this.onDismissNotifications});
 
   static String _date(DateTime t){final l=t.toLocal();String two(int v)=>v.toString().padLeft(2,'0');return '${two(l.day)}/${two(l.month)} ${two(l.hour)}:${two(l.minute)}';}
 
@@ -39,6 +43,12 @@ class OperationsBanners extends StatelessWidget {
       if(onReload!=null)_Banner(icon:Icons.refresh,color:Colors.orange.shade100,
         text:S.t('access.webExpired'),
         action:TextButton(onPressed:onReload,child:Text(S.t('access.reload')))),
+      if(onEnableNotifications!=null)_Banner(icon:Icons.notifications_active_outlined,color:scheme.secondaryContainer,
+        text:S.t('notifications.prompt'),
+        action:Row(mainAxisSize:MainAxisSize.min,children:[
+          if(onDismissNotifications!=null)TextButton(onPressed:onDismissNotifications,child:Text(S.t('notifications.later'))),
+          FilledButton.tonal(onPressed:onEnableNotifications,child:Text(S.t('notifications.enable'))),
+        ])),
       if(settings.eventEnded)_Banner(icon:Icons.flag,color:scheme.tertiaryContainer,
         text:'${S.t('event.ended')} · ${S.t('event.endedDetail')}'),
       if(update.status==UpdateStatus.invited)_Banner(icon:Icons.system_update,color:scheme.secondaryContainer,
