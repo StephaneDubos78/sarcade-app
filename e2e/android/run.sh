@@ -25,8 +25,8 @@ flutter test integration_test/field_terminal_test.dart -d emulator-5554 \
 status=${PIPESTATUS[0]}
 # The raw log is not always readable: surface the failure as annotations.
 if [ "$status" -ne 0 ]; then
-  grep -n -E "not shown|not true|Expected|Actual|Exception|Error|══|Which:|reason|\.dart [0-9]+:[0-9]+" /tmp/e2e-android.log \
-    | head -40 | sed 's/%/%25/g' | while IFS= read -r line; do echo "::error::${line}"; done
+  awk '/EXCEPTION CAUGHT/{on=1} on{print; n++} n>=30{exit}' /tmp/e2e-android.log \
+    | sed 's/%/%25/g' | while IFS= read -r line; do [ -n "${line// }" ] && echo "::error::${line}"; done
 fi
 kill $GRANTER 2>/dev/null
 
