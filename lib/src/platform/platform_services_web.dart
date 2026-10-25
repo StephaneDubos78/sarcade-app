@@ -48,3 +48,14 @@ WebSocketChannel openWebSocket(Uri uri,Map<String,String> headers)=>WebSocketCha
 /// Reloads the page: Cloudflare Access asks to sign in again if needed.
 void reloadApp()=>web.window.location.reload();
 bool get browserOnline=>web.window.navigator.onLine;
+
+/// Asks the browser to keep the offline data (IndexedDB) instead of evicting
+/// it when space runs low: an installed PCO may hold unsent messages.
+/// Granted silently for installed apps in Chrome and Edge.
+Future<bool> requestPersistentStorage() async {
+  try{
+    final storage=web.window.navigator.storage;
+    if((await storage.persisted().toDart).toDart)return true;
+    return (await storage.persist().toDart).toDart;
+  }catch(_){return false;}
+}
