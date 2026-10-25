@@ -171,7 +171,7 @@ jobs:
   linux-build:
     # Linux desktop client: Linux PCs and Chromebooks (Linux development
     # environment). On ChromeOS the Android app remains the main channel.
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04  # pinned: Ubuntu 26 clang rejects json.hpp of flutter_secure_storage_linux (-Werror)
     steps:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
