@@ -10,7 +10,7 @@ module.exports = defineConfig({
   fullyParallel: false,
   workers: 1,
   retries: process.env.CI ? 1 : 0,
-  reporter: [['list'], ['html', { open: 'never', outputFolder: 'report' }]],
+  reporter: [['list'], ['html', { open: 'never', outputFolder: 'report' }], ...(process.env.CI ? [['github']] : [])],
   use: {
     baseURL: process.env.SARCADE_URL || 'http://localhost:8000',
     locale: 'en-US',
