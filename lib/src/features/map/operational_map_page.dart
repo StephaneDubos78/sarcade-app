@@ -9,6 +9,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../models/comm_group.dart';
 import '../../models/message_reception.dart';
+import '../../models/message_unread.dart';
 import '../../models/poi.dart';
 import '../../models/message.dart';
 import '../../models/position.dart';
@@ -343,6 +344,18 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     if(!ok)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(S.t('notifications.refused'))));
   }
 
+  /// Unread messages: count on the Messages button, red when one is urgent.
+  /// The first time on this device every existing message counts as seen.
+  Widget _messagesIcon(){
+    final all=widget.store.messages().map(SarcadeMessage.fromJson).where((m)=>m.eventId==widget.eventId).toList();
+    final seen=widget.store.seenMessages(widget.eventId);
+    if(seen==null){unawaited(widget.store.markMessagesSeen(widget.eventId,all.map((m)=>m.id)));return const Icon(Icons.message);}
+    final groups={for(final j in widget.store.groups(widget.eventId)) j['id'] as String:CommGroup.fromJson(j)};
+    final unread=unreadMessages(messages:all,seen:seen,deviceId:widget.deviceId,groups:groups);
+    return Badge(isLabelVisible:unread.isNotEmpty,label:Text('${unread.length}'),
+      backgroundColor:anyUrgent(unread)?Colors.red:Colors.blueGrey,child:const Icon(Icons.message));
+  }
+
   void _initOperations(){
     final prefs=widget.store.trackingPrefs(widget.eventId);
     _tracking=TrackingService(eventId:widget.eventId,deviceId:widget.deviceId,location:_location,
@@ -671,7 +684,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     void openFiles()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>FilesPage(api:widget.api,eventId:widget.eventId,actorId:widget.deviceId)));
     void openLogbook()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>LogbookPage(api:widget.api,eventId:widget.eventId)));
     final syncButton=IconButton(tooltip:S.t('map.sync'),onPressed:() async {await _sync.syncNow();if(mounted)setState((){});},icon:const Icon(Icons.sync));
-    final messagesButton=IconButton(tooltip:S.t('map.messages'),onPressed:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>MessagesPage(api:widget.api,eventId:widget.eventId,actorId:widget.deviceId,sync:_sync,store:widget.store))),icon:Badge(isLabelVisible:_sync.inFlight>0,label:Text('${_sync.inFlight}'),child:const Icon(Icons.message)));
+    final messagesButton=IconButton(tooltip:S.t('map.messages'),onPressed:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>MessagesPage(api:widget.api,eventId:widget.eventId,actorId:widget.deviceId,sync:_sync,store:widget.store))),icon:_messagesIcon());
     return Scaffold(
       appBar:compact
         ? AppBar(
