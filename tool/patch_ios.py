@@ -25,6 +25,10 @@ USAGE = {
         "SARCADE se connecte au serveur de l’événement sur le réseau local, même sans Internet.",
     "NSPhotoLibraryUsageDescription":
         "SARCADE permet de joindre des photos aux messages et aux fichiers partagés de l’événement.",
+    "NSMicrophoneUsageDescription":
+        "SARCADE utilise le micro pour dicter une recherche ou un message.",
+    "NSSpeechRecognitionUsageDescription":
+        "SARCADE transforme votre voix en texte pour dicter une recherche ou un message.",
     "NSCameraUsageDescription":
         "SARCADE permet de prendre une photo et de l’envoyer en message au poste de commandement.",
 }

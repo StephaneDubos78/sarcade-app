@@ -16,6 +16,8 @@ import '../../models/position.dart';
 import '../../models/reference_site.dart';
 import '../messages/messages_page.dart';
 import '../logbook/logbook_page.dart';
+import '../search/map_search.dart';
+import '../search/map_search_bar.dart';
 import '../files/files_page.dart';
 import 'drawing/drawing_controller.dart';
 import 'reference_cluster_layer.dart';
@@ -579,6 +581,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       }
       return;
     }
+    if(_searchPin!=null){setState(()=>_searchPin=null);return;}
     final cam=_map.camera;
     final hit=hitTest(_drawing.features,tap.relative??cam.latLngToScreenOffset(point),cam.latLngToScreenOffset,radiusPx:_circleRadiusPx);
     if(hit==null&&_closeOpenItems())return;
@@ -659,6 +662,24 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         backgroundColor:_followMe?scheme.primary:null,foregroundColor:_followMe?scheme.onPrimary:null,
         child:Icon(_followMe?Icons.navigation:Icons.my_location)),
     ]);
+  }
+
+  /// Map search (request of 26 Oct 2026): what the device knows, then the
+  /// addresses from the server. The chosen result gets a red pin; a tap on
+  /// it opens the point menu (measure, navigate, open in, weather).
+  LatLng? _searchPin;
+  Iterable<Searchable> _searchables()=>[
+    for(final p in _positions.values)Searchable(SearchKind.operator,p.deviceId.replaceFirst('aprs:',''),p.deviceId.startsWith('aprs:')?'APRS':S.t('search.kind.operator'),LatLng(p.lat,p.lon)),
+    for(final r in _references.values)Searchable(SearchKind.reference,r.name,[r.callsign,r.subtype,r.description].whereType<String>().join(' '),LatLng(r.lat,r.lon)),
+    for(final p in _pois.values)Searchable(SearchKind.poi,p.label??p.kind,p.kind,LatLng(p.lat,p.lon)),
+    for(final f in _drawing.features)if(f.label.trim().isNotEmpty&&f.points.isNotEmpty)Searchable(SearchKind.drawing,f.label,f.kind.name,f.points.first),
+  ];
+  Future<List<SearchResult>> _searchAddresses(String q,LatLng? near) async =>
+    addressResults(await widget.api.geocode(q,lat:near?.latitude,lon:near?.longitude));
+  LatLng? _mapCentre(){try{return _map.camera.center;}catch(_){return null;}}
+  void _onSearchPick(SearchResult r){
+    setState(()=>_searchPin=r.point);
+    _map.move(r.point,r.kind==SearchKind.address||r.kind==SearchKind.coordinates?16:15);
   }
 
   // The dialog owns its text controller: disposing it when the Future
@@ -881,6 +902,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           ...buildMeasureLayers(_measure,_coordFormat),
           MarkerLayer(markers:markers),
           if(_me!=null)MarkerLayer(markers:[Marker(point:_me!,width:22,height:22,child:Container(decoration:BoxDecoration(color:Colors.blue,shape:BoxShape.circle,border:Border.all(color:Colors.white,width:3),boxShadow:const [BoxShadow(blurRadius:4,color:Colors.black26)])))]),
+          if(_searchPin!=null)MarkerLayer(markers:[Marker(point:_searchPin!,width:44,height:44,alignment:Alignment.topCenter,
+            child:GestureDetector(onTap:()=>_onLongPress(_searchPin!),child:const Icon(Icons.location_on,color:Colors.red,size:44)))]),
           buildHandleLayer(_drawing,_globalToLatLng),
           RichAttributionWidget(attributions:[TextSourceAttribution(_basemap.attribution.isEmpty?widget.tileAttribution:_basemap.attribution)]),
         ]),
@@ -903,6 +926,9 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
             if(_drawingTools)...[
               const SizedBox(width:8),
               Flexible(child:DrawingToolbar(controller:_drawing,onExport:_exportGeoJson,onImport:_importFile,onClose:_toggleDrawingTools)),
+            ]else...[
+              const SizedBox(width:8),
+              Flexible(child:MapSearchBar(items:_searchables,addresses:_searchAddresses,near:_mapCentre,onPick:_onSearchPick)),
             ],
           ]),
           if(_drawing.isDrawing)Padding(padding:const EdgeInsets.only(top:8),child:DraftBar(controller:_drawing)),
