@@ -7,6 +7,8 @@ const { createEvent, Terminal, joinEvent, openMessages, sendMessage, messageCard
 const RUN = `${Date.now()}`.slice(-6);
 const EVENT_NAME = `E2E ${RUN}`;
 
+const consoleLines = [];
+
 test.describe.serial('PCO (web) and a field terminal', () => {
   let eventId, field, page, api;
 
@@ -15,6 +17,10 @@ test.describe.serial('PCO (web) and a field terminal', () => {
     eventId = await createEvent(api, EVENT_NAME);
     field = new Terminal(api, eventId, 'ADR78-01');
     page = await browser.newPage({ baseURL, locale: 'en-US', viewport: { width: 1280, height: 900 } });
+    // Browser console kept for the failure message (CI artifacts are not
+    // always reachable): Flutter prints its exceptions there.
+    page.on('console', (m) => { if (['error', 'warning'].includes(m.type()) || /Exception|Error/.test(m.text())) consoleLines.push(`${m.type()}: ${m.text()}`.slice(0, 400)); });
+    page.on('pageerror', (e) => consoleLines.push(`pageerror: ${e.message}`.slice(0, 400)));
   });
 
   test.afterAll(async () => { await page?.close(); await api?.dispose(); });
@@ -40,10 +46,15 @@ test.describe.serial('PCO (web) and a field terminal', () => {
 
     // The field terminal receives it through the server.
     let received;
-    await expect.poll(async () => {
-      received = (await field.changes()).find((c) => c.object_type === 'message' && c.payload.body === body);
-      return received?.payload;
-    }, { timeout: 60_000 }).toMatchObject({ sender_id: 'PCO', priority: 'urgent', recipient_ids: [] });
+    try {
+      await expect.poll(async () => {
+        received = (await field.changes()).find((c) => c.object_type === 'message' && c.payload.body === body);
+        return received?.payload;
+      }, { timeout: 60_000 }).toMatchObject({ sender_id: 'PCO', priority: 'urgent', recipient_ids: [] });
+    } catch (e) {
+      const status = await page.locator('flt-semantics').allInnerTexts().catch(() => []);
+      throw new Error(`message not on the server\nscreen: ${status.join(' | ').slice(0, 1500)}\nconsole:\n${consoleLines.slice(-25).join('\n')}`);
+    }
 
     // It acknowledges; the PCO sees « ACK: Received ».
     await field.ack(received.payload.id, 'received');
