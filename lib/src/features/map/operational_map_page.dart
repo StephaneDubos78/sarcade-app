@@ -581,7 +581,6 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     }
     final cam=_map.camera;
     final hit=hitTest(_drawing.features,tap.relative??cam.latLngToScreenOffset(point),cam.latLngToScreenOffset,radiusPx:_circleRadiusPx);
-    if(hit==null&&_closeOpenItems())return;
     _drawing.select(hit?.id);
   }
 
@@ -880,7 +879,6 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
             onWaypointTap:(w)=>setState((){_showRoutesPanel=true;_showPanel=false;_showReferencePanel=false;_selectedRouteId=w.routeId;})),
           ...buildMeasureLayers(_measure,_coordFormat),
           MarkerLayer(markers:markers),
-          if(_me!=null)MarkerLayer(markers:[Marker(point:_me!,width:22,height:22,child:Container(decoration:BoxDecoration(color:Colors.blue,shape:BoxShape.circle,border:Border.all(color:Colors.white,width:3),boxShadow:const [BoxShadow(blurRadius:4,color:Colors.black26)])))]),
           buildHandleLayer(_drawing,_globalToLatLng),
           RichAttributionWidget(attributions:[TextSourceAttribution(_basemap.attribution.isEmpty?widget.tileAttribution:_basemap.attribution)]),
         ]),
