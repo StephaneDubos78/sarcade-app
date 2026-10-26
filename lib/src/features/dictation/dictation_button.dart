@@ -38,8 +38,7 @@ class _DictationButtonState extends State<DictationButton> {
     _before=c.text;
     setState(()=>_listening=true);
     await _speech.listen(
-      localeId:dictationLocale(S.lang),
-      listenOptions:SpeechListenOptions(partialResults:true,cancelOnError:true),
+      listenOptions:SpeechListenOptions(localeId:dictationLocale(S.lang),partialResults:true,cancelOnError:true),
       onResult:(r){
         final text=dictatedText(_before,r.recognizedWords);
         c.value=TextEditingValue(text:text,selection:TextSelection.collapsed(offset:text.length));
