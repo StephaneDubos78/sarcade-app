@@ -60,6 +60,7 @@ const Texts _fr={
   'update.download':'Télécharger la mise à jour','update.downloaded':'Mise à jour téléchargée',
   'update.downloadFailed':'Téléchargement impossible','update.store':'Mets l’application à jour depuis le magasin d’applications ou demande le fichier au PCO.',
   // Messages
+  'map.myPosition':'Ma position','map.followMeOn':'Suivi de ma position (déplacer la carte pour l’arrêter)','map.north':'Nord en haut','map.noPosition':'Position indisponible : vérifier la localisation de l’appareil',
   'messages.title':'Messages · {n} en attente','messages.all':'Tous les messages','messages.broadcast':'Diffusion générale',
   'messages.direct':'Direct','messages.directHint':'Identifiant de l’agent ou de l’équipe','messages.hint':'Message court',
   'messages.send':'Envoyer','messages.photo':'Envoyer une photo','messages.takePhoto':'Prendre une photo',
@@ -231,6 +232,7 @@ const Texts _en={
   'update.required':'Update required','update.requiredDetail':'This version ({current}) is no longer accepted by the server. Install version {version} to reconnect.',
   'update.download':'Download the update','update.downloaded':'Update downloaded',
   'update.downloadFailed':'Download failed','update.store':'Update the application from the app store or ask the command post for the file.',
+  'map.myPosition':'My position','map.followMeOn':'Following my position (move the map to stop)','map.north':'North up','map.noPosition':'Position unavailable: check the device location',
   'messages.title':'Messages · {n} pending','messages.all':'All messages','messages.broadcast':'General broadcast',
   'messages.direct':'Direct','messages.directHint':'Agent or team identifier','messages.hint':'Short message',
   'messages.send':'Send','messages.photo':'Send a photo','messages.takePhoto':'Take a photo',

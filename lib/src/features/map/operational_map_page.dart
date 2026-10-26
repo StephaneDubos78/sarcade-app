@@ -581,7 +581,84 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     }
     final cam=_map.camera;
     final hit=hitTest(_drawing.features,tap.relative??cam.latLngToScreenOffset(point),cam.latLngToScreenOffset,radiusPx:_circleRadiusPx);
+    if(hit==null&&_closeOpenItems())return;
     _drawing.select(hit?.id);
+  }
+
+  /// A tap on the map closes what is open, as in Google Maps (request of
+  /// 26 Oct 2026): selected object, operator trace, reference sheet,
+  /// measure; on a phone also the side panels (on a computer they stay,
+  /// one works in them while looking at the map). True if something closed.
+  bool _closeOpenItems(){
+    final compact=MediaQuery.sizeOf(context).width<_compactWidth;
+    var closed=false;
+    if(_drawing.selected!=null){_drawing.select(null);closed=true;}
+    if(_measure.active){unawaited(_measure.clear());closed=true;}
+    if(_selectedDevice!=null||_trace.isNotEmpty){_selectedDevice=null;_trace=[];closed=true;}
+    if(_selectedReference!=null){_selectedReference=null;closed=true;}
+    if(compact&&(_showPanel||_showReferencePanel||_showRoutesPanel)){_showPanel=false;_showReferencePanel=false;_showRoutesPanel=false;_drawingRouteId=null;closed=true;}
+    if(closed)setState((){});
+    return closed;
+  }
+
+  /// « Ma position » (request of 26 Oct 2026): first press centres the map
+  /// on the device, a second press while centred follows it until the map
+  /// is moved by hand.
+  LatLng? _me; bool _followMe=false; StreamSubscription? _meSub; StreamSubscription? _mapEvents;
+  Future<void> _myPosition() async {
+    if(_me!=null&&_centredOnMe()){
+      setState(()=>_followMe=!_followMe);
+      if(_followMe){_startFollowingMe();}else{await _meSub?.cancel();_meSub=null;}
+      return;
+    }
+    if(!await _location.ensurePermission()){
+      if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(S.t('map.noPosition'))));
+      return;
+    }
+    final p=await _location.current();
+    if(p==null||!mounted){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(S.t('map.noPosition'))));return;}
+    setState(()=>_me=LatLng(p.latitude,p.longitude));
+    _map.move(_me!,_map.camera.zoom<15?16:_map.camera.zoom);
+    _watchMapMoves();
+  }
+  bool _centredOnMe(){final me=_me;if(me==null)return false;final c=_map.camera.center;return (c.latitude-me.latitude).abs()<1e-4&&(c.longitude-me.longitude).abs()<1e-4;}
+  void _startFollowingMe(){
+    _meSub?.cancel();
+    _meSub=_location.positions().listen((p){
+      if(!mounted)return;
+      setState(()=>_me=LatLng(p.latitude,p.longitude));
+      if(_followMe)_map.move(_me!,_map.camera.zoom);
+    },onError:(_){});
+  }
+  /// Moving the map by hand stops the following.
+  void _watchMapMoves(){
+    _mapEvents??=_map.mapEventStream.listen((e){
+      if(_followMe&&e.source!=MapEventSource.mapController&&e.source!=MapEventSource.nonRotatedSizeChange&&e is MapEventMove){
+        setState(()=>_followMe=false); _meSub?.cancel(); _meSub=null;
+      }
+      if(e is MapEventRotate||e is MapEventRotateEnd)setState((){});
+    });
+  }
+
+  /// Floating buttons on the right of the map: map type, my position, and
+  /// the compass when the map is turned (tap: north up).
+  Widget _mapButtons(){
+    // The controller is attached once the map is built (first frame).
+    double rotation=0; try{rotation=_map.camera.rotation;}catch(_){}
+    final rotated=rotation%360!=0;
+    final scheme=Theme.of(context).colorScheme;
+    return Column(mainAxisSize:MainAxisSize.min,children:[
+      FloatingActionButton.small(heroTag:'map-layers',tooltip:S.t('basemap.menu'),onPressed:_chooseBasemap,child:const Icon(Icons.layers_outlined)),
+      const SizedBox(height:8),
+      if(rotated)...[
+        FloatingActionButton.small(heroTag:'map-north',tooltip:S.t('map.north'),onPressed:(){_map.rotate(0);setState((){});},
+          child:Transform.rotate(angle:-rotation*3.141592653589793/180,child:const Icon(Icons.explore_outlined))),
+        const SizedBox(height:8),
+      ],
+      FloatingActionButton.small(heroTag:'map-me',tooltip:S.t(_followMe?'map.followMeOn':'map.myPosition'),onPressed:_myPosition,
+        backgroundColor:_followMe?scheme.primary:null,foregroundColor:_followMe?scheme.onPrimary:null,
+        child:Icon(_followMe?Icons.navigation:Icons.my_location)),
+    ]);
   }
 
   // The dialog owns its text controller: disposing it when the Future
@@ -689,7 +766,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     child:child,
   );
 
-  @override void dispose(){_positionsTimer?.cancel();AccessManager.instance.removeListener(_onAccessChanged);_rtSub?.cancel();_tracking.removeListener(_onOperationsChanged);_ops.removeListener(_onOperationsChanged);_tracking.dispose();_ops.dispose();_routes.removeListener(_onRoutesChanged);_nav.removeListener(_onRoutesChanged);_routes.dispose();_nav.dispose();_measure.removeListener(_onRoutesChanged);_measure.dispose();_syncUiTimer?.cancel();_sync.dispose();_realtime.dispose();_drawing.dispose();widget.api.close();super.dispose();}
+  @override void dispose(){_positionsTimer?.cancel();_meSub?.cancel();_mapEvents?.cancel();AccessManager.instance.removeListener(_onAccessChanged);_rtSub?.cancel();_tracking.removeListener(_onOperationsChanged);_ops.removeListener(_onOperationsChanged);_tracking.dispose();_ops.dispose();_routes.removeListener(_onRoutesChanged);_nav.removeListener(_onRoutesChanged);_routes.dispose();_nav.dispose();_measure.removeListener(_onRoutesChanged);_measure.dispose();_syncUiTimer?.cancel();_sync.dispose();_realtime.dispose();_drawing.dispose();widget.api.close();super.dispose();}
 
   @override Widget build(BuildContext context){
     final sorted=_positions.values.where((p)=>_showAprs||!p.isAprs).toList()..sort((a,b)=>a.deviceId.compareTo(b.deviceId));
@@ -725,7 +802,6 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
                   PopupMenuItem(value:'operators',child:ListTile(leading:const Icon(Icons.groups),title:Text(S.t('map.operators')))),
                   PopupMenuItem(value:'goto',child:ListTile(leading:const Icon(Icons.pin_drop_outlined),title:Text(S.t('measure.goto')))),
                   PopupMenuItem(value:'weather',child:ListTile(leading:const Icon(Icons.cloud_outlined),title:Text(S.t('weather.menu')))),
-                  PopupMenuItem(value:'basemap',child:ListTile(leading:const Icon(Icons.layers_outlined),title:Text(S.t('basemap.menu')))),
                   PopupMenuItem(value:'routes',child:ListTile(leading:const Icon(Icons.route),title:Text(S.t('routes.menu')))),
                   PopupMenuItem(value:'references',child:ListTile(leading:const Icon(Icons.cell_tower),title:Text(S.t('map.references')))),
                   PopupMenuItem(value:'files',child:ListTile(leading:const Icon(Icons.folder_copy_outlined),title:Text(S.t('map.files')))),
@@ -735,7 +811,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
                 ],
               ),
             ])
-        : AppBar(title:const Text('SARCADE'),actions:[syncButton,IconButton(tooltip:S.t('map.fit'),onPressed:_fitOperators,icon:const Icon(Icons.center_focus_strong)),IconButton(tooltip:S.t('map.operators'),onPressed:toggleOperators,icon:const Icon(Icons.groups)),IconButton(tooltip:S.t('map.references'),onPressed:toggleReferences,icon:const Icon(Icons.cell_tower)),IconButton(tooltip:S.t('routes.menu'),onPressed:toggleRoutes,icon:const Icon(Icons.route)),IconButton(tooltip:S.t('weather.menu'),onPressed:()=>_openWeather(),icon:const Icon(Icons.cloud_outlined)),IconButton(tooltip:S.t('measure.goto'),onPressed:_gotoCoordinates,icon:const Icon(Icons.pin_drop_outlined)),IconButton(tooltip:S.t('basemap.menu'),onPressed:_chooseBasemap,icon:const Icon(Icons.layers_outlined)),messagesButton,IconButton(tooltip:S.t('map.files'),onPressed:openFiles,icon:const Icon(Icons.folder_copy_outlined)),IconButton(tooltip:S.t('map.logbook'),onPressed:openLogbook,icon:const Icon(Icons.receipt_long)),if(widget.onSettings!=null)IconButton(tooltip:S.t('map.settings'),onPressed:widget.onSettings,icon:const Icon(Icons.settings)),Padding(padding:const EdgeInsets.symmetric(horizontal:12),child:Center(child:InkWell(onTap:_openUnsent,child:Text(_statusLine,style:TextStyle(color:_statusColor)))))]),
+        : AppBar(title:const Text('SARCADE'),actions:[syncButton,IconButton(tooltip:S.t('map.fit'),onPressed:_fitOperators,icon:const Icon(Icons.center_focus_strong)),IconButton(tooltip:S.t('map.operators'),onPressed:toggleOperators,icon:const Icon(Icons.groups)),IconButton(tooltip:S.t('map.references'),onPressed:toggleReferences,icon:const Icon(Icons.cell_tower)),IconButton(tooltip:S.t('routes.menu'),onPressed:toggleRoutes,icon:const Icon(Icons.route)),IconButton(tooltip:S.t('weather.menu'),onPressed:()=>_openWeather(),icon:const Icon(Icons.cloud_outlined)),IconButton(tooltip:S.t('measure.goto'),onPressed:_gotoCoordinates,icon:const Icon(Icons.pin_drop_outlined)),messagesButton,IconButton(tooltip:S.t('map.files'),onPressed:openFiles,icon:const Icon(Icons.folder_copy_outlined)),IconButton(tooltip:S.t('map.logbook'),onPressed:openLogbook,icon:const Icon(Icons.receipt_long)),if(widget.onSettings!=null)IconButton(tooltip:S.t('map.settings'),onPressed:widget.onSettings,icon:const Icon(Icons.settings)),Padding(padding:const EdgeInsets.symmetric(horizontal:12),child:Center(child:InkWell(onTap:_openUnsent,child:Text(_statusLine,style:TextStyle(color:_statusColor)))))]),
       body:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
         OperationsBanners(settings:_ops.settings,update:_ops.update,
           alert:syncAlert(_sync.currentItems,DateTime.now(),_ops.settings.syncAlertMinutes),
@@ -804,6 +880,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
             onWaypointTap:(w)=>setState((){_showRoutesPanel=true;_showPanel=false;_showReferencePanel=false;_selectedRouteId=w.routeId;})),
           ...buildMeasureLayers(_measure,_coordFormat),
           MarkerLayer(markers:markers),
+          if(_me!=null)MarkerLayer(markers:[Marker(point:_me!,width:22,height:22,child:Container(decoration:BoxDecoration(color:Colors.blue,shape:BoxShape.circle,border:Border.all(color:Colors.white,width:3),boxShadow:const [BoxShadow(blurRadius:4,color:Colors.black26)])))]),
           buildHandleLayer(_drawing,_globalToLatLng),
           RichAttributionWidget(attributions:[TextSourceAttribution(_basemap.attribution.isEmpty?widget.tileAttribution:_basemap.attribution)]),
         ]),
@@ -837,6 +914,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
             FilledButton(onPressed:_finishClosure,child:Text(S.t('closures.finish'))),
           ])))),
         ])),
+        Positioned(right:12,bottom:88,child:_mapButtons()),
         Positioned(left:0,right:0,bottom:72,child:Center(child:ConstrainedBox(constraints:const BoxConstraints(maxWidth:520),child:Column(mainAxisSize:MainAxisSize.min,children:[
           MeasureCard(m:_measure,format:_coordFormat,onSavePoi:_savePoi,onSendMessage:_sendMeasure,
             onFit:(){final o=_measure.origin,t=_measure.target;if(t!=null)_fitPoints([?o?.point,t]);},
