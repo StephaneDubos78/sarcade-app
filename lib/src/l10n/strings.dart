@@ -60,6 +60,7 @@ const Texts _fr={
   'update.download':'Télécharger la mise à jour','update.downloaded':'Mise à jour téléchargée',
   'update.downloadFailed':'Téléchargement impossible','update.store':'Mets l’application à jour depuis le magasin d’applications ou demande le fichier au PCO.',
   // Messages
+  'search.hint':'Rechercher (adresse, opérateur, point haut, coordonnées…)','search.clear':'Effacer','search.none':'Aucun résultat','search.addressesOff':'Adresses indisponibles (hors connexion)','search.kind.coordinates':'Coordonnées','search.kind.operator':'Opérateur','search.kind.reference':'Référentiel','search.kind.poi':'Point','search.kind.drawing':'Dessin','search.kind.address':'Adresse','dictation.start':'Dicter','dictation.stop':'Arrêter la dictée','dictation.unavailable':'Dictée indisponible sur cet appareil (micro ou reconnaissance vocale)','dictation.windows':'Sur ordinateur, utilisez la dictée de Windows : touches Windows + H dans le champ',
   'messages.title':'Messages · {n} en attente','messages.all':'Tous les messages','messages.broadcast':'Diffusion générale',
   'messages.direct':'Direct','messages.directHint':'Identifiant de l’agent ou de l’équipe','messages.hint':'Message court',
   'messages.send':'Envoyer','messages.photo':'Envoyer une photo','messages.takePhoto':'Prendre une photo',
@@ -231,6 +232,7 @@ const Texts _en={
   'update.required':'Update required','update.requiredDetail':'This version ({current}) is no longer accepted by the server. Install version {version} to reconnect.',
   'update.download':'Download the update','update.downloaded':'Update downloaded',
   'update.downloadFailed':'Download failed','update.store':'Update the application from the app store or ask the command post for the file.',
+  'search.hint':'Search (address, operator, high point, coordinates…)','search.clear':'Clear','search.none':'No result','search.addressesOff':'Addresses unavailable (offline)','search.kind.coordinates':'Coordinates','search.kind.operator':'Operator','search.kind.reference':'Reference','search.kind.poi':'Point','search.kind.drawing':'Drawing','search.kind.address':'Address','dictation.start':'Dictate','dictation.stop':'Stop dictation','dictation.unavailable':'Dictation unavailable on this device (microphone or speech recognition)','dictation.windows':'On a computer, use the Windows dictation: Windows + H keys in the field',
   'messages.title':'Messages · {n} pending','messages.all':'All messages','messages.broadcast':'General broadcast',
   'messages.direct':'Direct','messages.directHint':'Agent or team identifier','messages.hint':'Short message',
   'messages.send':'Send','messages.photo':'Send a photo','messages.takePhoto':'Take a photo',
