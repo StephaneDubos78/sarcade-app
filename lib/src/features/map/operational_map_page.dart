@@ -94,8 +94,12 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     if(_starting)return; _starting=true;
     try {
       final data=await Future.wait([widget.api.latestPositions(widget.eventId),widget.api.pois(widget.eventId)]);
-      for(final p in data[0] as List<SarcadePosition>){if(_validPosition(p)){_positions[p.deviceId]=p;widget.store.cachePosition(p.toJson());}}
+      _mergePositions(data[0] as List<SarcadePosition>);
       for(final p in data[1] as List<SarcadePoi>){_pois[p.id]=p;}
+      // Safety net: positions only come by the realtime channel; read the
+      // latest ones again every minute in case some were missed.
+      _positionsTimer?.cancel();
+      _positionsTimer=Timer.periodic(const Duration(seconds:60),(_)=>unawaited(_reloadPositions()));
       try{await _refreshReferences(silent:true);}catch(_){}
       _realtime.connect(widget.api.websocketUri(widget.eventId),headers:widget.api.realtimeHeaders);
       await _rtSub?.cancel();
@@ -103,6 +107,25 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       if(mounted){setState(()=>_started=true);WidgetsBinding.instance.addPostFrameCallback((_)=>_fitOperators());}
     } catch(e){if(mounted)setState((){});} finally {_starting=false;}
   }
+  Timer? _positionsTimer;
+  /// Keeps the newest position of each device (a late answer never moves a
+  /// marker back).
+  void _mergePositions(Iterable<SarcadePosition> list){
+    for(final p in list){
+      if(!_validPosition(p))continue;
+      final known=_positions[p.deviceId];
+      if(known!=null&&!p.time.isAfter(known.time))continue;
+      _positions[p.deviceId]=p; widget.store.cachePosition(p.toJson());
+    }
+  }
+  Future<void> _reloadPositions() async {
+    try{
+      final list=await widget.api.latestPositions(widget.eventId);
+      if(!mounted)return;
+      setState(()=>_mergePositions(list));
+    }catch(_){/* offline: the next reload or the realtime channel will bring them */}
+  }
+
   /// Status at the top of the screen, from the last exchange with the server
   /// and the real-time channel, refreshed every 2 s.
   String get _status{
@@ -149,6 +172,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   }
   void _openUnsent()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>UnsentPage(sync:_sync,actorId:widget.deviceId))).then((_){if(mounted)setState((){});});
   void _onRealtime(RealtimeEvent e){
+    if(e.type==RealtimeService.reconnectedType){unawaited(_reloadPositions());return;}
     if(e.type=='position.updated'){final p=SarcadePosition.fromJson(e.data);if(_validPosition(p)){widget.store.cachePosition(p.toJson());if(mounted)setState((){_positions[p.deviceId]=p;if(_selectedDevice==p.deviceId)_trace.add(p);});}}
     if(e.type=='poi.created'){final p=SarcadePoi.fromJson(e.data);widget.store.cachePoi(e.data);setState(()=>_pois[p.id]=p);}
     if(e.type=='message.created'){_receiveMessage(e.data);}
@@ -665,7 +689,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     child:child,
   );
 
-  @override void dispose(){AccessManager.instance.removeListener(_onAccessChanged);_rtSub?.cancel();_tracking.removeListener(_onOperationsChanged);_ops.removeListener(_onOperationsChanged);_tracking.dispose();_ops.dispose();_routes.removeListener(_onRoutesChanged);_nav.removeListener(_onRoutesChanged);_routes.dispose();_nav.dispose();_measure.removeListener(_onRoutesChanged);_measure.dispose();_syncUiTimer?.cancel();_sync.dispose();_realtime.dispose();_drawing.dispose();widget.api.close();super.dispose();}
+  @override void dispose(){_positionsTimer?.cancel();AccessManager.instance.removeListener(_onAccessChanged);_rtSub?.cancel();_tracking.removeListener(_onOperationsChanged);_ops.removeListener(_onOperationsChanged);_tracking.dispose();_ops.dispose();_routes.removeListener(_onRoutesChanged);_nav.removeListener(_onRoutesChanged);_routes.dispose();_nav.dispose();_measure.removeListener(_onRoutesChanged);_measure.dispose();_syncUiTimer?.cancel();_sync.dispose();_realtime.dispose();_drawing.dispose();widget.api.close();super.dispose();}
 
   @override Widget build(BuildContext context){
     final sorted=_positions.values.where((p)=>_showAprs||!p.isAprs).toList()..sort((a,b)=>a.deviceId.compareTo(b.deviceId));
