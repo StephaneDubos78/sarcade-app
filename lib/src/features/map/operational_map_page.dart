@@ -18,6 +18,8 @@ import '../messages/messages_page.dart';
 import '../logbook/logbook_page.dart';
 import '../search/map_search.dart';
 import '../search/map_search_bar.dart';
+import '../../ui/map_view.dart';
+import '../../ui/theme.dart';
 import '../files/files_page.dart';
 import 'drawing/drawing_controller.dart';
 import 'reference_cluster_layer.dart';
@@ -106,7 +108,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       _realtime.connect(widget.api.websocketUri(widget.eventId),headers:widget.api.realtimeHeaders);
       await _rtSub?.cancel();
       _rtSub=_realtime.events.listen(_onRealtime);
-      if(mounted){setState(()=>_started=true);WidgetsBinding.instance.addPostFrameCallback((_)=>_fitOperators());}
+      if(mounted){setState(()=>_started=true);if(_savedView==null)WidgetsBinding.instance.addPostFrameCallback((_)=>_fitOperators());}
     } catch(e){if(mounted)setState((){});} finally {_starting=false;}
   }
   Timer? _positionsTimer;
@@ -682,6 +684,94 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     _map.move(r.point,r.kind==SearchKind.address||r.kind==SearchKind.coordinates?16:15);
   }
 
+  // --- Map screen V2 (mock-up « Interface futuriste », 27 Oct 2026) ---
+
+  /// Last view of this event, taken back at the next opening (Plex).
+  late final ({double lat,double lon,double zoom})? _savedView=decodeView(widget.store.preference('view:${widget.eventId}'));
+  Timer? _saveViewTimer; double _camZoom=11, _camLat=48.85;
+  void _onCameraChanged(MapCamera camera){
+    final zoomChanged=(camera.zoom-_camZoom).abs()>0.01||(camera.center.latitude-_camLat).abs()>0.05;
+    _camZoom=camera.zoom; _camLat=camera.center.latitude;
+    if(zoomChanged&&mounted)setState((){}); // scale bar
+    _saveViewTimer?.cancel();
+    _saveViewTimer=Timer(const Duration(seconds:2),()=>unawaited(widget.store.setPreference('view:${widget.eventId}',
+      encodeView(camera.center.latitude,camera.center.longitude,camera.zoom))));
+  }
+
+  bool _darkTiles(BuildContext context)=>Theme.of(context).brightness==Brightness.dark&&!_basemap.id.contains('photo')&&!_basemap.id.contains('sat');
+
+  void _toggleDayNight(){
+    final next=Theme.of(context).brightness==Brightness.dark?ThemeMode.light:ThemeMode.dark;
+    themeMode.value=next;
+    unawaited(widget.store.setPreference('theme_mode',themeModeName(next)));
+  }
+
+  /// Filter chips under the search (Google Maps), kept per event.
+  bool get _showOperators=>widget.store.preference('show_ops:${widget.eventId}')!='0';
+  bool get _showDrawings=>widget.store.preference('show_draw:${widget.eventId}')!='0';
+  Future<void> _setShown(String key,bool v) async {await widget.store.setPreference('$key:${widget.eventId}',v?null:'0');if(mounted)setState((){});}
+  Widget _filterChips(){
+    Widget chip(String label,bool on,ValueChanged<bool> set)=>Padding(padding:const EdgeInsets.only(right:6),
+      child:FilterChip(label:Text(label),selected:on,onSelected:set,showCheckmark:false,visualDensity:VisualDensity.compact));
+    return SingleChildScrollView(scrollDirection:Axis.horizontal,child:Row(children:[
+      chip(S.t('chips.operators'),_showOperators,(v)=>_setShown('show_ops',v)),
+      chip('APRS',_showAprs,(v)=>setState(()=>_showAprs=v)),
+      chip(S.t('refs.highPoints'),_showHighPoints,(v)=>setState(()=>_showHighPoints=v)),
+      chip(S.t('refs.relays'),_showRelays,(v)=>setState(()=>_showRelays=v)),
+      chip(S.t('chips.drawings'),_showDrawings,(v)=>_setShown('show_draw',v)),
+    ]));
+  }
+
+  /// One pill for the links (Meshtastic, MeshCore): a dot per link, amber
+  /// when one fails; a tap gives the detail and « Synchroniser ».
+  Widget _linksPill(){
+    final access=AccessManager.instance.requiredFor(widget.api.baseUrl);
+    final links=<(String,bool?)>[(S.t('links.server'),_started?_sync.lastSyncOk:null),(S.t('links.realtime'),_started?_realtime.connected:null),
+      if(access)(S.t('links.access'),false)];
+    final n=linksCount([for(final l in links)l.$2]);
+    final scheme=Theme.of(context).colorScheme;
+    Widget dot(bool? ok)=>Container(width:9,height:9,margin:const EdgeInsets.symmetric(horizontal:2),
+      decoration:BoxDecoration(color:ok==null?scheme.outline:ok?scheme.primary:scheme.tertiary,borderRadius:BorderRadius.circular(ok==false?2:5)));
+    return Tooltip(message:'${S.t('links.title')} : ${n.ok}/${n.total} · $_statusLine',child:Material(color:Colors.transparent,child:InkWell(
+      borderRadius:BorderRadius.circular(24),
+      onTap:()=>showModalBottomSheet<void>(context:context,showDragHandle:true,builder:(c)=>SafeArea(child:Column(mainAxisSize:MainAxisSize.min,children:[
+        for(final l in links)ListTile(leading:dot(l.$2),title:Text(l.$1),trailing:Text(l.$2==null?'—':l.$2!?S.t('links.ok'):S.t('links.down'))),
+        ListTile(leading:const Icon(Icons.info_outline),title:Text(_statusLine)),
+        ListTile(leading:const Icon(Icons.sync),title:Text(S.t('map.sync')),onTap:() async {Navigator.pop(c);await _sync.syncNow();if(mounted)setState((){});}),
+        ListTile(leading:const Icon(Icons.outbox_outlined),title:Text('${S.t('unsent.title')} (${_sync.unsent})'),onTap:(){Navigator.pop(c);_openUnsent();}),
+        if(access)ListTile(leading:const Icon(Icons.lock_outline),title:Text(S.t('access.signIn')),onTap:(){Navigator.pop(c);_signIn();}),
+      ]))),
+      child:Container(height:48,padding:const EdgeInsets.symmetric(horizontal:12),decoration:glass(context,radius:24),
+        child:Row(mainAxisSize:MainAxisSize.min,children:[for(final l in links)dot(l.$2)])),
+    ))));
+  }
+
+  /// « Suivi actif · 30 s » always in sight (aprs.fi « Beacon »); a tap
+  /// opens the tracking settings (formerly the button at the bottom).
+  Widget _trackingBadge(){
+    final scheme=Theme.of(context).colorScheme; final on=_tracking.enabled;
+    return Material(color:Colors.transparent,child:InkWell(borderRadius:BorderRadius.circular(16),onTap:_openTracking,
+      child:Container(height:32,padding:const EdgeInsets.symmetric(horizontal:12),
+        decoration:BoxDecoration(color:on?scheme.primaryContainer:scheme.surface.withValues(alpha:0.92),borderRadius:BorderRadius.circular(16),
+          border:Border.all(color:on?scheme.primary.withValues(alpha:0.6):scheme.outline)),
+        child:Row(mainAxisSize:MainAxisSize.min,children:[
+          Icon(on?Icons.my_location:Icons.location_disabled_outlined,size:16,color:on?scheme.primary:scheme.onSurfaceVariant),const SizedBox(width:6),
+          Text(on?S.t('tracking.on',{'interval':intervalLabel(_tracking.intervalS,S.t)}):S.t('tracking.start'),
+            style:TextStyle(fontSize:12,color:on?scheme.onPrimaryContainer:scheme.onSurface)),
+        ]))));
+  }
+
+  /// Scale bar (OsmAnd), from the current zoom and latitude.
+  Widget _scaleBar(){
+    final b=scaleBar(_camZoom,_camLat);
+    final c=Theme.of(context).colorScheme.onSurface;
+    final shadow=[Shadow(blurRadius:3,color:Theme.of(context).colorScheme.surface)];
+    return Column(crossAxisAlignment:CrossAxisAlignment.start,mainAxisSize:MainAxisSize.min,children:[
+      Text(b.label,style:TextStyle(fontSize:11,fontWeight:FontWeight.w600,color:c,shadows:shadow)),
+      Container(width:b.px,height:6,decoration:BoxDecoration(border:Border(left:BorderSide(color:c,width:2),right:BorderSide(color:c,width:2),bottom:BorderSide(color:c,width:2)))),
+    ]);
+  }
+
   // The dialog owns its text controller: disposing it when the Future
   // completed freed it while the closing animation still used it
   // ('_dependents.isEmpty' assertion, Windows test of 13 Oct 2026).
@@ -787,10 +877,10 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     child:child,
   );
 
-  @override void dispose(){_positionsTimer?.cancel();_meSub?.cancel();_mapEvents?.cancel();AccessManager.instance.removeListener(_onAccessChanged);_rtSub?.cancel();_tracking.removeListener(_onOperationsChanged);_ops.removeListener(_onOperationsChanged);_tracking.dispose();_ops.dispose();_routes.removeListener(_onRoutesChanged);_nav.removeListener(_onRoutesChanged);_routes.dispose();_nav.dispose();_measure.removeListener(_onRoutesChanged);_measure.dispose();_syncUiTimer?.cancel();_sync.dispose();_realtime.dispose();_drawing.dispose();widget.api.close();super.dispose();}
+  @override void dispose(){_saveViewTimer?.cancel();_positionsTimer?.cancel();_meSub?.cancel();_mapEvents?.cancel();AccessManager.instance.removeListener(_onAccessChanged);_rtSub?.cancel();_tracking.removeListener(_onOperationsChanged);_ops.removeListener(_onOperationsChanged);_tracking.dispose();_ops.dispose();_routes.removeListener(_onRoutesChanged);_nav.removeListener(_onRoutesChanged);_routes.dispose();_nav.dispose();_measure.removeListener(_onRoutesChanged);_measure.dispose();_syncUiTimer?.cancel();_sync.dispose();_realtime.dispose();_drawing.dispose();widget.api.close();super.dispose();}
 
   @override Widget build(BuildContext context){
-    final sorted=_positions.values.where((p)=>_showAprs||!p.isAprs).toList()..sort((a,b)=>a.deviceId.compareTo(b.deviceId));
+    final sorted=_positions.values.where((p)=>p.isAprs?_showAprs:_showOperators).toList()..sort((a,b)=>a.deviceId.compareTo(b.deviceId));
     final markers=<Marker>[
       ...sorted.map((p)=>Marker(point:LatLng(p.lat,p.lon),width:130,height:62,alignment:Alignment.topCenter,child:GestureDetector(onTap:()=>_select(p),child:Column(mainAxisSize:MainAxisSize.min,children:[Icon(p.isAprs?Icons.settings_input_antenna:Icons.person_pin_circle,size:p.isAprs?30:38,color:p.deviceId==widget.deviceId?Colors.orange:(_selectedDevice==p.deviceId?Colors.deepPurple:(p.isAprs?Colors.purple.shade400:Colors.blue))),Container(padding:const EdgeInsets.symmetric(horizontal:6,vertical:2),decoration:BoxDecoration(color:Colors.white,borderRadius:BorderRadius.circular(5),boxShadow:const [BoxShadow(blurRadius:2)]),child:Text(p.label,style:const TextStyle(fontSize:11,fontWeight:FontWeight.w600)))])))),
       ..._pois.values.map((p)=>Marker(point:LatLng(p.lat,p.lon),width:40,height:40,child:Tooltip(message:p.label??p.kind,child:const Icon(Icons.location_on,size:38,color:Colors.red)))),
@@ -805,35 +895,29 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     void toggleRoutes()=>setState((){_showRoutesPanel=!_showRoutesPanel;if(_showRoutesPanel){_showPanel=false;_showReferencePanel=false;}else{_drawingRouteId=null;}});
     void openFiles()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>FilesPage(api:widget.api,eventId:widget.eventId,actorId:widget.deviceId)));
     void openLogbook()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>LogbookPage(api:widget.api,eventId:widget.eventId)));
-    final syncButton=IconButton(tooltip:S.t('map.sync'),onPressed:() async {await _sync.syncNow();if(mounted)setState((){});},icon:const Icon(Icons.sync));
-    final messagesButton=IconButton(tooltip:S.t('map.messages'),onPressed:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>MessagesPage(api:widget.api,eventId:widget.eventId,actorId:widget.deviceId,sync:_sync,store:widget.store))),icon:_messagesIcon());
+    void openMessages()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>MessagesPage(api:widget.api,eventId:widget.eventId,actorId:widget.deviceId,sync:_sync,store:widget.store)));
+    void showMap()=>setState((){_showPanel=false;_showReferencePanel=false;_showRoutesPanel=false;_drawingRouteId=null;});
+    final scheme=Theme.of(context).colorScheme;
+    // Every action of the former top bar, for the « Plus » sheet (phone) and the rail (computer).
+    final actions=<_RailAction>[
+      _RailAction(Icons.groups_outlined,S.t('map.operators'),toggleOperators,selected:_showPanel),
+      _RailAction(Icons.cell_tower,S.t('map.references'),toggleReferences,selected:_showReferencePanel),
+      _RailAction(Icons.route,S.t('routes.menu'),toggleRoutes,selected:_showRoutesPanel),
+      _RailAction(Icons.cloud_outlined,S.t('weather.menu'),()=>_openWeather()),
+      _RailAction(Icons.pin_drop_outlined,S.t('measure.goto'),_gotoCoordinates),
+      _RailAction(Icons.center_focus_strong,S.t('map.fit'),_fitOperators),
+      _RailAction(Icons.folder_copy_outlined,S.t('map.files'),openFiles),
+      _RailAction(Icons.receipt_long,S.t('map.logbook'),openLogbook),
+      _RailAction(Icons.outbox_outlined,'${S.t('unsent.title')} (${_sync.unsent})',_openUnsent),
+    ];
+    void openMore()=>showModalBottomSheet<void>(context:context,showDragHandle:true,builder:(c)=>SafeArea(child:SingleChildScrollView(child:Column(mainAxisSize:MainAxisSize.min,children:[
+      for(final a in actions)ListTile(leading:Icon(a.icon),title:Text(a.label),selected:a.selected,onTap:(){Navigator.pop(c);a.onTap();}),
+      ListTile(leading:Icon(Theme.of(context).brightness==Brightness.dark?Icons.light_mode_outlined:Icons.dark_mode_outlined),title:Text(S.t('ui.dayNight')),onTap:(){Navigator.pop(c);_toggleDayNight();}),
+      if(widget.onSettings!=null)ListTile(leading:const Icon(Icons.settings_outlined),title:Text(S.t('map.settings')),onTap:(){Navigator.pop(c);widget.onSettings!();}),
+    ]))));
+    final messagesButton=IconButton(tooltip:S.t('map.messages'),onPressed:openMessages,icon:_messagesIcon());
     return Scaffold(
-      appBar:compact
-        ? AppBar(
-            titleSpacing:12,
-            title:InkWell(onTap:_openUnsent,child:Column(crossAxisAlignment:CrossAxisAlignment.start,mainAxisSize:MainAxisSize.min,children:[const Text('SARCADE'),Text(_statusLine,style:Theme.of(context).textTheme.labelSmall?.copyWith(color:_statusColor),overflow:TextOverflow.ellipsis)])),
-            actions:[
-              syncButton,
-              messagesButton,
-              PopupMenuButton<String>(
-                tooltip:S.t('map.menu'),
-                onSelected:(v){switch(v){case 'fit':_fitOperators();case 'operators':toggleOperators();case 'references':toggleReferences();case 'routes':toggleRoutes();case 'weather':_openWeather();case 'goto':_gotoCoordinates();case 'basemap':_chooseBasemap();case 'files':openFiles();case 'logbook':openLogbook();case 'settings':widget.onSettings?.call();case 'unsent':_openUnsent();}},
-                itemBuilder:(_)=>[
-                  PopupMenuItem(value:'fit',child:ListTile(leading:const Icon(Icons.center_focus_strong),title:Text(S.t('map.fit')))),
-                  PopupMenuItem(value:'operators',child:ListTile(leading:const Icon(Icons.groups),title:Text(S.t('map.operators')))),
-                  PopupMenuItem(value:'goto',child:ListTile(leading:const Icon(Icons.pin_drop_outlined),title:Text(S.t('measure.goto')))),
-                  PopupMenuItem(value:'weather',child:ListTile(leading:const Icon(Icons.cloud_outlined),title:Text(S.t('weather.menu')))),
-                  PopupMenuItem(value:'routes',child:ListTile(leading:const Icon(Icons.route),title:Text(S.t('routes.menu')))),
-                  PopupMenuItem(value:'references',child:ListTile(leading:const Icon(Icons.cell_tower),title:Text(S.t('map.references')))),
-                  PopupMenuItem(value:'files',child:ListTile(leading:const Icon(Icons.folder_copy_outlined),title:Text(S.t('map.files')))),
-                  PopupMenuItem(value:'logbook',child:ListTile(leading:const Icon(Icons.receipt_long),title:Text(S.t('map.logbook')))),
-                  PopupMenuItem(value:'unsent',child:ListTile(leading:const Icon(Icons.outbox_outlined),title:Text('${S.t('unsent.title')} (${_sync.unsent})'))),
-                  if(widget.onSettings!=null)PopupMenuItem(value:'settings',child:ListTile(leading:const Icon(Icons.settings),title:Text(S.t('map.settings')))),
-                ],
-              ),
-            ])
-        : AppBar(title:const Text('SARCADE'),actions:[syncButton,IconButton(tooltip:S.t('map.fit'),onPressed:_fitOperators,icon:const Icon(Icons.center_focus_strong)),IconButton(tooltip:S.t('map.operators'),onPressed:toggleOperators,icon:const Icon(Icons.groups)),IconButton(tooltip:S.t('map.references'),onPressed:toggleReferences,icon:const Icon(Icons.cell_tower)),IconButton(tooltip:S.t('routes.menu'),onPressed:toggleRoutes,icon:const Icon(Icons.route)),IconButton(tooltip:S.t('weather.menu'),onPressed:()=>_openWeather(),icon:const Icon(Icons.cloud_outlined)),IconButton(tooltip:S.t('measure.goto'),onPressed:_gotoCoordinates,icon:const Icon(Icons.pin_drop_outlined)),messagesButton,IconButton(tooltip:S.t('map.files'),onPressed:openFiles,icon:const Icon(Icons.folder_copy_outlined)),IconButton(tooltip:S.t('map.logbook'),onPressed:openLogbook,icon:const Icon(Icons.receipt_long)),if(widget.onSettings!=null)IconButton(tooltip:S.t('map.settings'),onPressed:widget.onSettings,icon:const Icon(Icons.settings)),Padding(padding:const EdgeInsets.symmetric(horizontal:12),child:Center(child:InkWell(onTap:_openUnsent,child:Text(_statusLine,style:TextStyle(color:_statusColor)))))]),
-      body:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+      body:SafeArea(bottom:false,child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
         OperationsBanners(settings:_ops.settings,update:_ops.update,
           alert:syncAlert(_sync.currentItems,DateTime.now(),_ops.settings.syncAlertMinutes),
           heldPhotos:_sync.lowBandwidth?widget.store.pendingUploads().length:0,
@@ -845,6 +929,9 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           onEnableNotifications:_notificationsBanner?_enableNotifications:null,
           onDismissNotifications:()=>setState(()=>_notificationsDismissed=true)),
         Expanded(child:_withDrawingShortcuts(Row(children:[
+        // Computer: rail on the left (mock-up V2).
+        if(!compact)_Rail(messages:messagesButton,actions:actions,onMap:showMap,mapSelected:!_showPanel&&!_showReferencePanel&&!_showRoutesPanel,
+          onDayNight:_toggleDayNight,onSettings:widget.onSettings,status:_statusLine,statusColor:_statusColor,onStatus:_openUnsent),
         if(_showRoutesPanel)SizedBox(width:panelWidth(360),child:Material(elevation:3,child:RoutesPanel(
           controller:_routes,api:widget.api,actorId:widget.deviceId,selectedRouteId:_selectedRouteId,drawingRouteId:_drawingRouteId,
           groups:widget.store.groups(widget.eventId).map(CommGroup.fromJson).toList(),
@@ -885,18 +972,21 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           if(selected!=null)Container(padding:const EdgeInsets.all(14),decoration:BoxDecoration(border:Border(top:BorderSide(color:Theme.of(context).dividerColor))),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text(selected.deviceId,style:const TextStyle(fontWeight:FontWeight.bold)),const SizedBox(height:6),Text('Lat : ${selected.lat.toStringAsFixed(6)}'),Text('Lon : ${selected.lon.toStringAsFixed(6)}'),Text(S.t('operators.accuracy',{'m':selected.accuracyM?.toStringAsFixed(1)??'-'})),Text(S.t('operators.time',{'time':selected.time.toLocal()})),Text(_traceLoading?S.t('operators.traceLoading'):S.t('operators.trace',{'n':_trace.length}))]))
         ]))),
         Expanded(child:Stack(key:_mapKey,children:[FlutterMap(mapController:_map,options:MapOptions(
-          initialCenter:const LatLng(48.8566,2.3522),initialZoom:11,maxZoom:20,onTap:_onMapTap,
+          initialCenter:_savedView==null?const LatLng(48.8566,2.3522):LatLng(_savedView!.lat,_savedView!.lon),initialZoom:_savedView?.zoom??11,maxZoom:20,onTap:_onMapTap,
+          onPositionChanged:(camera,_)=>_onCameraChanged(camera),
           onLongPress:(_,point)=>_onLongPress(point),
           onSecondaryTap:(_,point)=>_onLongPress(point),
           // Rotation off: drawn arrows and handles assume north up.
           // Drag off while editing so handle and freehand gestures reach the shapes.
           interactionOptions:InteractionOptions(flags:InteractiveFlag.all&~InteractiveFlag.rotate&(_drawing.locksMapDrag?~InteractiveFlag.drag:~0)),
         ),children:[
-          TileLayer(key:ValueKey(_tileUrl),urlTemplate:_tileUrl,userAgentPackageName:'org.sarcade.app',maxZoom:_basemap.maxZoom.toDouble()),
+          // Night: street maps darkened; aerial photos stay as they are.
+          TileLayer(key:ValueKey('$_tileUrl|${_darkTiles(context)}'),urlTemplate:_tileUrl,userAgentPackageName:'org.sarcade.app',maxZoom:_basemap.maxZoom.toDouble(),
+            tileBuilder:_darkTiles(context)?darkModeTileBuilder:null),
           if(_trace.length>1)PolylineLayer(polylines:_traceSegments().map((segment)=>Polyline(points:segment.map((p)=>LatLng(p.lat,p.lon)).toList(),strokeWidth:4,color:Colors.deepPurple)).toList()),
           // Reference sites below the drawn objects, grouped when zoomed out.
           ReferenceClusterLayer(sites:_references.values.where((r)=>(r.isHighPoint&&_showHighPoints)||(r.isRelay&&_showRelays)).toList(),onSelect:_selectReference),
-          ...buildDrawingLayers(_drawing),
+          if(_showDrawings)...buildDrawingLayers(_drawing),
           ...buildRouteLayers(_routes,selectedRouteId:_selectedRouteId,itinerary:_nav.itinerary?.geometry??const [],draftClosure:_closureDraft,
             onWaypointTap:(w)=>setState((){_showRoutesPanel=true;_showPanel=false;_showReferencePanel=false;_selectedRouteId=w.routeId;})),
           ...buildMeasureLayers(_measure,_coordFormat),
@@ -929,8 +1019,12 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
             ]else...[
               const SizedBox(width:8),
               Flexible(child:MapSearchBar(items:_searchables,addresses:_searchAddresses,near:_mapCentre,onPick:_onSearchPick)),
+              const SizedBox(width:8),
+              _linksPill(),
             ],
           ]),
+          if(!_drawingTools)Padding(padding:const EdgeInsets.only(top:8),child:_filterChips()),
+          if(!_drawingTools)Padding(padding:const EdgeInsets.only(top:8),child:_trackingBadge()),
           if(_drawing.isDrawing)Padding(padding:const EdgeInsets.only(top:8),child:DraftBar(controller:_drawing)),
           if(_drawing.selected!=null)Padding(padding:const EdgeInsets.only(top:8),child:SelectionBar(controller:_drawing,onEditLabel:_editSelectedLabel)),
           if(_drawingClosure)Padding(padding:const EdgeInsets.only(top:8),child:Card(child:Padding(padding:const EdgeInsets.symmetric(horizontal:12,vertical:6),child:Row(mainAxisSize:MainAxisSize.min,children:[
@@ -940,8 +1034,13 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
             FilledButton(onPressed:_finishClosure,child:Text(S.t('closures.finish'))),
           ])))),
         ])),
-        Positioned(right:12,bottom:88,child:_mapButtons()),
-        Positioned(left:0,right:0,bottom:72,child:Center(child:ConstrainedBox(constraints:const BoxConstraints(maxWidth:520),child:Column(mainAxisSize:MainAxisSize.min,children:[
+        Positioned(right:12,bottom:compact?104:24,child:_mapButtons()),
+        Positioned(left:16,bottom:compact?108:24,child:IgnorePointer(child:_scaleBar())),
+        // Phone: floating tab bar at the bottom (mock-up V2).
+        if(compact)Positioned(left:12,right:12,bottom:12,child:SafeArea(top:false,child:_TabBar(
+          messages:messagesButton,onMap:showMap,mapSelected:!_showPanel&&!_showReferencePanel&&!_showRoutesPanel,
+          onTeams:toggleOperators,teamsSelected:_showPanel,onLogbook:openLogbook,onMore:openMore))),
+        Positioned(left:0,right:0,bottom:compact?100:72,child:Center(child:ConstrainedBox(constraints:const BoxConstraints(maxWidth:520),child:Column(mainAxisSize:MainAxisSize.min,children:[
           MeasureCard(m:_measure,format:_coordFormat,onSavePoi:_savePoi,onSendMessage:_sendMeasure,
             onFit:(){final o=_measure.origin,t=_measure.target;if(t!=null)_fitPoints([?o?.point,t]);},
             onOpenElsewhere:(){final t=_measure.target;if(t!=null)openInOtherApp(context,t,_measure.targetLabel);},
@@ -951,11 +1050,71 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         ])))),
       ]))
       ]))),
-      ]),
-      floatingActionButton:FloatingActionButton.extended(onPressed:_openTracking,
-        icon:Icon(_tracking.enabled?Icons.my_location:Icons.location_searching),
-        label:Text(_tracking.enabled?S.t('tracking.on',{'interval':intervalLabel(_tracking.intervalS,S.t)}):S.t('tracking.start'))),
+      ])),
     );
+  }
+}
+
+/// One action of the rail (computer) or of the « Plus » sheet (phone).
+class _RailAction {
+  final IconData icon; final String label; final VoidCallback onTap; final bool selected;
+  const _RailAction(this.icon,this.label,this.onTap,{this.selected=false});
+}
+
+/// Computer: vertical rail on the left (mock-up V2).
+class _Rail extends StatelessWidget {
+  final Widget messages; final List<_RailAction> actions; final VoidCallback onMap, onDayNight, onStatus; final bool mapSelected;
+  final VoidCallback? onSettings; final String status; final Color? statusColor;
+  const _Rail({required this.messages,required this.actions,required this.onMap,required this.mapSelected,required this.onDayNight,
+    required this.onSettings,required this.status,required this.statusColor,required this.onStatus});
+  @override Widget build(BuildContext context){
+    final scheme=Theme.of(context).colorScheme;
+    Widget button(IconData icon,String label,VoidCallback onTap,{bool selected=false})=>Padding(padding:const EdgeInsets.symmetric(vertical:3),
+      child:IconButton(tooltip:label,onPressed:onTap,isSelected:selected,
+        style:IconButton.styleFrom(fixedSize:const Size(48,48),shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(14)),
+          backgroundColor:selected?scheme.primaryContainer:null,foregroundColor:selected?scheme.primary:scheme.onSurfaceVariant),
+        icon:Icon(icon)));
+    return Container(width:72,margin:const EdgeInsets.fromLTRB(8,8,0,8),decoration:glass(context),
+      child:Column(children:[
+        const SizedBox(height:10),
+        Tooltip(message:status,child:InkWell(onTap:onStatus,borderRadius:BorderRadius.circular(12),child:Container(width:40,height:40,alignment:Alignment.center,
+          decoration:BoxDecoration(color:statusColor??scheme.primary,borderRadius:BorderRadius.circular(12)),
+          child:Text('S',style:TextStyle(fontWeight:FontWeight.w800,fontSize:18,color:statusColor==null?scheme.onPrimary:Colors.white))))),
+        const SizedBox(height:10),
+        Expanded(child:SingleChildScrollView(child:Column(children:[
+          button(Icons.map_outlined,S.t('tabs.map'),onMap,selected:mapSelected),
+          Padding(padding:const EdgeInsets.symmetric(vertical:3),child:messages),
+          for(final a in actions)button(a.icon,a.label,a.onTap,selected:a.selected),
+        ]))),
+        button(Theme.of(context).brightness==Brightness.dark?Icons.light_mode_outlined:Icons.dark_mode_outlined,S.t('ui.dayNight'),onDayNight),
+        if(onSettings!=null)button(Icons.settings_outlined,S.t('map.settings'),onSettings!),
+        const SizedBox(height:8),
+      ]));
+  }
+}
+
+/// Phone: floating tab bar at the bottom (Facebook, Meshtastic, Plex).
+class _TabBar extends StatelessWidget {
+  final Widget messages; final VoidCallback onMap, onTeams, onLogbook, onMore; final bool mapSelected, teamsSelected;
+  const _TabBar({required this.messages,required this.onMap,required this.mapSelected,required this.onTeams,required this.teamsSelected,required this.onLogbook,required this.onMore});
+  @override Widget build(BuildContext context){
+    final scheme=Theme.of(context).colorScheme;
+    Widget tab(IconData icon,String label,VoidCallback onTap,{bool selected=false})=>Expanded(child:Tooltip(message:label,excludeFromSemantics:true,child:InkWell(
+      onTap:onTap,borderRadius:BorderRadius.circular(28),
+      child:Semantics(button:true,selected:selected,label:label,excludeSemantics:true,child:Container(height:56,
+        decoration:BoxDecoration(color:selected?scheme.primaryContainer:null,borderRadius:BorderRadius.circular(28)),
+        child:Column(mainAxisAlignment:MainAxisAlignment.center,children:[
+          Icon(icon,color:selected?scheme.primary:scheme.onSurfaceVariant),
+          Text(label,maxLines:1,overflow:TextOverflow.ellipsis,style:TextStyle(fontSize:11,color:selected?scheme.primary:scheme.onSurfaceVariant)),
+        ]))))));
+    return Container(height:68,padding:const EdgeInsets.symmetric(horizontal:6),decoration:glass(context,radius:34),
+      child:Row(children:[
+        tab(Icons.map_outlined,S.t('tabs.map'),onMap,selected:mapSelected),
+        Expanded(child:Center(child:messages)),
+        tab(Icons.groups_outlined,S.t('tabs.teams'),onTeams,selected:teamsSelected),
+        tab(Icons.receipt_long,S.t('tabs.logbook'),onLogbook),
+        tab(Icons.more_horiz,S.t('tabs.more'),onMore),
+      ]));
   }
 }
 

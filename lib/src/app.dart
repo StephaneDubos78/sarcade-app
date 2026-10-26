@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'config/app_config.dart';
+import 'ui/theme.dart';
 import 'features/map/operational_map_page.dart';
 import 'features/settings/settings_page.dart';
 import 'services/sarcade_api.dart';
@@ -39,6 +40,7 @@ class _SarcadeAppState extends State<SarcadeApp> {
     // A phone cannot be given --dart-define values per operator, so it asks once.
     _needsSetup=!_config.isComplete||(_asksSettings&&stored==null);
     _applyLanguage();
+    themeMode.value=themeModeFrom(widget.store.preference('theme_mode'));
   }
 
   void _applyLanguage()=>S.setLanguage(_config.language,
@@ -88,11 +90,11 @@ class _SarcadeAppState extends State<SarcadeApp> {
   }
 
   @override
-  Widget build(BuildContext context)=>MaterialApp(
+  Widget build(BuildContext context)=>ValueListenableBuilder<ThemeMode>(valueListenable:themeMode,builder:(context,mode,_)=>MaterialApp(
     navigatorKey:_navigator,
     title:'SARCADE',
     debugShowCheckedModeBanner:false,
-    theme:ThemeData(colorScheme:ColorScheme.fromSeed(seedColor:const Color(0xFF173A6A)),useMaterial3:true),
+    theme:dayTheme(),darkTheme:nightTheme(),themeMode:mode,
     home:_needsSetup
       ? _settingsPage(firstRun:true)
       : OperationalMapPage(
@@ -103,5 +105,5 @@ class _SarcadeAppState extends State<SarcadeApp> {
           onSettings:_openSettings,
           callsign:_config.callsign,aprsTxConsent:_config.aprsTxConsent,platform:_platform,
         ),
-  );
+  ));
 }
