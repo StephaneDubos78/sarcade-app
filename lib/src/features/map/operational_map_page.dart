@@ -743,7 +743,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       ]))),
       child:Container(height:48,padding:const EdgeInsets.symmetric(horizontal:12),decoration:glass(context,radius:24),
         child:Row(mainAxisSize:MainAxisSize.min,children:[for(final l in links)dot(l.$2)])),
-    ))));
+    )));
   }
 
   /// « Suivi actif · 30 s » always in sight (aprs.fi « Beacon »); a tap
@@ -897,7 +897,6 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     void openLogbook()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>LogbookPage(api:widget.api,eventId:widget.eventId)));
     void openMessages()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>MessagesPage(api:widget.api,eventId:widget.eventId,actorId:widget.deviceId,sync:_sync,store:widget.store)));
     void showMap()=>setState((){_showPanel=false;_showReferencePanel=false;_showRoutesPanel=false;_drawingRouteId=null;});
-    final scheme=Theme.of(context).colorScheme;
     // Every action of the former top bar, for the « Plus » sheet (phone) and the rail (computer).
     final actions=<_RailAction>[
       _RailAction(Icons.groups_outlined,S.t('map.operators'),toggleOperators,selected:_showPanel),
@@ -972,7 +971,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           if(selected!=null)Container(padding:const EdgeInsets.all(14),decoration:BoxDecoration(border:Border(top:BorderSide(color:Theme.of(context).dividerColor))),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text(selected.deviceId,style:const TextStyle(fontWeight:FontWeight.bold)),const SizedBox(height:6),Text('Lat : ${selected.lat.toStringAsFixed(6)}'),Text('Lon : ${selected.lon.toStringAsFixed(6)}'),Text(S.t('operators.accuracy',{'m':selected.accuracyM?.toStringAsFixed(1)??'-'})),Text(S.t('operators.time',{'time':selected.time.toLocal()})),Text(_traceLoading?S.t('operators.traceLoading'):S.t('operators.trace',{'n':_trace.length}))]))
         ]))),
         Expanded(child:Stack(key:_mapKey,children:[FlutterMap(mapController:_map,options:MapOptions(
-          initialCenter:_savedView==null?const LatLng(48.8566,2.3522):LatLng(_savedView!.lat,_savedView!.lon),initialZoom:_savedView?.zoom??11,maxZoom:20,onTap:_onMapTap,
+          initialCenter:_savedView==null?const LatLng(48.8566,2.3522):LatLng(_savedView.lat,_savedView.lon),initialZoom:_savedView?.zoom??11,maxZoom:20,onTap:_onMapTap,
           onPositionChanged:(camera,_)=>_onCameraChanged(camera),
           onLongPress:(_,point)=>_onLongPress(point),
           onSecondaryTap:(_,point)=>_onLongPress(point),
