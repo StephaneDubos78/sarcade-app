@@ -21,6 +21,8 @@ import '../logbook/logbook_page.dart';
 import '../search/map_search.dart';
 import '../search/map_search_bar.dart';
 import '../../ui/map_view.dart';
+import '../../ui/compass_follow.dart';
+import '../measure/wmm.dart' show magneticDeclination;
 import '../../ui/theme.dart';
 import 'stations.dart';
 import '../bearings/bearing_controller.dart';
@@ -641,14 +643,23 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     return closed;
   }
 
-  /// « Ma position » (request of 26 Oct 2026): first press centres the map
-  /// on the device, a second press while centred follows it until the map
-  /// is moved by hand.
-  LatLng? _me; bool _followMe=false; StreamSubscription? _meSub; StreamSubscription? _mapEvents;
+  /// « Ma position » (requests of 26 and 27 Oct 2026): first press centres
+  /// the map on the device; then follow; then follow with the map turned
+  /// like the phone (compass, true north with the WMM declination); a press
+  /// goes back to follow, north up. Moving the map by hand stops it all.
+  LatLng? _me; MeMode _meMode=MeMode.off; StreamSubscription? _meSub; StreamSubscription? _mapEvents;
+  StreamSubscription<double>? _headingSub; double? _heading;
+  bool get _followMe=>_meMode!=MeMode.off;
   Future<void> _myPosition() async {
     if(_me!=null&&_centredOnMe()){
-      setState(()=>_followMe=!_followMe);
-      if(_followMe){_startFollowingMe();}else{await _meSub?.cancel();_meSub=null;}
+      final next=nextMeMode(_meMode,centred:true);
+      if(next==MeMode.compass&&!await _startCompass()){
+        if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(S.t('map.noCompass'))));
+        return;
+      }
+      if(next!=MeMode.compass){_stopCompass();_map.rotate(0);}
+      setState(()=>_meMode=next);
+      _startFollowingMe();
       return;
     }
     if(!await _location.ensurePermission()){
@@ -663,19 +674,35 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   }
   bool _centredOnMe(){final me=_me;if(me==null)return false;final c=_map.camera.center;return (c.latitude-me.latitude).abs()<1e-4&&(c.longitude-me.longitude).abs()<1e-4;}
   void _startFollowingMe(){
-    _meSub?.cancel();
+    if(_meSub!=null)return;
     _meSub=_location.positions().listen((p){
       if(!mounted)return;
       setState(()=>_me=LatLng(p.latitude,p.longitude));
       if(_followMe)_map.move(_me!,_map.camera.zoom);
     },onError:(_){});
   }
+  /// Compass of the phone; false without one (computer) or when refused.
+  Future<bool> _startCompass() async {
+    if(_headingSub!=null)return true;
+    final headings=await compassHeadings();
+    if(headings==null||!mounted)return false;
+    _headingSub=headings.listen((magnetic){
+      final me=_me; if(!mounted||_meMode!=MeMode.compass)return;
+      final declination=me==null?0.0:magneticDeclination(me.latitude,me.longitude,DateTime.now().toUtc());
+      final next=smoothHeading(_heading,magnetic+declination);
+      if(headingChanged(_heading,next)){_heading=next;_map.rotate(-next);setState((){});}
+    },onError:(_){});
+    return true;
+  }
+  void _stopCompass(){_headingSub?.cancel();_headingSub=null;_heading=null;}
+  void _stopFollowing(){
+    if(_meMode==MeMode.compass){_stopCompass();_map.rotate(0);}
+    setState(()=>_meMode=MeMode.off); _meSub?.cancel(); _meSub=null;
+  }
   /// Moving the map by hand stops the following.
   void _watchMapMoves(){
     _mapEvents??=_map.mapEventStream.listen((e){
-      if(_followMe&&e.source!=MapEventSource.mapController&&e.source!=MapEventSource.nonRotatedSizeChange&&e is MapEventMove){
-        setState(()=>_followMe=false); _meSub?.cancel(); _meSub=null;
-      }
+      if(_followMe&&e.source!=MapEventSource.mapController&&e.source!=MapEventSource.nonRotatedSizeChange&&e is MapEventMove)_stopFollowing();
       if(e is MapEventRotate||e is MapEventRotateEnd)setState((){});
     });
   }
@@ -691,13 +718,16 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       FloatingActionButton.small(heroTag:'map-layers',tooltip:S.t('basemap.menu'),onPressed:_chooseBasemap,child:const Icon(Icons.layers_outlined)),
       const SizedBox(height:8),
       if(rotated)...[
-        FloatingActionButton.small(heroTag:'map-north',tooltip:S.t('map.north'),onPressed:(){_map.rotate(0);setState((){});},
+        FloatingActionButton.small(heroTag:'map-north',tooltip:S.t('map.north'),onPressed:(){
+            if(_meMode==MeMode.compass){_stopCompass();_meMode=MeMode.follow;}
+            _map.rotate(0);setState((){});},
           child:Transform.rotate(angle:-rotation*3.141592653589793/180,child:const Icon(Icons.explore_outlined))),
         const SizedBox(height:8),
       ],
-      FloatingActionButton.small(heroTag:'map-me',tooltip:S.t(_followMe?'map.followMeOn':'map.myPosition'),onPressed:_myPosition,
+      FloatingActionButton.small(heroTag:'map-me',onPressed:_myPosition,
+        tooltip:S.t(switch(_meMode){MeMode.off=>'map.myPosition',MeMode.follow=>'map.followMeOn',MeMode.compass=>'map.compassOn'}),
         backgroundColor:_followMe?scheme.primary:null,foregroundColor:_followMe?scheme.onPrimary:null,
-        child:Icon(_followMe?Icons.navigation:Icons.my_location)),
+        child:Icon(switch(_meMode){MeMode.off=>Icons.my_location,MeMode.follow=>Icons.navigation,MeMode.compass=>Icons.explore})),
     ]);
   }
 
@@ -1254,6 +1284,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   );
 
   @override void dispose(){_webUpdateTimer?.cancel();_saveViewTimer?.cancel();_bearings.dispose();_brgTarget.dispose();_positionsTimer?.cancel();_meSub?.cancel();_mapEvents?.cancel();AccessManager.instance.removeListener(_onAccessChanged);_rtSub?.cancel();_tracking.removeListener(_onOperationsChanged);_ops.removeListener(_onOperationsChanged);_tracking.dispose();_ops.dispose();_routes.removeListener(_onRoutesChanged);_nav.removeListener(_onRoutesChanged);_routes.dispose();_nav.dispose();_measure.removeListener(_onRoutesChanged);_measure.dispose();_syncUiTimer?.cancel();_sync.dispose();_realtime.dispose();_drawing.dispose();widget.api.close();super.dispose();}
+  @override void dispose(){_headingSub?.cancel();_saveViewTimer?.cancel();_bearings.dispose();_brgTarget.dispose();_positionsTimer?.cancel();_meSub?.cancel();_mapEvents?.cancel();AccessManager.instance.removeListener(_onAccessChanged);_rtSub?.cancel();_tracking.removeListener(_onOperationsChanged);_ops.removeListener(_onOperationsChanged);_tracking.dispose();_ops.dispose();_routes.removeListener(_onRoutesChanged);_nav.removeListener(_onRoutesChanged);_routes.dispose();_nav.dispose();_measure.removeListener(_onRoutesChanged);_measure.dispose();_syncUiTimer?.cancel();_sync.dispose();_realtime.dispose();_drawing.dispose();widget.api.close();super.dispose();}
 
   @override Widget build(BuildContext context){
     final sorted=_positions.values.where((p)=>(p.isAprs?_showAprs:_showOperators)&&(!_withoutInternetOnly||worksWithoutInternet(p)||p.deviceId==widget.deviceId)).toList()..sort((a,b)=>a.deviceId.compareTo(b.deviceId));
