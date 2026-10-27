@@ -1,4 +1,7 @@
+import 'dart:async';
 import 'dart:io';
+import 'package:sensors_plus/sensors_plus.dart';
+import '../features/measure/measure_controller.dart' show compassHeading;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:hive_ce_flutter/hive_ce_flutter.dart';
@@ -77,7 +80,27 @@ WebSocketChannel openWebSocket(Uri uri,Map<String,String> headers)=>
 
 /// Installed apps: no page to reload; the network state is unknown here.
 void reloadApp(){}
+
+/// Installed apps are updated by their package: no served web build.
+Future<String?> fetchServedBuild() async=>null;
+Future<void> reloadFresh() async {}
 bool get browserOnline=>false;
 
 /// Installed apps keep their data in their own folder.
 Future<bool> requestPersistentStorage() async=>true;
+
+
+/// Compass of the device (accelerometer + magnetometer): degrees from
+/// magnetic north, clockwise; null without these sensors (computers).
+Future<Stream<double>?> compassHeadings() async {
+  if(!(Platform.isAndroid||Platform.isIOS))return null;
+  List<double>? g,f;
+  late StreamController<double> out;
+  StreamSubscription? a,m;
+  void emit(){if(g!=null&&f!=null){final h=compassHeading(g!,f!);if(h!=null)out.add(h);}}
+  out=StreamController<double>.broadcast(onListen:(){
+    a=accelerometerEventStream().listen((e){g=[e.x,e.y,e.z];emit();},onError:(_){});
+    m=magnetometerEventStream().listen((e){f=[e.x,e.y,e.z];emit();},onError:(_){});
+  },onCancel:(){a?.cancel();m?.cancel();});
+  return out.stream;
+}

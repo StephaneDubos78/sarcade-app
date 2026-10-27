@@ -112,7 +112,8 @@ void main() {
     var listed = false;
     for (var attempt = 0; attempt < 5 && !listed; attempt++) {
       await pumpUntil(t, find.byTooltip(S.t('settings.eventsRefresh')));
-      await t.tap(find.byType(DropdownButtonFormField<String>).first);
+      // The event list (the remembered servers list sits above it).
+      await t.tap(find.ancestor(of: find.text(S.t('settings.event')), matching: find.byType(DropdownButtonFormField<String>)).first);
       await t.pump(const Duration(seconds: 1));
       listed = find.textContaining(eventName).evaluate().isNotEmpty;
       if (!listed) {
