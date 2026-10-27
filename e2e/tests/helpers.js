@@ -114,8 +114,14 @@ async function sendMessage(page, body, { priority = 'Urgent' } = {}) {
     await field.fill(body);
     await expect(field).toHaveValue(body, { timeout: 2_000 });
   }).toPass({ timeout: 30_000 });
+  let attempt = 0;
   await expect(async () => {
-    if ((await field.inputValue()) === body) await page.getByRole('button', { name: 'Send', exact: true }).click();
+    if ((await field.inputValue()) === body) {
+      // The Send button first, then Enter in the field (Enter sends on a
+      // computer keyboard): two ways to reach the same action.
+      if (attempt++ % 2 === 0) await page.getByRole('button', { name: 'Send', exact: true }).click();
+      else await field.press('Enter');
+    }
     await expect(field).toHaveValue('', { timeout: 3_000 });
   }).toPass({ timeout: 30_000 });
 }
