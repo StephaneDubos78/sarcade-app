@@ -106,8 +106,18 @@ async function openMessages(page) {
 async function sendMessage(page, body, { priority = 'Urgent' } = {}) {
   await page.getByRole('button', { name: /^(Routine|Urgent|Immediate)$/ }).click();
   await page.getByRole('menuitem', { name: priority }).click();
-  await page.getByLabel('Short message').fill(body);
-  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  // Typed until Flutter holds it, then sent until the field empties: on a
+  // busy CI machine the click could reach Flutter before the typed text
+  // (message never sent, 26-27 October 2026).
+  const field = page.getByLabel('Short message');
+  await expect(async () => {
+    await field.fill(body);
+    await expect(field).toHaveValue(body, { timeout: 2_000 });
+  }).toPass({ timeout: 30_000 });
+  await expect(async () => {
+    if ((await field.inputValue()) === body) await page.getByRole('button', { name: 'Send', exact: true }).click();
+    await expect(field).toHaveValue('', { timeout: 3_000 });
+  }).toPass({ timeout: 30_000 });
 }
 
 /** The message card, found by its text and, optionally, its ACK line.
