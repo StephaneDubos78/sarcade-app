@@ -21,6 +21,9 @@ import '../search/map_search_bar.dart';
 import '../../ui/map_view.dart';
 import '../../ui/theme.dart';
 import 'stations.dart';
+import '../bearings/bearing_controller.dart';
+import '../bearings/bearing_layers.dart';
+import '../bearings/bearing_models.dart';
 import 'drawing/geometry.dart' as geo;
 import '../files/files_page.dart';
 import 'drawing/drawing_controller.dart';
@@ -90,7 +93,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   static const _compactWidth=600.0;
   @override void didChangeDependencies(){super.didChangeDependencies();if(!_layoutInitialized){_layoutInitialized=true;if(MediaQuery.sizeOf(context).width<_compactWidth)_showPanel=false;}}
 
-  @override void initState(){super.initState();_notifications.initialize();unawaited(requestPersistentStorage());_sync=OfflineSyncService(api:widget.api,store:widget.store,eventId:widget.eventId,onRemoteChange:_onRemoteChange);_initDrawing();_loadLocal();_initRoutes();_initMeasure();_sync.start();_initOperations();_loadBasemaps();_syncUiTimer=Timer.periodic(const Duration(seconds:2),(_){if(mounted)setState((){});});AccessManager.instance.addListener(_onAccessChanged);_start();}
+  @override void initState(){super.initState();_notifications.initialize();unawaited(requestPersistentStorage());_sync=OfflineSyncService(api:widget.api,store:widget.store,eventId:widget.eventId,onRemoteChange:_onRemoteChange);_initDrawing();_initBearings();_loadLocal();_initRoutes();_initMeasure();_sync.start();_initOperations();_loadBasemaps();_syncUiTimer=Timer.periodic(const Duration(seconds:2),(_){if(mounted)setState((){});});AccessManager.instance.addListener(_onAccessChanged);_start();}
   bool _validPosition(SarcadePosition p){
     final t=p.time.toUtc(), now=DateTime.now().toUtc();
     return t.isAfter(DateTime.utc(2020)) && t.isBefore(now.add(const Duration(days:1)));
@@ -265,7 +268,9 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       ListTile(leading:const Icon(Icons.directions),title:Text(S.t('nav.goHere')),onTap:()=>Navigator.pop(c,'nav')),
       ListTile(leading:const Icon(Icons.open_in_new),title:Text(S.t('ext.open')),onTap:()=>Navigator.pop(c,'ext')),
       ListTile(leading:const Icon(Icons.cloud_outlined),title:Text(S.t('weather.here')),onTap:()=>Navigator.pop(c,'weather')),
+      ListTile(leading:const Icon(Icons.track_changes),title:Text(S.t('bearings.fromHere')),onTap:()=>Navigator.pop(c,'bearing')),
     ])));
+    if(choice=='bearing'){await _bearings.startTaking(from:point);return;}
     if(choice=='measure')await _measureTo(point,label);
     if(choice=='ext'&&mounted)await openInOtherApp(context,point,label);
     if(choice=='nav')await _navigateTo(point,label);
@@ -497,6 +502,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   void _initDrawing(){
     final initial=<MapFeature>[];
     for(final j in widget.store.mapFeatures(widget.eventId)){
+      if(Bearing.isBearing(j))continue; // bearings have their own controller
       try{initial.add(MapFeature.fromJson(j));}catch(_){/* skip an object saved by an incompatible build */}
     }
     _drawing=DrawingController(
@@ -549,6 +555,11 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   void _applyRemoteFeature(Map<String,dynamic> p,{bool persist=false}){
     final id=p['id'];
     if(id is! String||p['event_id']!=widget.eventId||_sync.isPending(id))return;
+    if(p['deleted']==true)_bearings.remove(id);
+    if(p['deleted']!=true&&Bearing.isBearing(p)){
+      try{_bearings.applyRemote(Bearing.fromJson(p));if(persist)widget.store.saveMapFeature(p);}catch(_){}
+      return;
+    }
     if(p['deleted']==true){
       DateTime? at;
       try{at=DateTime.parse(p['updated_at'] as String);}catch(_){}
@@ -727,6 +738,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       chip(S.t('refs.highPoints'),_showHighPoints,(v)=>setState(()=>_showHighPoints=v)),
       chip(S.t('refs.relays'),_showRelays,(v)=>setState(()=>_showRelays=v)),
       chip(S.t('chips.drawings'),_showDrawings,(v)=>_setShown('show_draw',v)),
+      chip(S.t('chips.bearings'),_showBearings,(v)=>_setShown('show_brg',v)),
       chip(S.t('chips.withoutInternet'),_withoutInternetOnly,(v)=>setState(()=>_withoutInternetOnly=v)),
     ]));
   }
@@ -952,6 +964,174 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     ]);
   }
 
+  // --- Bearings (note « Relevés et croisements », screen V2) ---
+  late final BearingController _bearings;
+  final _brgTarget=TextEditingController(); int _brgStrength=0;
+  bool get _showBearings=>widget.store.preference('show_brg:${widget.eventId}')!='0';
+  String get _brgSearch=>widget.store.preference('brg_search:${widget.eventId}')??'';
+
+  void _initBearings(){
+    _bearings=BearingController(eventId:widget.eventId,actorId:widget.deviceId,location:_location,
+      onSave:(b,{required isNew}) async {
+        await widget.store.saveMapFeature(b.toJson());
+        await _sync.queue(objectId:b.id,objectType:'map_feature',action:isNew?'create':'update',payload:b.toJson());
+      },
+      onDelete:(b) async {
+        await widget.store.deleteMapFeature(b.id);
+        await _sync.queue(objectId:b.id,objectType:'map_feature',action:'delete',payload:{
+          'id':b.id,'event_id':widget.eventId,'updated_by':widget.deviceId,'updated_at':DateTime.now().toUtc().toIso8601String()});
+      });
+    for(final j in widget.store.mapFeatures(widget.eventId)){
+      if(!Bearing.isBearing(j)||j['deleted']==true)continue;
+      try{_bearings.applyRemote(Bearing.fromJson(j));}catch(_){}
+    }
+    _bearings.addListener((){if(mounted)setState((){});});
+  }
+
+  Bearing? _bearingDraft()=>_bearings.taking?_bearings.draft(target:_brgTarget.text.trim(),strength:_brgStrength,search:_brgSearch):null;
+
+  /// Top of the screen while taking a bearing: azimuth in big figures,
+  /// position, accuracy, time (direction-finding app of the captures).
+  Widget _bearingHud(){
+    final s=Theme.of(context).colorScheme; final b=_bearings; final az=b.trueDeg; final p=b.position;
+    final t=DateTime.now(); String two(int v)=>v.toString().padLeft(2,'0');
+    return Container(padding:const EdgeInsets.fromLTRB(14,10,8,10),decoration:glass(context,border:s.primary.withValues(alpha:0.6)),
+      child:Column(crossAxisAlignment:CrossAxisAlignment.start,mainAxisSize:MainAxisSize.min,children:[
+        Row(children:[
+          Expanded(child:Text(S.t(b.hasCompass||b.manualDeg!=null?'bearings.aim':'bearings.noCompass'),style:TextStyle(fontSize:12,fontWeight:FontWeight.w700,letterSpacing:0.8,color:s.primary))),
+          IconButton(tooltip:S.t('common.cancel'),onPressed:_bearings.stopTaking,icon:const Icon(Icons.close)),
+        ]),
+        Row(crossAxisAlignment:CrossAxisAlignment.end,children:[
+          Text(az==null?'—':'${az.toStringAsFixed(0).padLeft(3,'0')}°',style:const TextStyle(fontSize:60,fontWeight:FontWeight.w500,height:1,fontFeatures:[FontFeature.tabularFigures()])),
+          const SizedBox(width:10),
+          Padding(padding:const EdgeInsets.only(bottom:6),child:Text([S.t(b.manualDeg!=null?'bearings.typed':'bearings.true'),
+            if(b.magneticDeg!=null&&b.manualDeg==null)S.t('bearings.magnetic',{'v':b.magneticDeg!.toStringAsFixed(0).padLeft(3,'0')})].join('\n'),
+            style:TextStyle(fontSize:12,color:s.onSurfaceVariant))),
+        ]),
+        const SizedBox(height:4),
+        Text([p==null?S.t('bearings.noPosition'):'${p.latitude.toStringAsFixed(4)}° N · ${p.longitude.toStringAsFixed(4)}° E',
+          if(b.accuracyM!=null)'±${b.accuracyM!.toStringAsFixed(0)} m','${two(t.hour)}:${two(t.minute)}:${two(t.second)}'].join(' · '),
+          style:TextStyle(fontSize:12,fontFamily:'monospace',color:s.onSurfaceVariant)),
+      ]));
+  }
+
+  /// Bottom of the screen while taking a bearing: target, strength S1–S9,
+  /// search, effect on the probable zone, « Enregistrer le relevé ».
+  Widget _bearingTakeSheet(){
+    final s=Theme.of(context).colorScheme;
+    final draft=_bearingDraft();
+    final same=_bearings.all.where((b)=>b.search==_brgSearch).toList();
+    final before=probableZone(same), after=draft==null?null:probableZone([...same,draft]);
+    final effect=before.centre!=null&&after?.centre!=null?S.t('bearings.effect',{'a':geo.formatDistance(before.radiusM),'b':geo.formatDistance(after!.radiusM)})
+      :after?.centre!=null?S.t('bearings.firstZone',{'b':geo.formatDistance(after!.radiusM)}):null;
+    return Container(padding:const EdgeInsets.all(14),decoration:glass(context,radius:22),child:Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+      Row(children:[
+        Expanded(child:TextField(controller:_brgTarget,onChanged:(_)=>setState((){}),decoration:InputDecoration(labelText:S.t('bearings.target'),hintText:'121,500 MHz',isDense:true,border:const OutlineInputBorder()))),
+        const SizedBox(width:8),
+        Expanded(child:InkWell(onTap:_chooseSearch,child:InputDecorator(decoration:InputDecoration(labelText:S.t('bearings.search'),isDense:true,border:const OutlineInputBorder()),
+          child:Row(children:[Container(width:10,height:10,decoration:BoxDecoration(color:Color(searchColor(_brgSearch)),shape:BoxShape.circle)),const SizedBox(width:6),
+            Expanded(child:Text(_brgSearch.isEmpty?S.t('bearings.searchNone'):_brgSearch,overflow:TextOverflow.ellipsis))])))),
+      ]),
+      const SizedBox(height:10),
+      Row(children:[
+        Text(S.t('bearings.strength'),style:const TextStyle(fontSize:13)),const SizedBox(width:8),
+        Expanded(child:Row(children:[for(var i=1;i<=9;i++)Expanded(child:Padding(padding:const EdgeInsets.symmetric(horizontal:1.5),child:Semantics(button:true,label:'S$i',selected:_brgStrength==i,
+          child:InkWell(onTap:()=>setState(()=>_brgStrength=_brgStrength==i?0:i),child:Container(height:22,decoration:BoxDecoration(
+            color:i<=_brgStrength?s.primary:s.surfaceContainerHighest,borderRadius:BorderRadius.circular(4)))))))])),
+        const SizedBox(width:8),
+        SizedBox(width:28,child:Text(_brgStrength==0?'—':'S$_brgStrength',style:TextStyle(fontWeight:FontWeight.w700,color:s.primary))),
+      ]),
+      if(effect!=null)Padding(padding:const EdgeInsets.only(top:8),child:Text(effect,style:TextStyle(fontSize:13,color:s.onSurfaceVariant))),
+      const SizedBox(height:10),
+      Row(children:[
+        Expanded(child:FilledButton.icon(style:FilledButton.styleFrom(minimumSize:const Size.fromHeight(52)),
+          onPressed:draft==null?null:() async {
+            final b=await _bearings.save(target:_brgTarget.text.trim(),strength:_brgStrength,search:_brgSearch);
+            if(b!=null&&mounted){_brgTarget.clear();setState(()=>_brgStrength=0);
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(S.t('bearings.saved',{'v':b.azimuthDeg.toStringAsFixed(0).padLeft(3,'0')}))));}
+          },
+          icon:const Icon(Icons.track_changes),label:Text(S.t('bearings.save')))),
+        const SizedBox(width:8),
+        IconButton.outlined(tooltip:S.t('bearings.typeAzimuth'),style:IconButton.styleFrom(fixedSize:const Size(52,52)),onPressed:_typeAzimuth,icon:const Icon(Icons.edit_outlined)),
+        const SizedBox(width:4),
+        IconButton.outlined(tooltip:S.t('bearings.useMapCentre'),style:IconButton.styleFrom(fixedSize:const Size(52,52)),
+          onPressed:(){final c=_mapCentre();if(c!=null)_bearings.setPosition(c);},icon:const Icon(Icons.filter_center_focus)),
+      ]),
+    ]));
+  }
+
+  Future<void> _typeAzimuth() async {
+    final ctrl=TextEditingController(text:_bearings.trueDeg?.toStringAsFixed(0)??'');
+    final v=await showDialog<String>(context:context,builder:(c)=>AlertDialog(title:Text(S.t('bearings.typeAzimuth')),
+      content:TextField(controller:ctrl,autofocus:true,keyboardType:const TextInputType.numberWithOptions(decimal:true),decoration:InputDecoration(suffixText:'°',helperText:S.t('bearings.typeHelp'))),
+      actions:[TextButton(onPressed:()=>Navigator.pop(c),child:Text(S.t('common.cancel'))),FilledButton(onPressed:()=>Navigator.pop(c,ctrl.text),child:Text(S.t('common.ok')))]));
+    ctrl.dispose();
+    if(v==null)return;
+    final d=double.tryParse(v.replaceAll(',','.').trim());
+    _bearings.setManual(d==null||d<0||d>360?null:d);
+  }
+
+  Future<void> _chooseSearch() async {
+    final names={for(final b in _bearings.all)b.search}..remove('');
+    final ctrl=TextEditingController();
+    final v=await showDialog<String>(context:context,builder:(c)=>SimpleDialog(title:Text(S.t('bearings.search')),children:[
+      SimpleDialogOption(onPressed:()=>Navigator.pop(c,''),child:Text(S.t('bearings.searchNone'))),
+      for(final n in names)SimpleDialogOption(onPressed:()=>Navigator.pop(c,n),child:Row(children:[Icon(Icons.circle,size:12,color:Color(searchColor(n))),const SizedBox(width:8),Text(n)])),
+      Padding(padding:const EdgeInsets.fromLTRB(24,8,24,8),child:TextField(controller:ctrl,decoration:InputDecoration(labelText:S.t('bearings.searchNew'),hintText:'Balise 406 – 27/10'),
+        onSubmitted:(t)=>Navigator.pop(c,t.trim()))),
+    ]));
+    ctrl.dispose();
+    if(v==null)return;
+    await widget.store.setPreference('brg_search:${widget.eventId}',v.isEmpty?null:v);
+    if(mounted)setState((){});
+  }
+
+  /// Details of a bearing; change or delete for its author or the PCO.
+  Future<void> _showBearingSheet(Bearing b) async {
+    final can=b.canEdit(widget.deviceId,isPco(widget.deviceId));
+    final l=b.takenAt.toLocal(); String two(int v)=>v.toString().padLeft(2,'0');
+    final choice=await showModalBottomSheet<String>(context:context,showDragHandle:true,builder:(c)=>SafeArea(child:Padding(padding:const EdgeInsets.fromLTRB(20,0,20,12),
+      child:Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.start,children:[
+        Text('${b.azimuthDeg.toStringAsFixed(0).padLeft(3,'0')}° ${S.t('bearings.true')}',style:const TextStyle(fontSize:32,fontWeight:FontWeight.w600)),
+        Text([b.createdBy,'${two(l.day)}/${two(l.month)} ${two(l.hour)}:${two(l.minute)}',if(b.strength>0)'S${b.strength}',if(b.target.isNotEmpty)b.target,
+          S.t('bearings.method.${b.method}'),if(b.search.isNotEmpty)b.search].join(' · ')),
+        if(b.comment.isNotEmpty)Padding(padding:const EdgeInsets.only(top:6),child:Text(b.comment)),
+        Text(S.t('bearings.lineCone',{'l':geo.formatDistance(b.lengthM),'c':b.coneDeg.toStringAsFixed(0)}),style:TextStyle(fontSize:12,color:Theme.of(c).colorScheme.onSurfaceVariant)),
+        const SizedBox(height:8),
+        ListTile(contentPadding:EdgeInsets.zero,leading:const Icon(Icons.place_outlined),title:Text(S.t('bearings.fromOrigin')),onTap:()=>Navigator.pop(c,'origin')),
+        if(can)ListTile(contentPadding:EdgeInsets.zero,leading:const Icon(Icons.edit_outlined),title:Text(S.t('bearings.edit')),onTap:()=>Navigator.pop(c,'edit')),
+        if(can)ListTile(contentPadding:EdgeInsets.zero,leading:Icon(Icons.delete_outline,color:Theme.of(c).colorScheme.error),title:Text(S.t('bearings.delete')),onTap:()=>Navigator.pop(c,'delete')),
+      ]))));
+    if(!mounted)return;
+    if(choice=='origin')await _onLongPress(b.origin);
+    if(choice=='delete'){
+      final ok=await showDialog<bool>(context:context,builder:(c)=>AlertDialog(content:Text(S.t('bearings.deleteConfirm')),actions:[
+        TextButton(onPressed:()=>Navigator.pop(c,false),child:Text(S.t('common.cancel'))),FilledButton(onPressed:()=>Navigator.pop(c,true),child:Text(S.t('bearings.delete')))]));
+      if(ok==true)await _bearings.delete(b);
+    }
+    if(choice=='edit')await _editBearing(b);
+  }
+
+  Future<void> _editBearing(Bearing b) async {
+    final az=TextEditingController(text:b.azimuthDeg.toStringAsFixed(1)), cone=TextEditingController(text:b.coneDeg.toStringAsFixed(0)),
+      len=TextEditingController(text:(b.lengthM/1000).toStringAsFixed(1)), target=TextEditingController(text:b.target), comment=TextEditingController(text:b.comment);
+    final ok=await showDialog<bool>(context:context,builder:(c)=>AlertDialog(title:Text(S.t('bearings.edit')),content:SingleChildScrollView(child:Column(mainAxisSize:MainAxisSize.min,children:[
+      TextField(controller:az,keyboardType:const TextInputType.numberWithOptions(decimal:true),decoration:InputDecoration(labelText:S.t('bearings.azimuth'),suffixText:'°')),
+      TextField(controller:cone,keyboardType:TextInputType.number,decoration:InputDecoration(labelText:S.t('bearings.cone'),suffixText:'± °')),
+      TextField(controller:len,keyboardType:const TextInputType.numberWithOptions(decimal:true),decoration:InputDecoration(labelText:S.t('bearings.length'),suffixText:'km')),
+      TextField(controller:target,decoration:InputDecoration(labelText:S.t('bearings.target'))),
+      TextField(controller:comment,decoration:InputDecoration(labelText:S.t('bearings.comment'))),
+    ])),actions:[TextButton(onPressed:()=>Navigator.pop(c,false),child:Text(S.t('common.cancel'))),FilledButton(onPressed:()=>Navigator.pop(c,true),child:Text(S.t('common.save')))]));
+    double? n(TextEditingController t)=>double.tryParse(t.text.replaceAll(',','.').trim());
+    if(ok==true){
+      final a=n(az),cn=n(cone),ln=n(len);
+      await _bearings.update(b.copyWith(azimuthDeg:a==null||a<0||a>360?null:a%360,coneDeg:cn==null||cn<0||cn>45?null:cn,
+        lengthM:ln==null||ln<0.1||ln>200?null:ln*1000,target:target.text.trim(),comment:comment.text.trim(),
+        updatedBy:widget.deviceId,updatedAt:DateTime.now().toUtc()));
+    }
+    for(final t in [az,cone,len,target,comment]){t.dispose();}
+  }
+
   // The dialog owns its text controller: disposing it when the Future
   // completed freed it while the closing animation still used it
   // ('_dependents.isEmpty' assertion, Windows test of 13 Oct 2026).
@@ -1057,7 +1237,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     child:child,
   );
 
-  @override void dispose(){_saveViewTimer?.cancel();_positionsTimer?.cancel();_meSub?.cancel();_mapEvents?.cancel();AccessManager.instance.removeListener(_onAccessChanged);_rtSub?.cancel();_tracking.removeListener(_onOperationsChanged);_ops.removeListener(_onOperationsChanged);_tracking.dispose();_ops.dispose();_routes.removeListener(_onRoutesChanged);_nav.removeListener(_onRoutesChanged);_routes.dispose();_nav.dispose();_measure.removeListener(_onRoutesChanged);_measure.dispose();_syncUiTimer?.cancel();_sync.dispose();_realtime.dispose();_drawing.dispose();widget.api.close();super.dispose();}
+  @override void dispose(){_saveViewTimer?.cancel();_bearings.dispose();_brgTarget.dispose();_positionsTimer?.cancel();_meSub?.cancel();_mapEvents?.cancel();AccessManager.instance.removeListener(_onAccessChanged);_rtSub?.cancel();_tracking.removeListener(_onOperationsChanged);_ops.removeListener(_onOperationsChanged);_tracking.dispose();_ops.dispose();_routes.removeListener(_onRoutesChanged);_nav.removeListener(_onRoutesChanged);_routes.dispose();_nav.dispose();_measure.removeListener(_onRoutesChanged);_measure.dispose();_syncUiTimer?.cancel();_sync.dispose();_realtime.dispose();_drawing.dispose();widget.api.close();super.dispose();}
 
   @override Widget build(BuildContext context){
     final sorted=_positions.values.where((p)=>(p.isAprs?_showAprs:_showOperators)&&(!_withoutInternetOnly||worksWithoutInternet(p)||p.deviceId==widget.deviceId)).toList()..sort((a,b)=>a.deviceId.compareTo(b.deviceId));
@@ -1081,6 +1261,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     final actions=<_RailAction>[
       _RailAction(Icons.groups_outlined,S.t('map.operators'),toggleOperators,selected:_showPanel),
       _RailAction(Icons.cell_tower,S.t('map.references'),toggleReferences,selected:_showReferencePanel),
+      _RailAction(Icons.track_changes,S.t('bearings.take'),()=>_bearings.startTaking()),
       _RailAction(Icons.near_me_outlined,S.t('nearby.title'),()=>setState((){_showNearby=!_showNearby;if(_showNearby){_showPanel=false;_showReferencePanel=false;_showRoutesPanel=false;}}),selected:_showNearby),
       _RailAction(Icons.route,S.t('routes.menu'),toggleRoutes,selected:_showRoutesPanel),
       _RailAction(Icons.cloud_outlined,S.t('weather.menu'),()=>_openWeather()),
@@ -1167,6 +1348,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           // Reference sites below the drawn objects, grouped when zoomed out.
           ReferenceClusterLayer(sites:_references.values.where((r)=>(r.isHighPoint&&_showHighPoints)||(r.isRelay&&_showRelays)).toList(),onSelect:_selectReference),
           if(_showDrawings)...buildDrawingLayers(_drawing),
+          if(_showBearings||_bearings.taking)...buildBearingLayers(bearings:_showBearings?_bearings.all:const <Bearing>[],draft:_bearingDraft(),
+            onTapBearing:_showBearingSheet,onTapZone:(c,_)=>_onLongPress(c)),
           ...buildRouteLayers(_routes,selectedRouteId:_selectedRouteId,itinerary:_nav.itinerary?.geometry??const [],draftClosure:_closureDraft,
             onWaypointTap:(w)=>setState((){_showRoutesPanel=true;_showPanel=false;_showReferencePanel=false;_selectedRouteId=w.routeId;})),
           ...buildMeasureLayers(_measure,_coordFormat),
@@ -1186,7 +1369,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           onPanStart:_onFreehandStart,onPanUpdate:_onFreehandUpdate,onPanEnd:_onFreehandEnd,
           child:CustomPaint(painter:_StrokePainter(_stroke,Color(_drawing.color),_drawing.strokeWidth)),
         )),
-        Positioned(top:8,left:8,right:8,child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+        if(_bearings.taking)Positioned(top:8,left:8,right:8,child:Align(alignment:Alignment.topCenter,child:ConstrainedBox(constraints:const BoxConstraints(maxWidth:520),child:_bearingHud())))
+        else Positioned(top:8,left:8,right:8,child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
           // The drawing button stays in place and toggles the toolbar
           // (request of 23 October 2026: closing it after a tap by mistake
           // meant reaching the small cross at the far right).
@@ -1219,7 +1403,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           ])))),
         ])),
         Positioned(right:12,bottom:compact?104:24,child:_mapButtons()),
-        if(selected!=null)Positioned(left:12,right:compact?12:null,bottom:compact?96:24,
+        if(_bearings.taking)Positioned(left:0,right:0,bottom:compact?92:16,child:Center(child:ConstrainedBox(constraints:const BoxConstraints(maxWidth:520),child:Padding(padding:const EdgeInsets.symmetric(horizontal:12),child:_bearingTakeSheet()))))
+        else if(selected!=null)Positioned(left:12,right:compact?12:null,bottom:compact?96:24,
           child:ConstrainedBox(constraints:const BoxConstraints(maxWidth:420),child:_stationSheet(selected))),
         Positioned(left:16,bottom:compact?108:24,child:IgnorePointer(child:_scaleBar())),
         // Phone: floating tab bar at the bottom (mock-up V2).
