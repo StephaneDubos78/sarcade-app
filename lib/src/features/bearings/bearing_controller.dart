@@ -59,9 +59,8 @@ class BearingController extends ChangeNotifier {
   void setManual(double? deg){manualDeg=deg==null?null:(deg%360+360)%360;notifyListeners();}
   void setPosition(LatLng p){position=p;accuracyM=null;notifyListeners();}
 
-  void stopTaking(){
-    taking=false; _gps?.cancel(); _acc?.cancel(); _mag?.cancel(); _gps=_acc=_mag=null; _gravity=_field=null; notifyListeners();
-  }
+  void stopTaking(){_stopSensors();notifyListeners();}
+  void _stopSensors(){taking=false; _gps?.cancel(); _acc?.cancel(); _mag?.cancel(); _gps=_acc=_mag=null; _gravity=_field=null;}
 
   /// The bearing being taken, as it would be saved.
   Bearing? draft({String target='',int strength=0,String comment='',String search=''}){
@@ -83,5 +82,6 @@ class BearingController extends ChangeNotifier {
   Future<void> update(Bearing b) async {_all[b.id]=b;notifyListeners();await onSave(b,isNew:false);}
   Future<void> delete(Bearing b) async {_all.remove(b.id);notifyListeners();await onDelete(b);}
 
-  @override void dispose(){stopTaking();super.dispose();}
+  // No notification while disposing: the page is already gone.
+  @override void dispose(){_stopSensors();super.dispose();}
 }
