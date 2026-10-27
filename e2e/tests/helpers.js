@@ -104,46 +104,21 @@ async function openMessages(page) {
 
 /** Sends a message from the messages screen (general broadcast by default). */
 async function sendMessage(page, body, { priority = 'Urgent' } = {}) {
-  await page.getByRole('button', { name: /^(Routine|Urgent|Immediate)$/ }).click();
-  await page.getByRole('menuitem', { name: priority }).click();
-  // Typed until Flutter holds it, then sent until the field empties: on a
-  // busy CI machine the click could reach Flutter before the typed text
-  // (message never sent, 26-27 October 2026).
-  // Once it has the focus, Flutter replaces the field's accessible node by
-  // its editing element (flt-text-editing-host), without the hint as label.
-  const field = page.getByLabel('Short message')
-    .or(page.locator('flt-text-editing-host textarea, flt-text-editing-host input')).first();
-  // The priority menu must be closed again (a click during its opening
-  // animation can be lost on a busy machine, the menu then hides the page).
+  // Interface V2 (27 October 2026): typed first with real key presses while
+  // the field is found by its hint, priority chosen afterwards, then the
+  // proof is the message card shown by Flutter (not the DOM value, which
+  // Flutter may not have taken).
   await expect(async () => {
-    if (!(await field.isVisible())) {
-      const item = page.getByRole('menuitem', { name: priority });
-      if (await item.count()) await item.first().click(); else await page.keyboard.press('Escape');
-    }
-    await expect(field).toBeVisible({ timeout: 2_000 });
-  }).toPass({ timeout: 30_000 });
-  await expect(async () => {
-    await field.fill(body);
-    await expect(field).toHaveValue(body, { timeout: 2_000 });
-  }).toPass({ timeout: 30_000 });
-  let attempt = 0;
-  await expect(async () => {
-    if ((await field.inputValue()) === body) {
-      // Flutter may not have taken the filled text yet: from the second
-      // attempt on, it is typed again key by key (real keyboard events)
-      // and sent with Enter (Enter sends on a computer keyboard).
-      if (attempt++ === 0) {
-        await page.getByRole('button', { name: 'Send', exact: true }).click();
-      } else {
-        await field.click();
-        await page.keyboard.press('Control+A');
-        await page.keyboard.press('Delete');
-        await page.keyboard.type(body, { delay: 5 });
-        await page.keyboard.press('Enter');
-      }
-    }
-    await expect(field).toHaveValue('', { timeout: 3_000 });
-  }).toPass({ timeout: 45_000 });
+    const field = page.getByLabel('Short message');
+    await field.click();
+    await page.keyboard.press('Control+A');
+    await page.keyboard.press('Delete');
+    await page.keyboard.type(body, { delay: 10 });
+    await page.getByRole('button', { name: /^(Routine|Urgent|Immediate)$/ }).click();
+    await page.getByRole('menuitem', { name: priority }).click();
+    await page.getByRole('button', { name: 'Send', exact: true }).click();
+    await expect(messageCard(page, body)).toBeVisible({ timeout: 8_000 });
+  }).toPass({ timeout: 60_000 });
 }
 
 /** The message card, found by its text and, optionally, its ACK line.
