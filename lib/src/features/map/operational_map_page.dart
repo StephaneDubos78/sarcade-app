@@ -478,7 +478,6 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     return rows;
   }
   String _frequency(double? value)=>value==null?'-':'${value.toStringAsFixed(3)} MHz';
-  String _age(DateTime t){final d=DateTime.now().toUtc().difference(t.toUtc());if(d.inSeconds<60)return '${d.inSeconds}s';if(d.inMinutes<60)return '${d.inMinutes} min';return '${d.inHours} h';}
   List<List<SarcadePosition>> _traceSegments(){
     if(_trace.length<2)return _trace.isEmpty?<List<SarcadePosition>>[]:[List<SarcadePosition>.from(_trace)];
     final ordered=List<SarcadePosition>.from(_trace)..sort((a,b)=>a.time.compareTo(b.time));
