@@ -238,7 +238,10 @@ jobs:
           packageName: org.sarcade.sarcade_app
           releaseFiles: build/app/outputs/bundle/release/app-release.aab
           track: internal
-          status: completed
+          # « draft » while the app is a draft in the Play Console (Google
+          # refuses anything else); set the repository variable
+          # PLAY_RELEASE_STATUS=completed once the app is published.
+          status: ${{ vars.PLAY_RELEASE_STATUS || 'draft' }}
           releaseName: ${{ github.run_number }} (main@${{ github.sha }})
 
   ios-build:
