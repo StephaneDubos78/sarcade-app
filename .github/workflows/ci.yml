@@ -161,7 +161,21 @@ jobs:
           SARCADE_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
         run: |
           set -o pipefail
-          flutter build apk --release --dart-define=SARCADE_BUILD="${SARCADE_BRANCH}@${GITHUB_SHA::7}" 2>&1 | tee android-build.log
+          # versionCode = CI run number: always increasing, as Google Play requires.
+          flutter build apk --release --build-number=${{ github.run_number }} --dart-define=SARCADE_BUILD="${SARCADE_BRANCH}@${GITHUB_SHA::7}" 2>&1 | tee android-build.log
+      - name: Build Play Store bundle (AAB)
+        # Google Play only accepts an AAB signed with the upload key (the
+        # SARCADE key; Google re-signs with its own key: Play App Signing).
+        # Built on every run (proves it builds), published with the APK.
+        shell: bash
+        env:
+          SARCADE_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          SARCADE_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          set -o pipefail
+          if [ -z "${SARCADE_KEYSTORE:-}" ]; then echo "::warning::signing key absent: no AAB (Google Play refuses a debug key)"; exit 0; fi
+          flutter build appbundle --release --build-number=${{ github.run_number }} --dart-define=SARCADE_BUILD="${SARCADE_BRANCH}@${GITHUB_SHA::7}" 2>&1 | tee -a android-build.log
+          echo "::notice::AAB versionCode ${{ github.run_number }}"
       - name: Report Android build errors
         if: failure()
         shell: bash
@@ -195,6 +209,11 @@ jobs:
               --notes "APK de test de la branche $branch, mis à jour automatiquement par la CI. Signé avec la clé SARCADE (installation par-dessus la version précédente)."
           fi
           gh release upload "$tag" sarcade-dev.apk --clobber
+          if [ -f build/app/outputs/bundle/release/app-release.aab ]; then
+            cp build/app/outputs/bundle/release/app-release.aab sarcade-play.aab
+            gh release upload "$tag" sarcade-play.aab --clobber
+            echo "::notice::AAB : https://github.com/${GITHUB_REPOSITORY}/releases/download/${tag}/sarcade-play.aab"
+          fi
           echo "::notice::APK : https://github.com/${GITHUB_REPOSITORY}/releases/download/${tag}/sarcade-dev.apk"
 
   ios-build:
