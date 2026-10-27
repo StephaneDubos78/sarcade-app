@@ -8,6 +8,7 @@ dependencies:
   flutter:
     sdk: flutter
   flutter_map: ^8.0.0
+  speech_to_text: ^7.0.0
   latlong2: ^0.9.1
   http: ^1.5.0
   path_provider: ^2.1.5
