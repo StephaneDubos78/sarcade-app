@@ -290,6 +290,9 @@ jobs:
         run: |
           set -o pipefail
           flutter build web --release --no-web-resources-cdn --dart-define=SARCADE_BUILD="${SARCADE_BRANCH}@${GITHUB_SHA::7}" 2>&1 | tee web-build.log
+          # Build served next to the app: open clients compare it with theirs
+          # and offer « Mettre à jour » (lib/src/models/web_update.dart).
+          printf '{"build":"%s"}\n' "${SARCADE_BRANCH}@${GITHUB_SHA::7}" > build/web/sarcade_build.json
       - name: Report web build errors
         if: failure()
         shell: bash

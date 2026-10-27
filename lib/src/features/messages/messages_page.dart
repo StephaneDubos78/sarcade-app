@@ -6,6 +6,7 @@ import 'package:uuid/uuid.dart';
 import '../../l10n/strings.dart';
 import '../../models/comm_group.dart';
 import '../../models/message.dart';
+import '../../models/message_status.dart';
 import '../../models/message_unread.dart';
 import 'package:flutter/services.dart';
 import '../groups/group_editor_page.dart';
@@ -33,6 +34,9 @@ class _MessagesPageState extends State<MessagesPage>{
  bool _direct=false; String _recipientType='user';
 
  final _watch=<StreamSubscription>[];
+ /// Opening on the first unread message, ⌄ button, automatic « read ».
+ final _scroll=ScrollController(); final _separatorKey=GlobalKey();
+ bool _atBottom=true; int _maxBuilt=-1; final _readSent=<String>{};
  /// Unread when the screen opened: shown in bold; everything shown counts as
  /// seen (the pastille of the map goes back to zero).
  Set<String> _unreadAtOpen={};
@@ -46,7 +50,62 @@ class _MessagesPageState extends State<MessagesPage>{
    _unreadAtOpen=unreadMessages(messages:_eventMessages,seen:widget.store.seenMessages(widget.eventId)??{},
      deviceId:widget.actorId,groups:{for(final g in _groups)g.id:g}).map((m)=>m.id).toSet();
    _markSeen();
-   for(final s in widget.store.messageChanges()){_watch.add(s.listen((_){_markSeen();if(mounted)setState((){});}));}
+   for(final s in widget.store.messageChanges()){_watch.add(s.listen((_){
+     _markSeen();
+     if(!mounted)return;
+     final follow=_atBottom; setState((){});
+     // At the bottom, a new message stays in view (as on WhatsApp).
+     if(follow)WidgetsBinding.instance.addPostFrameCallback((_)=>_toBottom());
+   }));}
+   _scroll.addListener((){
+     final atBottom=!_scroll.hasClients||_scroll.position.pixels>=_scroll.position.maxScrollExtent-120;
+     if(atBottom!=_atBottom&&mounted)setState(()=>_atBottom=atBottom);
+   });
+   WidgetsBinding.instance.addPostFrameCallback((_)=>_openPosition(0));
+ }
+
+ /// First unread message under its separator, else the most recent one.
+ /// The list is built lazily: jump near the separator, then align on it.
+ void _openPosition(int attempt){
+   if(!mounted||!_scroll.hasClients)return;
+   final shown=_messages; final first=firstUnreadIndex(shown,_unreadAtOpen);
+   if(first==null){_toBottom();return;}
+   final ctx=_separatorKey.currentContext;
+   if(ctx!=null){Scrollable.ensureVisible(ctx,alignment:0.05);return;}
+   if(attempt>=6)return;
+   final max=_scroll.position.maxScrollExtent;
+   _scroll.jumpTo((max*first/(shown.length<2?1:shown.length-1)).clamp(0,max));
+   WidgetsBinding.instance.addPostFrameCallback((_)=>_openPosition(attempt+1));
+ }
+ void _toBottom([int attempt=0]){
+   if(!mounted||!_scroll.hasClients)return;
+   final max=_scroll.position.maxScrollExtent;
+   _scroll.jumpTo(max);
+   // Heights of items not yet built are estimated: repeat until it holds.
+   if(attempt<5)WidgetsBinding.instance.addPostFrameCallback((_){if(_scroll.hasClients&&_scroll.position.maxScrollExtent!=max)_toBottom(attempt+1);});
+ }
+
+ /// A received message shown on screen goes to « read » by itself.
+ void _autoRead(SarcadeMessage m,List<SarcadeAck> acks){
+   if(_readSent.contains(m.id)||!needsAutoRead(message:m,deviceId:widget.actorId,acks:acks))return;
+   _readSent.add(m.id);
+   WidgetsBinding.instance.addPostFrameCallback((_)=>unawaited(_ack(m,'read')));
+ }
+
+ Widget _ticks(SarcadeMessage m,List<SarcadeAck> acks){
+   final status=sentStatus(pending:widget.sync.isPending(m.id),senderId:m.senderId,acks:acks);
+   final readers=readersCount(m.senderId,acks);
+   final several=m.recipientIds.isEmpty||m.recipientIds.any((r)=>r.startsWith('group:'));
+   final (icon,color)=switch(status){
+     SentStatus.pending=>(Icons.schedule,Colors.grey),
+     SentStatus.sent=>(Icons.done,Colors.grey),
+     SentStatus.received=>(Icons.done_all,Colors.grey),
+     SentStatus.read=>(Icons.done_all,Colors.blue),
+   };
+   return Tooltip(message:S.t('messages.status.${status.name}'),child:Row(mainAxisSize:MainAxisSize.min,children:[
+     Icon(icon,size:18,color:color),
+     if(several&&readers>0)Padding(padding:const EdgeInsets.only(left:2),child:Text(S.t('messages.readBy',{'n':readers}),style:const TextStyle(fontSize:11,color:Colors.blue))),
+   ]));
  }
  Iterable<SarcadeMessage> get _eventMessages=>widget.store.messages().map(SarcadeMessage.fromJson).where((m)=>m.eventId==widget.eventId);
  void _markSeen()=>unawaited(widget.store.markMessagesSeen(widget.eventId,_eventMessages.map((m)=>m.id)));
@@ -185,10 +244,13 @@ class _MessagesPageState extends State<MessagesPage>{
    return ids.map((r)=>r.startsWith('group:')?(groups[r.substring(6)]?.name??r):r.replaceFirst(RegExp(r'^(user|team):'),'')).join(', ');
  }
 
- @override void dispose(){for(final w in _watch){w.cancel();}_text.dispose();_recipient.dispose();super.dispose();}
+ @override void dispose(){for(final w in _watch){w.cancel();}_text.dispose();_recipient.dispose();_scroll.dispose();super.dispose();}
 
  @override Widget build(BuildContext context){
    final messages=_messages,acks=_acks;
+   final firstUnread=firstUnreadIndex(messages,_unreadAtOpen);
+   // ⌄ counter: messages from others not yet scrolled to.
+   final below=[for(var i=_maxBuilt+1;i<messages.length;i++)if(messages[i].senderId!=widget.actorId)i].length;
    final groups=sortedGroups(_groups);
    final byId={for(final g in _groups)g.id:g};
    final group=_group;
@@ -209,10 +271,12 @@ class _MessagesPageState extends State<MessagesPage>{
      if(group!=null&&(group.description.isNotEmpty||group.managers.isNotEmpty))Padding(padding:const EdgeInsets.symmetric(horizontal:14),child:Align(alignment:Alignment.centerLeft,child:Text(
        [if(group.description.isNotEmpty)group.description,if(group.radioChannel.isNotEmpty)group.radioChannel,S.t('groups.managers',{'names':group.managers.join(', ')})].join(' · '),
        style:Theme.of(context).textTheme.bodySmall))),
-     Expanded(child:ListView.builder(itemCount:messages.length,itemBuilder:(c,i){
+     Expanded(child:Stack(children:[ListView.builder(controller:_scroll,itemCount:messages.length,itemBuilder:(c,i){
       final m=messages[i], mine=m.senderId==widget.actorId, ma=acks[m.id]??[];
       final photos=m.attachments.where((a)=>a.isImage).toList();
-      return Card(child:ListTile(
+      if(i>_maxBuilt)_maxBuilt=i;
+      if(!mine)_autoRead(m,ma);
+      final card=Card(child:ListTile(
         leading:Icon(m.priority=='immediate'?Icons.priority_high:m.priority=='urgent'?Icons.warning_amber:Icons.message),
         title:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
           if(photos.isNotEmpty)Padding(padding:const EdgeInsets.only(bottom:6),child:Wrap(spacing:6,runSpacing:6,children:[
@@ -221,10 +285,20 @@ class _MessagesPageState extends State<MessagesPage>{
           Text(m.body,style:_unreadAtOpen.contains(m.id)?const TextStyle(fontWeight:FontWeight.bold):null),
         ]),
         subtitle:Text('${m.senderId} · ${S.t('priority.${m.priority}')} · ${S.t('messages.to',{'to':_recipientLabel(m.recipientIds,byId)})}\nACK: ${ma.map((a)=>S.t('ack.${a.status}')).join(', ')}'),
-        trailing:mine?null:PopupMenuButton<String>(onSelected:(s)=>_ack(m,s),itemBuilder:(_)=>[
+        trailing:mine?_ticks(m,ma):PopupMenuButton<String>(onSelected:(s)=>_ack(m,s),itemBuilder:(_)=>[
           for(final s in const ['received','read','accepted','rejected'])PopupMenuItem(value:s,child:Text(S.t('ack.$s')))]),
       ));
-     })),
+      if(i!=firstUnread)return card;
+      return Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+        Padding(key:_separatorKey,padding:const EdgeInsets.symmetric(vertical:6),child:Center(child:Chip(
+          label:Text(S.t('messages.unreadSeparator',{'n':_unreadAtOpen.length})),visualDensity:VisualDensity.compact))),
+        card,
+      ]);
+     }),
+      if(!_atBottom)Positioned(right:12,bottom:12,child:Badge(
+        isLabelVisible:below>0,label:Text('$below'),
+        child:FloatingActionButton.small(heroTag:null,tooltip:S.t('messages.toBottom'),onPressed:()=>_toBottom(),child:const Icon(Icons.keyboard_arrow_down)))),
+     ])),
      if(group!=null&&!_canWrite)Material(color:Theme.of(context).colorScheme.surfaceContainerHighest,child:Padding(padding:const EdgeInsets.all(12),
        child:Row(children:[const Icon(Icons.campaign_outlined),const SizedBox(width:8),Expanded(child:Text(group.archived?S.t('groups.archivedNotice'):S.t('groups.cannotSend')))])))
      else SafeArea(child:Padding(padding:const EdgeInsets.symmetric(horizontal:6),child:Column(mainAxisSize:MainAxisSize.min,children:[
