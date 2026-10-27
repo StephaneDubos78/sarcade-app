@@ -20,6 +20,8 @@ import '../search/map_search.dart';
 import '../search/map_search_bar.dart';
 import '../../ui/map_view.dart';
 import '../../ui/theme.dart';
+import 'stations.dart';
+import 'drawing/geometry.dart' as geo;
 import '../files/files_page.dart';
 import 'drawing/drawing_controller.dart';
 import 'reference_cluster_layer.dart';
@@ -444,7 +446,14 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     for(final p in pts){if(p.latitude<minLat)minLat=p.latitude;if(p.latitude>maxLat)maxLat=p.latitude;if(p.longitude<minLon)minLon=p.longitude;if(p.longitude>maxLon)maxLon=p.longitude;}
     _map.fitCamera(CameraFit.bounds(bounds:LatLngBounds(LatLng(minLat,minLon),LatLng(maxLat,maxLon)),padding:const EdgeInsets.all(90),maxZoom:16));
   }
-  Future<void> _select(SarcadePosition p) async {setState((){_selectedDevice=p.deviceId;_traceLoading=true;_trace=[];});_map.move(LatLng(p.lat,p.lon),16);try{final h=await widget.api.positionHistory(widget.eventId,p.deviceId);if(mounted)setState(()=>_trace=h.where(_validPosition).toList());}finally{if(mounted)setState(()=>_traceLoading=false);}}
+  Future<void> _select(SarcadePosition p,{bool move=true}) async {
+    setState((){_selectedDevice=p.deviceId;_traceLoading=true;_trace=[];_history=[];_scrub=null;});
+    if(move)_map.move(LatLng(p.lat,p.lon),_map.camera.zoom<15?15:_map.camera.zoom);
+    try{
+      final h=await widget.api.positionHistory(widget.eventId,p.deviceId,limit:2000);
+      if(mounted&&_selectedDevice==p.deviceId)setState((){_history=h.where(_validPosition).toList();_trace=traceWithin(_history,DateTime.now().toUtc(),_traceHours);});
+    }finally{if(mounted)setState(()=>_traceLoading=false);}
+  }
   Future<void> _refreshReferences({bool silent=false}) async {
     try{
       final refs=await widget.api.referenceSites();
@@ -719,6 +728,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       chip(S.t('refs.highPoints'),_showHighPoints,(v)=>setState(()=>_showHighPoints=v)),
       chip(S.t('refs.relays'),_showRelays,(v)=>setState(()=>_showRelays=v)),
       chip(S.t('chips.drawings'),_showDrawings,(v)=>_setShown('show_draw',v)),
+      chip(S.t('chips.withoutInternet'),_withoutInternetOnly,(v)=>setState(()=>_withoutInternetOnly=v)),
     ]));
   }
 
@@ -769,6 +779,177 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     return Column(crossAxisAlignment:CrossAxisAlignment.start,mainAxisSize:MainAxisSize.min,children:[
       Text(b.label,style:TextStyle(fontSize:11,fontWeight:FontWeight.w600,color:c,shadows:shadow)),
       Container(width:b.px,height:6,decoration:BoxDecoration(border:Border(left:BorderSide(color:c,width:2),right:BorderSide(color:c,width:2),bottom:BorderSide(color:c,width:2)))),
+    ]);
+  }
+
+  // --- Stations V2: freshness, source, APRS symbols, favourites, trace, proximity ---
+  bool _withoutInternetOnly=false, _showNearby=false;
+  List<SarcadePosition> _history=[]; int _traceHours=1; SarcadePosition? _scrub;
+  int get _ageingMin=>(_ops.settings.raw['position_ageing_min'] as num?)?.toInt()??2;
+  int get _staleMin=>(_ops.settings.raw['position_stale_min'] as num?)?.toInt()??10;
+  Set<String> get _favourites=>parseFavourites(widget.store.preference('favourites'));
+  Future<void> _toggleFavourite(String id) async {
+    final f=_favourites; if(!f.remove(id))f.add(id);
+    await widget.store.setPreference('favourites',encodeFavourites(f));
+    if(mounted)setState((){});
+  }
+  Future<void> _setTraceHours(int h) async {
+    setState((){_traceHours=h;_scrub=null;_trace=traceWithin(_history,DateTime.now().toUtc(),h);});
+  }
+
+  Color _stationColor(SarcadePosition p){
+    final s=Theme.of(context).colorScheme;
+    if(p.deviceId==widget.deviceId)return s.tertiary;
+    return p.isAprs?s.secondary:s.primary;
+  }
+
+  Widget _stationIcon(SarcadePosition p,{double size=34}){
+    final s=Theme.of(context).colorScheme; final now=DateTime.now().toUtc();
+    final f=freshness(p.time.toUtc(),now,ageingMin:_ageingMin,staleMin:_staleMin);
+    final color=f==Freshness.stale?s.outline:_stationColor(p);
+    final sym=p.isAprs?aprsSymbol(p.aprsSymbol):null;
+    final initials=p.label.replaceAll(RegExp(r'[^A-Za-z0-9]'),'');
+    return Stack(clipBehavior:Clip.none,alignment:Alignment.center,children:[
+      Container(width:size,height:size,alignment:Alignment.center,
+        decoration:BoxDecoration(color:s.surface,shape:sym?.overlay!=null?BoxShape.rectangle:BoxShape.circle,borderRadius:sym?.overlay!=null?BorderRadius.circular(8):null,
+          border:Border.all(color:color,width:f==Freshness.stale?1.5:2.5)),
+        child:sym==null?Text(initials.length>3?initials.substring(initials.length-3):initials,style:TextStyle(fontSize:size*0.3,fontWeight:FontWeight.w800,color:color))
+          :sym.overlay!=null?Text(sym.overlay!,style:TextStyle(fontSize:size*0.45,fontWeight:FontWeight.w800,color:color))
+          :Icon(sym.icon,size:size*0.58,color:color)),
+      // Heading of a moving station (aprs.fi).
+      if(p.headingDeg!=null&&(p.speedMps??0)>0.5)Positioned.fill(child:Transform.rotate(angle:p.headingDeg!*3.141592653589793/180,
+        child:Align(alignment:Alignment.topCenter,child:Transform.translate(offset:const Offset(0,-9),child:Icon(Icons.navigation,size:14,color:color))))),
+    ]);
+  }
+
+  /// Station markers, grouped with a number when they overlap (Tesla).
+  List<Marker> _stationMarkers(List<SarcadePosition> list){
+    final now=DateTime.now().toUtc(); final s=Theme.of(context).colorScheme;
+    MapCamera? cam; try{cam=_map.camera;}catch(_){}
+    final groups=cam==null||cam.zoom>=15?[for(final p in list)[p]]:clusterOnScreen(list,(p)=>cam!.latLngToScreenOffset(LatLng(p.lat,p.lon)));
+    return [for(final g in groups)
+      if(g.length==1)_stationMarker(g.first,now)
+      else Marker(point:LatLng(g.map((p)=>p.lat).reduce((a,b)=>a+b)/g.length,g.map((p)=>p.lon).reduce((a,b)=>a+b)/g.length),width:46,height:46,
+        child:Tooltip(message:g.map((p)=>p.label).join(', '),child:GestureDetector(onTap:()=>_fitPoints([for(final p in g)LatLng(p.lat,p.lon)]),
+          child:Container(alignment:Alignment.center,decoration:BoxDecoration(color:s.surface,shape:BoxShape.circle,border:Border.all(color:s.secondary,width:2.5)),
+            child:Text('${g.length}',style:TextStyle(fontWeight:FontWeight.w800,color:s.onSurface)))))),
+    ];
+  }
+
+  Marker _stationMarker(SarcadePosition p,DateTime now){
+    final s=Theme.of(context).colorScheme;
+    final f=freshness(p.time.toUtc(),now,ageingMin:_ageingMin,staleMin:_staleMin);
+    return Marker(point:LatLng(p.lat,p.lon),width:170,height:64,alignment:Alignment.topCenter,child:GestureDetector(onTap:()=>_select(p,move:false),
+      child:Opacity(opacity:f==Freshness.ageing?0.75:1,child:Column(mainAxisSize:MainAxisSize.min,children:[
+        _stationIcon(p),const SizedBox(height:2),
+        Container(padding:const EdgeInsets.symmetric(horizontal:6,vertical:2),
+          decoration:BoxDecoration(color:s.surface.withValues(alpha:0.92),borderRadius:BorderRadius.circular(6),border:Border.all(color:_selectedDevice==p.deviceId?_stationColor(p):s.outlineVariant)),
+          child:Text.rich(TextSpan(children:[
+            TextSpan(text:p.label,style:TextStyle(fontWeight:FontWeight.w700,decoration:f==Freshness.stale?TextDecoration.lineThrough:null)),
+            TextSpan(text:'  ${ageLabel(p.time.toUtc(),now)}',style:TextStyle(color:f==Freshness.fresh?_stationColor(p):s.tertiary)),
+          ]),style:TextStyle(fontSize:11,color:s.onSurface),maxLines:1,overflow:TextOverflow.ellipsis)),
+      ]))));
+  }
+
+  String _sourceLabel(SarcadePosition p)=>switch(sourceOf(p)){
+    PositionSource.app=>S.t('source.app'),PositionSource.aprsRadio=>S.t('source.radio'),PositionSource.aprsInternet=>S.t('source.internet')};
+
+  Widget _stationTile(SarcadePosition p){
+    final now=DateTime.now().toUtc(); final s=Theme.of(context).colorScheme;
+    final f=freshness(p.time.toUtc(),now,ageingMin:_ageingMin,staleMin:_staleMin); final fav=_favourites.contains(p.deviceId);
+    return ListTile(selected:_selectedDevice==p.deviceId,leading:_stationIcon(p,size:32),
+      title:Text(p.label,style:TextStyle(decoration:f==Freshness.stale?TextDecoration.lineThrough:null)),
+      subtitle:Text('${_sourceLabel(p)} · ${ageLabel(p.time.toUtc(),now)}',style:TextStyle(color:f==Freshness.fresh?null:s.tertiary)),
+      trailing:IconButton(tooltip:S.t(fav?'favourites.remove':'favourites.add'),onPressed:()=>_toggleFavourite(p.deviceId),
+        icon:Icon(fav?Icons.star:Icons.star_border,color:fav?s.tertiary:null)),
+      onTap:()=>_select(p));
+  }
+
+  /// Station sheet (aprs.fi): source and path, trace 1 h / 6 h / 24 h with
+  /// a time cursor.
+  Widget _stationSheet(SarcadePosition p){
+    final s=Theme.of(context).colorScheme; final now=DateTime.now().toUtc(); final fav=_favourites.contains(p.deviceId);
+    final f=freshness(p.time.toUtc(),now,ageingMin:_ageingMin,staleMin:_staleMin);
+    String hm(DateTime t){final l=t.toLocal();return '${l.hour.toString().padLeft(2,'0')}:${l.minute.toString().padLeft(2,'0')}';}
+    final details=[
+      if(p.speedMps!=null)'${(p.speedMps!*3.6).toStringAsFixed(0)} km/h',
+      if(p.headingDeg!=null)'${S.t('station.heading')} ${p.headingDeg!.toStringAsFixed(0).padLeft(3,'0')}°',
+      if(p.altM!=null)'${p.altM!.toStringAsFixed(0)} m',
+      f==Freshness.stale?'${ageLabel(p.time.toUtc(),now)} · ${hm(p.time)}':ageLabel(p.time.toUtc(),now),
+    ];
+    return Container(padding:const EdgeInsets.all(14),decoration:glass(context,radius:18,border:_stationColor(p).withValues(alpha:0.6)),
+      child:Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+        Row(children:[
+          _stationIcon(p,size:40),const SizedBox(width:10),
+          Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+            Text(p.label,style:const TextStyle(fontSize:17,fontWeight:FontWeight.w700)),
+            Text(details.join(' · '),style:TextStyle(fontSize:12,color:f==Freshness.fresh?s.onSurfaceVariant:s.tertiary)),
+          ])),
+          IconButton(tooltip:S.t(fav?'favourites.remove':'favourites.add'),onPressed:()=>_toggleFavourite(p.deviceId),icon:Icon(fav?Icons.star:Icons.star_border,color:fav?s.tertiary:null)),
+          IconButton(tooltip:S.t('common.close'),onPressed:()=>setState((){_selectedDevice=null;_trace=[];_history=[];_scrub=null;}),icon:const Icon(Icons.close)),
+        ]),
+        const SizedBox(height:8),
+        Container(padding:const EdgeInsets.symmetric(horizontal:10,vertical:8),decoration:BoxDecoration(color:s.surfaceContainerHigh,borderRadius:BorderRadius.circular(10)),
+          child:Text([_sourceLabel(p),if(p.aprsPath?.isNotEmpty==true)S.t('station.via',{'path':p.aprsPath})].join(' · '),style:const TextStyle(fontSize:12,fontFamily:'monospace'))),
+        const SizedBox(height:8),
+        Row(children:[
+          Text(S.t('station.trace'),style:const TextStyle(fontSize:13)),const SizedBox(width:8),
+          for(final h in const [1,6,24])Padding(padding:const EdgeInsets.only(right:6),child:ChoiceChip(label:Text('$h h'),selected:_traceHours==h,onSelected:(_)=>_setTraceHours(h),visualDensity:VisualDensity.compact)),
+          if(_traceLoading)const SizedBox(width:16,height:16,child:CircularProgressIndicator(strokeWidth:2)),
+        ]),
+        if(_trace.length>1)...[
+          Slider(min:0,max:(_trace.length-1).toDouble(),divisions:_trace.length-1,
+            value:(_scrub==null?_trace.length-1:_trace.indexOf(_scrub!).clamp(0,_trace.length-1)).toDouble(),
+            label:hm((_scrub??_trace.last).time),
+            onChanged:(v)=>setState(()=>_scrub=_trace[v.round()])),
+          Row(mainAxisAlignment:MainAxisAlignment.spaceBetween,children:[
+            Text(hm(_trace.first.time),style:const TextStyle(fontSize:11)),
+            Text(hm((_scrub??_trace.last).time),style:TextStyle(fontSize:11,fontWeight:FontWeight.w700,color:s.secondary)),
+            Text(hm(_trace.last.time),style:const TextStyle(fontSize:11)),
+          ]),
+        ]else if(!_traceLoading)Text(S.t('station.noTrace'),style:TextStyle(fontSize:12,color:s.onSurfaceVariant)),
+      ]));
+  }
+
+  /// « Données de 14:32, il y a 6 min » when this device received nothing
+  /// for more than 2 minutes.
+  Widget? _staleBanner(){
+    final last=_sync.lastServerContact;
+    if(!_started||last==null)return null;
+    final age=DateTime.now().difference(last);
+    if(age.inMinutes<2)return null;
+    final s=Theme.of(context).colorScheme;
+    final hm='${last.hour.toString().padLeft(2,'0')}:${last.minute.toString().padLeft(2,'0')}';
+    return Container(height:32,padding:const EdgeInsets.symmetric(horizontal:12),
+      decoration:BoxDecoration(color:s.tertiaryContainer,borderRadius:BorderRadius.circular(16),border:Border.all(color:s.tertiary)),
+      child:Row(mainAxisSize:MainAxisSize.min,children:[Icon(Icons.history,size:16,color:s.tertiary),const SizedBox(width:6),
+        Text(S.t('stale.banner',{'time':hm,'age':ageLabel(last.toUtc(),DateTime.now().toUtc())}),style:TextStyle(fontSize:12,color:s.onTertiaryContainer))]));
+  }
+
+  /// « À proximité » (Tesla): from the search pin, else the measure target,
+  /// else the map centre; operators, stations and reference sites.
+  Widget _nearbyPanel(){
+    final s=Theme.of(context).colorScheme;
+    final from=_searchPin??_measure.target??_mapCentre();
+    final fromLabel=_searchPin!=null?S.t('nearby.fromPin'):_measure.target!=null?S.t('nearby.fromTarget'):S.t('nearby.fromCentre');
+    final items=<({String title,String subtitle,LatLng at,Widget icon,VoidCallback onTap})>[
+      for(final p in _positions.values)(title:p.label,subtitle:'${_sourceLabel(p)} · ${ageLabel(p.time.toUtc(),DateTime.now().toUtc())}',at:LatLng(p.lat,p.lon),icon:_stationIcon(p,size:30),onTap:()=>_select(p)),
+      for(final r in _references.values)(title:r.name,subtitle:r.subtitle,at:LatLng(r.lat,r.lon),icon:Icon(r.isHighPoint?Icons.terrain:Icons.cell_tower,color:s.secondary),onTap:()=>_selectReference(r)),
+    ];
+    final list=from==null?<Nearby<({String title,String subtitle,LatLng at,Widget icon,VoidCallback onTap})>>[]:nearest(from,items,(i)=>i.at);
+    return Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+      Padding(padding:const EdgeInsets.fromLTRB(14,12,6,0),child:Row(children:[
+        Expanded(child:Text(S.t('nearby.title'),style:Theme.of(context).textTheme.titleMedium)),
+        IconButton(tooltip:S.t('common.close'),onPressed:()=>setState(()=>_showNearby=false),icon:const Icon(Icons.close)),
+      ])),
+      Padding(padding:const EdgeInsets.symmetric(horizontal:14),child:Text(fromLabel,style:TextStyle(fontSize:12,color:s.onSurfaceVariant))),
+      const SizedBox(height:6),
+      Expanded(child:ListView(children:[for(final n in list)ListTile(leading:SizedBox(width:34,child:Center(child:n.item.icon)),
+        title:Text(n.item.title,maxLines:1,overflow:TextOverflow.ellipsis),subtitle:Text(n.item.subtitle,maxLines:1,overflow:TextOverflow.ellipsis),
+        trailing:Column(mainAxisAlignment:MainAxisAlignment.center,crossAxisAlignment:CrossAxisAlignment.end,children:[
+          Text(geo.formatDistance(n.distanceM),style:const TextStyle(fontWeight:FontWeight.w700)),
+          Text('Az ${n.azimuthDeg.toStringAsFixed(0).padLeft(3,'0')}°',style:TextStyle(fontSize:11,color:s.onSurfaceVariant)),
+        ]),onTap:n.item.onTap)])),
     ]);
   }
 
@@ -880,9 +1061,9 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   @override void dispose(){_saveViewTimer?.cancel();_positionsTimer?.cancel();_meSub?.cancel();_mapEvents?.cancel();AccessManager.instance.removeListener(_onAccessChanged);_rtSub?.cancel();_tracking.removeListener(_onOperationsChanged);_ops.removeListener(_onOperationsChanged);_tracking.dispose();_ops.dispose();_routes.removeListener(_onRoutesChanged);_nav.removeListener(_onRoutesChanged);_routes.dispose();_nav.dispose();_measure.removeListener(_onRoutesChanged);_measure.dispose();_syncUiTimer?.cancel();_sync.dispose();_realtime.dispose();_drawing.dispose();widget.api.close();super.dispose();}
 
   @override Widget build(BuildContext context){
-    final sorted=_positions.values.where((p)=>p.isAprs?_showAprs:_showOperators).toList()..sort((a,b)=>a.deviceId.compareTo(b.deviceId));
+    final sorted=_positions.values.where((p)=>(p.isAprs?_showAprs:_showOperators)&&(!_withoutInternetOnly||worksWithoutInternet(p)||p.deviceId==widget.deviceId)).toList()..sort((a,b)=>a.deviceId.compareTo(b.deviceId));
     final markers=<Marker>[
-      ...sorted.map((p)=>Marker(point:LatLng(p.lat,p.lon),width:130,height:62,alignment:Alignment.topCenter,child:GestureDetector(onTap:()=>_select(p),child:Column(mainAxisSize:MainAxisSize.min,children:[Icon(p.isAprs?Icons.settings_input_antenna:Icons.person_pin_circle,size:p.isAprs?30:38,color:p.deviceId==widget.deviceId?Colors.orange:(_selectedDevice==p.deviceId?Colors.deepPurple:(p.isAprs?Colors.purple.shade400:Colors.blue))),Container(padding:const EdgeInsets.symmetric(horizontal:6,vertical:2),decoration:BoxDecoration(color:Colors.white,borderRadius:BorderRadius.circular(5),boxShadow:const [BoxShadow(blurRadius:2)]),child:Text(p.label,style:const TextStyle(fontSize:11,fontWeight:FontWeight.w600)))])))),
+      ..._stationMarkers(sorted),
       ..._pois.values.map((p)=>Marker(point:LatLng(p.lat,p.lon),width:40,height:40,child:Tooltip(message:p.label??p.kind,child:const Icon(Icons.location_on,size:38,color:Colors.red)))),
     ];
     final selected=_selectedDevice==null?null:_positions[_selectedDevice];
@@ -896,11 +1077,12 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     void openFiles()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>FilesPage(api:widget.api,eventId:widget.eventId,actorId:widget.deviceId)));
     void openLogbook()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>LogbookPage(api:widget.api,eventId:widget.eventId)));
     void openMessages()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>MessagesPage(api:widget.api,eventId:widget.eventId,actorId:widget.deviceId,sync:_sync,store:widget.store)));
-    void showMap()=>setState((){_showPanel=false;_showReferencePanel=false;_showRoutesPanel=false;_drawingRouteId=null;});
+    void showMap()=>setState((){_showPanel=false;_showReferencePanel=false;_showRoutesPanel=false;_showNearby=false;_drawingRouteId=null;});
     // Every action of the former top bar, for the « Plus » sheet (phone) and the rail (computer).
     final actions=<_RailAction>[
       _RailAction(Icons.groups_outlined,S.t('map.operators'),toggleOperators,selected:_showPanel),
       _RailAction(Icons.cell_tower,S.t('map.references'),toggleReferences,selected:_showReferencePanel),
+      _RailAction(Icons.near_me_outlined,S.t('nearby.title'),()=>setState((){_showNearby=!_showNearby;if(_showNearby){_showPanel=false;_showReferencePanel=false;_showRoutesPanel=false;}}),selected:_showNearby),
       _RailAction(Icons.route,S.t('routes.menu'),toggleRoutes,selected:_showRoutesPanel),
       _RailAction(Icons.cloud_outlined,S.t('weather.menu'),()=>_openWeather()),
       _RailAction(Icons.pin_drop_outlined,S.t('measure.goto'),_gotoCoordinates),
@@ -967,9 +1149,9 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           Padding(padding:const EdgeInsets.fromLTRB(14,14,14,4),child:Text(S.t('operators.title',{'n':sorted.length}),style:Theme.of(context).textTheme.titleMedium)),
           if(_positions.values.any((p)=>p.isAprs))Padding(padding:const EdgeInsets.symmetric(horizontal:12),child:Align(alignment:Alignment.centerLeft,child:Tooltip(message:S.t('operators.aprsHint'),
             child:FilterChip(avatar:const Icon(Icons.settings_input_antenna,size:18),label:Text(S.t('operators.aprs')),selected:_showAprs,onSelected:(v)=>setState(()=>_showAprs=v))))),
-          Expanded(child:ListView(children:sorted.map((p)=>ListTile(selected:_selectedDevice==p.deviceId,leading:Icon(Icons.circle,size:13,color:DateTime.now().toUtc().difference(p.time.toUtc()).inMinutes<5?Colors.green:Colors.grey),title:Text(p.label),subtitle:Text([if(p.isAprs)S.t('operators.aprsVia',{'via':p.aprsVia??'APRS'}),S.t('operators.lastPosition',{'age':_age(p.time)})].join(' · ')),onTap:()=>_select(p))).toList())),
-          if(selected!=null)Container(padding:const EdgeInsets.all(14),decoration:BoxDecoration(border:Border(top:BorderSide(color:Theme.of(context).dividerColor))),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text(selected.deviceId,style:const TextStyle(fontWeight:FontWeight.bold)),const SizedBox(height:6),Text('Lat : ${selected.lat.toStringAsFixed(6)}'),Text('Lon : ${selected.lon.toStringAsFixed(6)}'),Text(S.t('operators.accuracy',{'m':selected.accuracyM?.toStringAsFixed(1)??'-'})),Text(S.t('operators.time',{'time':selected.time.toLocal()})),Text(_traceLoading?S.t('operators.traceLoading'):S.t('operators.trace',{'n':_trace.length}))]))
+          Expanded(child:ListView(children:sortStations(sorted,_favourites).map((p)=>_stationTile(p)).toList())),
         ]))),
+        if(_showNearby)SizedBox(width:panelWidth(340),child:Material(elevation:3,child:_nearbyPanel())),
         Expanded(child:Stack(key:_mapKey,children:[FlutterMap(mapController:_map,options:MapOptions(
           initialCenter:_savedView==null?const LatLng(48.8566,2.3522):LatLng(_savedView.lat,_savedView.lon),initialZoom:_savedView?.zoom??11,maxZoom:20,onTap:_onMapTap,
           onPositionChanged:(camera,_)=>_onCameraChanged(camera),
@@ -982,7 +1164,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           // Night: street maps darkened; aerial photos stay as they are.
           TileLayer(key:ValueKey('$_tileUrl|${_darkTiles(context)}'),urlTemplate:_tileUrl,userAgentPackageName:'org.sarcade.app',maxZoom:_basemap.maxZoom.toDouble(),
             tileBuilder:_darkTiles(context)?darkModeTileBuilder:null),
-          if(_trace.length>1)PolylineLayer(polylines:_traceSegments().map((segment)=>Polyline(points:segment.map((p)=>LatLng(p.lat,p.lon)).toList(),strokeWidth:4,color:Colors.deepPurple)).toList()),
+          if(_trace.length>1)PolylineLayer(polylines:_traceSegments().map((segment)=>Polyline(points:segment.map((p)=>LatLng(p.lat,p.lon)).toList(),strokeWidth:4,color:Theme.of(context).colorScheme.secondary)).toList()),
           // Reference sites below the drawn objects, grouped when zoomed out.
           ReferenceClusterLayer(sites:_references.values.where((r)=>(r.isHighPoint&&_showHighPoints)||(r.isRelay&&_showRelays)).toList(),onSelect:_selectReference),
           if(_showDrawings)...buildDrawingLayers(_drawing),
@@ -991,6 +1173,10 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           ...buildMeasureLayers(_measure,_coordFormat),
           MarkerLayer(markers:markers),
           if(_me!=null)MarkerLayer(markers:[Marker(point:_me!,width:22,height:22,child:Container(decoration:BoxDecoration(color:Colors.blue,shape:BoxShape.circle,border:Border.all(color:Colors.white,width:3),boxShadow:const [BoxShadow(blurRadius:4,color:Colors.black26)])))]),
+          if(_trace.isNotEmpty)MarkerLayer(markers:[for(final t in _trace)Marker(point:LatLng(t.lat,t.lon),width:8,height:8,
+            child:Container(decoration:BoxDecoration(color:Theme.of(context).colorScheme.secondary,shape:BoxShape.circle)))]),
+          if(_scrub!=null)MarkerLayer(markers:[Marker(point:LatLng(_scrub!.lat,_scrub!.lon),width:22,height:22,
+            child:Container(decoration:BoxDecoration(color:Theme.of(context).colorScheme.onSecondaryContainer,shape:BoxShape.circle,border:Border.all(color:Theme.of(context).colorScheme.secondary,width:3))))]),
           if(_searchPin!=null)MarkerLayer(markers:[Marker(point:_searchPin!,width:44,height:44,alignment:Alignment.topCenter,
             child:GestureDetector(onTap:()=>_onLongPress(_searchPin!),child:const Icon(Icons.location_on,color:Colors.red,size:44)))]),
           buildHandleLayer(_drawing,_globalToLatLng),
@@ -1023,7 +1209,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
             ],
           ]),
           if(!_drawingTools)Padding(padding:const EdgeInsets.only(top:8),child:_filterChips()),
-          if(!_drawingTools)Padding(padding:const EdgeInsets.only(top:8),child:_trackingBadge()),
+          if(!_drawingTools)Padding(padding:const EdgeInsets.only(top:8),child:Wrap(spacing:8,runSpacing:8,children:[_trackingBadge(),?_staleBanner()])),
           if(_drawing.isDrawing)Padding(padding:const EdgeInsets.only(top:8),child:DraftBar(controller:_drawing)),
           if(_drawing.selected!=null)Padding(padding:const EdgeInsets.only(top:8),child:SelectionBar(controller:_drawing,onEditLabel:_editSelectedLabel)),
           if(_drawingClosure)Padding(padding:const EdgeInsets.only(top:8),child:Card(child:Padding(padding:const EdgeInsets.symmetric(horizontal:12,vertical:6),child:Row(mainAxisSize:MainAxisSize.min,children:[
@@ -1034,6 +1220,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           ])))),
         ])),
         Positioned(right:12,bottom:compact?104:24,child:_mapButtons()),
+        if(selected!=null)Positioned(left:12,right:compact?12:null,bottom:compact?96:24,
+          child:ConstrainedBox(constraints:const BoxConstraints(maxWidth:420),child:_stationSheet(selected))),
         Positioned(left:16,bottom:compact?108:24,child:IgnorePointer(child:_scaleBar())),
         // Phone: floating tab bar at the bottom (mock-up V2).
         if(compact)Positioned(left:12,right:12,bottom:12,child:SafeArea(top:false,child:_TabBar(
