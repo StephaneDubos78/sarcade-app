@@ -151,6 +151,8 @@ class SarcadeApi {
     final r=await _client.patch(Uri.parse('$baseUrl/api/v0.1/events/$eventId/settings'),headers:_json,
       body:jsonEncode({'actor_id':actorId,'settings':settings}));
     if(r.statusCode!=200) throw SarcadeHttpException('event_settings',r.statusCode,r.body);
+    return Map<String,dynamic>.from(jsonDecode(r.body) as Map);
+  }
   /// Addresses and places (Base Adresse Nationale through the server),
   /// nearest to [lat]/[lon] first; 503 when the service is unreachable.
   Future<Map<String,dynamic>> geocode(String q,{double? lat,double? lon}) async {
