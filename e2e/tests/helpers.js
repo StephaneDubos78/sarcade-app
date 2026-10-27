@@ -110,6 +110,15 @@ async function sendMessage(page, body, { priority = 'Urgent' } = {}) {
   // busy CI machine the click could reach Flutter before the typed text
   // (message never sent, 26-27 October 2026).
   const field = page.getByLabel('Short message');
+  // The priority menu must be closed again (a click during its opening
+  // animation can be lost on a busy machine, the menu then hides the page).
+  await expect(async () => {
+    if (!(await field.isVisible())) {
+      const item = page.getByRole('menuitem', { name: priority });
+      if (await item.count()) await item.first().click(); else await page.keyboard.press('Escape');
+    }
+    await expect(field).toBeVisible({ timeout: 2_000 });
+  }).toPass({ timeout: 30_000 });
   await expect(async () => {
     await field.fill(body);
     await expect(field).toHaveValue(body, { timeout: 2_000 });
