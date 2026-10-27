@@ -216,6 +216,34 @@ jobs:
           fi
           echo "::notice::APK : https://github.com/${GITHUB_REPOSITORY}/releases/download/${tag}/sarcade-dev.apk"
 
+      - name: Upload to Google Play (internal testing track)
+        # Every push to main goes to the « Test interne » track. Needs the
+        # PLAY_SERVICE_ACCOUNT_JSON secret (service account invited in the
+        # Play Console with release rights); absent: skipped with a warning.
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          PLAY_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        shell: bash
+        run: |
+          if [ -z "$PLAY_JSON" ] || [ ! -f build/app/outputs/bundle/release/app-release.aab ]; then
+            echo "::warning::PLAY_SERVICE_ACCOUNT_JSON or AAB absent: no Google Play upload"; exit 0
+          fi
+          echo "$PLAY_JSON" > "$RUNNER_TEMP/play.json"
+          echo "PLAY_UPLOAD=1" >> "$GITHUB_ENV"
+      - name: Send the AAB to Google Play
+        if: env.PLAY_UPLOAD == '1'
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJson: ${{ runner.temp }}/play.json
+          packageName: org.sarcade.sarcade_app
+          releaseFiles: build/app/outputs/bundle/release/app-release.aab
+          track: internal
+          # « draft » while the app is a draft in the Play Console (Google
+          # refuses anything else); set the repository variable
+          # PLAY_RELEASE_STATUS=completed once the app is published.
+          status: ${{ vars.PLAY_RELEASE_STATUS || 'draft' }}
+          releaseName: ${{ github.run_number }} (main@${{ github.sha }})
+
   ios-build:
     # Unsigned build: proves the app compiles for iPhone. Signing and the
     # TestFlight upload are added once the Apple Developer account exists.
