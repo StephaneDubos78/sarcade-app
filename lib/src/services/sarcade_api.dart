@@ -110,6 +110,14 @@ class SarcadeApi {
     if(r.statusCode!=200) throw SarcadeHttpException('groups',r.statusCode);
     return (jsonDecode(r.body) as List).map((e)=>Map<String,dynamic>.from(e as Map)).toList();
   }
+  /// Addresses and places (Base Adresse Nationale through the server),
+  /// nearest to [lat]/[lon] first; 503 when the service is unreachable.
+  Future<Map<String,dynamic>> geocode(String q,{double? lat,double? lon}) async {
+    final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/geocode').replace(queryParameters:{
+      'q':q,if(lat!=null)'lat':lat.toStringAsFixed(4),if(lon!=null)'lon':lon.toStringAsFixed(4)}));
+    if(r.statusCode!=200) throw SarcadeHttpException('geocode',r.statusCode);
+    return Map<String,dynamic>.from(jsonDecode(r.body) as Map);
+  }
   /// Routes with ordered waypoints, lengths and passages.
   Future<List<Map<String,dynamic>>> routes(String eventId) async {
     final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/events/$eventId/routes'));
