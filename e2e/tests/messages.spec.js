@@ -19,7 +19,7 @@ test.describe.serial('PCO (web) and a field terminal', () => {
     page = await browser.newPage({ baseURL, locale: 'en-US', viewport: { width: 1280, height: 900 } });
     // Browser console kept for the failure message (CI artifacts are not
     // always reachable): Flutter prints its exceptions there.
-    page.on('console', (m) => { if (['error', 'warning'].includes(m.type()) || /Exception|Error/.test(m.text())) consoleLines.push(`${m.type()}: ${m.text()}`.slice(0, 400)); });
+    page.on('console', (m) => { if (['error', 'warning'].includes(m.type()) || /Exception|Error|SARCADE error/.test(m.text())) consoleLines.push(`${m.type()}: ${m.text()}`.slice(0, 1500)); });
     page.on('pageerror', (e) => consoleLines.push(`pageerror: ${e.message}`.slice(0, 400)));
   });
 
@@ -42,7 +42,12 @@ test.describe.serial('PCO (web) and a field terminal', () => {
   test('2. PCO → field: urgent broadcast received, ACK back on the PCO', async ({}, testInfo) => {
     const body = `E2E urgent from PCO ${RUN}`;
     await openMessages(page);
-    await sendMessage(page, body, { priority: 'Urgent' });
+    try {
+      await sendMessage(page, body, { priority: 'Urgent' });
+    } catch (e) {
+      const screen = await page.locator('flt-semantics-host').innerText().catch(() => '?');
+      throw new Error(`${e.message}\nscreen: ${screen.replace(/\s+/g, ' ').slice(0, 1200)}\nconsole:\n${consoleLines.slice(-15).join('\n')}`);
+    }
 
     // The field terminal receives it through the server.
     let received;
