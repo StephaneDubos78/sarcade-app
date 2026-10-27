@@ -1103,7 +1103,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         if(can)ListTile(contentPadding:EdgeInsets.zero,leading:Icon(Icons.delete_outline,color:Theme.of(c).colorScheme.error),title:Text(S.t('bearings.delete')),onTap:()=>Navigator.pop(c,'delete')),
       ]))));
     if(!mounted)return;
-    if(choice=='origin')await _onLongPress(b.origin);
+    if(choice=='origin'){await _onLongPress(b.origin);return;}
     if(choice=='delete'){
       final ok=await showDialog<bool>(context:context,builder:(c)=>AlertDialog(content:Text(S.t('bearings.deleteConfirm')),actions:[
         TextButton(onPressed:()=>Navigator.pop(c,false),child:Text(S.t('common.cancel'))),FilledButton(onPressed:()=>Navigator.pop(c,true),child:Text(S.t('bearings.delete')))]));
