@@ -52,8 +52,10 @@ test.describe.serial('PCO (web) and a field terminal', () => {
         return received?.payload;
       }, { timeout: 60_000 }).toMatchObject({ sender_id: 'PCO', priority: 'urgent', recipient_ids: [] });
     } catch (e) {
-      const status = await page.locator('flt-semantics').allInnerTexts().catch(() => []);
-      throw new Error(`message not on the server\nscreen: ${status.join(' | ').slice(0, 1500)}\nconsole:\n${consoleLines.slice(-25).join('\n')}`);
+      const screen = await page.locator('flt-semantics-host').innerText().catch(() => '?');
+      const messages = (await field.changes()).filter((c) => c.object_type === 'message').map((c) => `${c.payload.sender_id}: ${c.payload.body}`);
+      throw new Error(`message not on the server\nexpected: ${body}\nmessages of the event on the server: ${JSON.stringify(messages)}`
+        + `\nscreen: ${screen.replace(/\s+/g, ' ').slice(0, 1200)}\nconsole:\n${consoleLines.slice(-25).join('\n')}`);
     }
 
     // It acknowledges; the PCO sees « ACK: Received ».
