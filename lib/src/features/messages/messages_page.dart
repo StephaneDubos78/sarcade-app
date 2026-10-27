@@ -16,6 +16,7 @@ import '../../offline/sync_service.dart';
 import '../../platform/platform_services.dart';
 import '../../services/sarcade_api.dart';
 import 'photo_attachment.dart';
+import '../dictation/dictation_button.dart';
 
 class MessagesPage extends StatefulWidget {
  final SarcadeApi api; final String eventId,actorId; final OfflineSyncService sync; final LocalStore store;
@@ -317,6 +318,7 @@ class _MessagesPageState extends State<MessagesPage>{
         const SizedBox(width:6),
         Expanded(child:Focus(onKeyEvent:_onKey,child:TextField(controller:_text,maxLength:2048,minLines:1,maxLines:widget.initialText==null?4:6,
           decoration:InputDecoration(hintText:S.t('messages.hint'),counterText:'',helperText:_enterSends?S.t('messages.enterHint'):null)))),
+        DictationButton(controller:_text),
         IconButton(tooltip:S.t('messages.photo'),onPressed:_picking?null:_photo,icon:_picking?const SizedBox(width:20,height:20,child:CircularProgressIndicator(strokeWidth:2)):const Icon(Icons.photo_camera)),
         IconButton(tooltip:S.t('messages.send'),onPressed:_send,icon:const Icon(Icons.send)),
       ]),
