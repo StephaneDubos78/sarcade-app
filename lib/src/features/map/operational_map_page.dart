@@ -10,6 +10,8 @@ import 'package:uuid/uuid.dart';
 import '../../models/comm_group.dart';
 import '../../models/message_reception.dart';
 import '../../models/message_unread.dart';
+import '../../models/web_update.dart';
+import '../../config/version.dart';
 import '../../models/poi.dart';
 import '../../models/message.dart';
 import '../../models/position.dart';
@@ -95,7 +97,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   static const _compactWidth=600.0;
   @override void didChangeDependencies(){super.didChangeDependencies();if(!_layoutInitialized){_layoutInitialized=true;if(MediaQuery.sizeOf(context).width<_compactWidth)_showPanel=false;}}
 
-  @override void initState(){super.initState();_notifications.initialize();unawaited(requestPersistentStorage());_sync=OfflineSyncService(api:widget.api,store:widget.store,eventId:widget.eventId,onRemoteChange:_onRemoteChange);_initDrawing();_initBearings();_loadLocal();_initRoutes();_initMeasure();_sync.start();_initOperations();_loadBasemaps();_syncUiTimer=Timer.periodic(const Duration(seconds:2),(_){if(mounted)setState((){});});AccessManager.instance.addListener(_onAccessChanged);_start();}
+  @override void initState(){super.initState();_notifications.initialize();unawaited(requestPersistentStorage());_sync=OfflineSyncService(api:widget.api,store:widget.store,eventId:widget.eventId,onRemoteChange:_onRemoteChange);_initDrawing();_initBearings();_loadLocal();_initRoutes();_initMeasure();_sync.start();_initOperations();_loadBasemaps();_initWebUpdate();_syncUiTimer=Timer.periodic(const Duration(seconds:2),(_){if(mounted)setState((){});});AccessManager.instance.addListener(_onAccessChanged);_start();}
   bool _validPosition(SarcadePosition p){
     final t=p.time.toUtc(), now=DateTime.now().toUtc();
     return t.isAfter(DateTime.utc(2020)) && t.isBefore(now.add(const Duration(days:1)));
@@ -368,6 +370,20 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     final label=await askClosureLabel(context);
     if(label!=null&&label.trim().isNotEmpty)await _routes.createClosure(label.trim(),List<LatLng>.from(_closureDraft));
     if(mounted)setState((){_drawingClosure=false;_closureDraft.clear();});
+  }
+
+  /// Web client: checks every 5 minutes (and 20 s after start) whether the
+  /// server publishes a newer build than the one running.
+  Timer? _webUpdateTimer; bool _webUpdate=false;
+  void _initWebUpdate(){
+    if(!isWebPlatform||appBuild.isEmpty)return;
+    Future<void> check() async {
+      final served=await fetchServedBuild();
+      final available=webUpdateAvailable(appBuild,served);
+      if(mounted&&available!=_webUpdate)setState(()=>_webUpdate=available);
+    }
+    Timer(const Duration(seconds:20),check);
+    _webUpdateTimer=Timer.periodic(const Duration(minutes:5),(_)=>check());
   }
 
   /// Web client: « Activer les notifications » until the operator answers
@@ -1267,6 +1283,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     child:child,
   );
 
+  @override void dispose(){_webUpdateTimer?.cancel();_saveViewTimer?.cancel();_bearings.dispose();_brgTarget.dispose();_positionsTimer?.cancel();_meSub?.cancel();_mapEvents?.cancel();AccessManager.instance.removeListener(_onAccessChanged);_rtSub?.cancel();_tracking.removeListener(_onOperationsChanged);_ops.removeListener(_onOperationsChanged);_tracking.dispose();_ops.dispose();_routes.removeListener(_onRoutesChanged);_nav.removeListener(_onRoutesChanged);_routes.dispose();_nav.dispose();_measure.removeListener(_onRoutesChanged);_measure.dispose();_syncUiTimer?.cancel();_sync.dispose();_realtime.dispose();_drawing.dispose();widget.api.close();super.dispose();}
   @override void dispose(){_headingSub?.cancel();_saveViewTimer?.cancel();_bearings.dispose();_brgTarget.dispose();_positionsTimer?.cancel();_meSub?.cancel();_mapEvents?.cancel();AccessManager.instance.removeListener(_onAccessChanged);_rtSub?.cancel();_tracking.removeListener(_onOperationsChanged);_ops.removeListener(_onOperationsChanged);_tracking.dispose();_ops.dispose();_routes.removeListener(_onRoutesChanged);_nav.removeListener(_onRoutesChanged);_routes.dispose();_nav.dispose();_measure.removeListener(_onRoutesChanged);_measure.dispose();_syncUiTimer?.cancel();_sync.dispose();_realtime.dispose();_drawing.dispose();widget.api.close();super.dispose();}
 
   @override Widget build(BuildContext context){
@@ -1318,7 +1335,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           accessRenewBy:_accessRenewBy,onSignIn:_signIn,
           onReload:isWebPlatform&&!_sync.lastSyncOk&&_sync.lastServerContact!=null&&browserOnline?reloadApp:null,
           onEnableNotifications:_notificationsBanner?_enableNotifications:null,
-          onDismissNotifications:()=>setState(()=>_notificationsDismissed=true)),
+          onDismissNotifications:()=>setState(()=>_notificationsDismissed=true),
+          onWebUpdate:_webUpdate?()=>unawaited(reloadFresh()):null),
         Expanded(child:_withDrawingShortcuts(Row(children:[
         // Computer: rail on the left (mock-up V2).
         if(!compact)_Rail(messages:messagesButton,actions:actions,onMap:showMap,mapSelected:!_showPanel&&!_showReferencePanel&&!_showRoutesPanel,

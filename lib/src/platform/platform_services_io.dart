@@ -80,6 +80,10 @@ WebSocketChannel openWebSocket(Uri uri,Map<String,String> headers)=>
 
 /// Installed apps: no page to reload; the network state is unknown here.
 void reloadApp(){}
+
+/// Installed apps are updated by their package: no served web build.
+Future<String?> fetchServedBuild() async=>null;
+Future<void> reloadFresh() async {}
 bool get browserOnline=>false;
 
 /// Installed apps keep their data in their own folder.
