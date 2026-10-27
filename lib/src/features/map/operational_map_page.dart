@@ -18,6 +18,7 @@ import '../../models/position.dart';
 import '../../models/reference_site.dart';
 import '../messages/messages_page.dart';
 import '../logbook/logbook_page.dart';
+import '../aprs/aprs_page.dart';
 import '../search/map_search.dart';
 import '../search/map_search_bar.dart';
 import '../../ui/map_view.dart';
@@ -1305,6 +1306,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     void toggleReferences()=>setState((){_showReferencePanel=!_showReferencePanel;if(_showReferencePanel){_showPanel=false;_showRoutesPanel=false;}});
     void toggleRoutes()=>setState((){_showRoutesPanel=!_showRoutesPanel;if(_showRoutesPanel){_showPanel=false;_showReferencePanel=false;}else{_drawingRouteId=null;}});
     void openFiles()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>FilesPage(api:widget.api,eventId:widget.eventId,actorId:widget.deviceId)));
+    void openAprs()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>AprsPage(api:widget.api,eventId:widget.eventId,actorId:widget.deviceId)));
     void openLogbook()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>LogbookPage(api:widget.api,eventId:widget.eventId)));
     void openMessages()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>MessagesPage(api:widget.api,eventId:widget.eventId,actorId:widget.deviceId,sync:_sync,store:widget.store)));
     void showMap()=>setState((){_showPanel=false;_showReferencePanel=false;_showRoutesPanel=false;_showNearby=false;_drawingRouteId=null;});
@@ -1320,6 +1322,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       _RailAction(Icons.center_focus_strong,S.t('map.fit'),_fitOperators),
       _RailAction(Icons.folder_copy_outlined,S.t('map.files'),openFiles),
       _RailAction(Icons.receipt_long,S.t('map.logbook'),openLogbook),
+      if(isPco(widget.deviceId))_RailAction(Icons.settings_input_antenna,S.t('aprs.title'),openAprs),
       _RailAction(Icons.outbox_outlined,'${S.t('unsent.title')} (${_sync.unsent})',_openUnsent),
     ];
     void openMore()=>showModalBottomSheet<void>(context:context,showDragHandle:true,builder:(c)=>SafeArea(child:SingleChildScrollView(child:Column(mainAxisSize:MainAxisSize.min,children:[
