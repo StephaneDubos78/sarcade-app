@@ -117,13 +117,21 @@ async function sendMessage(page, body, { priority = 'Urgent' } = {}) {
   let attempt = 0;
   await expect(async () => {
     if ((await field.inputValue()) === body) {
-      // The Send button first, then Enter in the field (Enter sends on a
-      // computer keyboard): two ways to reach the same action.
-      if (attempt++ % 2 === 0) await page.getByRole('button', { name: 'Send', exact: true }).click();
-      else await field.press('Enter');
+      // Flutter may not have taken the filled text yet: from the second
+      // attempt on, it is typed again key by key (real keyboard events)
+      // and sent with Enter (Enter sends on a computer keyboard).
+      if (attempt++ === 0) {
+        await page.getByRole('button', { name: 'Send', exact: true }).click();
+      } else {
+        await field.click();
+        await page.keyboard.press('Control+A');
+        await page.keyboard.press('Delete');
+        await page.keyboard.type(body, { delay: 5 });
+        await page.keyboard.press('Enter');
+      }
     }
     await expect(field).toHaveValue('', { timeout: 3_000 });
-  }).toPass({ timeout: 30_000 });
+  }).toPass({ timeout: 45_000 });
 }
 
 /** The message card, found by its text and, optionally, its ACK line.
