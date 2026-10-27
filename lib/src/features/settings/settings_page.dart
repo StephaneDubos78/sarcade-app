@@ -3,6 +3,7 @@ import '../../access/access_login_page.dart';
 import '../../access/access_manager.dart';
 import '../../access/access_session.dart';
 import '../../config/app_config.dart';
+import '../../config/saved_servers.dart';
 import '../../config/version.dart';
 import '../../l10n/strings.dart';
 import '../../offline/outbox_policy.dart' show normalServer;
@@ -24,8 +25,12 @@ class SettingsPage extends StatefulWidget {
   /// returning what is left (« Robustesse de la synchronisation »).
   final int Function(String server,String eventId)? waitingFor;
   final Future<int> Function(String server,String eventId)? sendFirst;
+  /// Remembered servers (« Mémorisation des serveurs »), read again after
+  /// each successful connection, and saved after a rename or a removal.
+  final List<SavedServer> Function()? readServers;
+  final Future<void> Function(List<SavedServer>)? saveServers;
   const SettingsPage({super.key,required this.initial,required this.onSave,this.firstRun=false,
-    this.loadEvents,this.cachedEvents,this.waitingFor,this.sendFirst});
+    this.loadEvents,this.cachedEvents,this.waitingFor,this.sendFirst,this.readServers,this.saveServers});
   @override State<SettingsPage> createState()=>_SettingsPageState();
 }
 
@@ -41,6 +46,7 @@ class _SettingsPageState extends State<SettingsPage> {
   List<Map<String,dynamic>> _events=[];
   bool _loadingEvents=false, _eventsOffline=false, _accessRequired=false;
   String? _eventsError;
+  late List<SavedServer> _servers=widget.readServers?.call()??const [];
 
   @override void initState(){
     super.initState();
@@ -60,7 +66,7 @@ class _SettingsPageState extends State<SettingsPage> {
     try{
       final list=await load(server);
       if(!mounted||server!=_serverText)return;
-      setState((){_events=list;_eventsOffline=false;_accessRequired=false;});
+      setState((){_events=list;_eventsOffline=false;_accessRequired=false;_servers=widget.readServers?.call()??_servers;});
     }on AccessRequiredException{
       // Protected by Cloudflare Access: sign in first, then the list comes.
       if(mounted)setState((){_events=widget.cachedEvents?.call(server)??[];_accessRequired=true;});
@@ -72,6 +78,72 @@ class _SettingsPageState extends State<SettingsPage> {
     }finally{
       if(mounted)setState(()=>_loadingEvents=false);
     }
+  }
+
+  /// A remembered server chosen: its address, last event and terminal.
+  void _chooseServer(SavedServer server){
+    setState((){
+      _server.text=server.url;
+      if(server.lastEvent!=null)_event.text=server.lastEvent!;
+      if(server.lastDevice!=null&&server.lastDevice!.isNotEmpty)_device.text=server.lastDevice!;
+      _events=widget.cachedEvents?.call(server.url)??[];
+    });
+    _loadEvents();
+  }
+
+  Future<void> _renameServer(SavedServer server) async {
+    final ctrl=TextEditingController(text:server.label);
+    final label=await showDialog<String>(context:context,builder:(c)=>AlertDialog(
+      title:Text(S.t('servers.rename')),
+      content:TextField(controller:ctrl,autofocus:true,decoration:InputDecoration(labelText:S.t('servers.label'),helperText:server.url)),
+      actions:[
+        TextButton(onPressed:()=>Navigator.pop(c),child:Text(S.t('common.cancel'))),
+        FilledButton(onPressed:()=>Navigator.pop(c,ctrl.text.trim()),child:Text(S.t('common.save'))),
+      ]));
+    ctrl.dispose();
+    if(label==null||!mounted)return;
+    final list=[for(final s in _servers)serverKey(s.url)==serverKey(server.url)?s.copyWith(label:label.isEmpty?defaultLabel(s.url):label):s];
+    setState(()=>_servers=list);
+    await widget.saveServers?.call(list);
+  }
+
+  Future<void> _removeServer(SavedServer server) async {
+    final waiting=server.lastEvent==null?0:(widget.waitingFor?.call(server.url,server.lastEvent!)??0);
+    final ok=await showDialog<bool>(context:context,builder:(c)=>AlertDialog(
+      title:Text(S.t('servers.remove')),
+      content:Text([S.t('servers.removeBody',{'label':server.label,'url':server.url}),
+        if(waiting>0)S.t('servers.removeWaiting',{'n':waiting})].join('\n\n')),
+      actions:[
+        TextButton(onPressed:()=>Navigator.pop(c,false),child:Text(S.t('common.cancel'))),
+        FilledButton(onPressed:()=>Navigator.pop(c,true),child:Text(S.t('servers.removeConfirm'))),
+      ]));
+    if(ok!=true||!mounted)return;
+    final list=_servers.where((s)=>serverKey(s.url)!=serverKey(server.url)).toList();
+    setState(()=>_servers=list);
+    await widget.saveServers?.call(list);
+    // The Cloudflare Access session of that server goes with it.
+    await AccessManager.instance.signOut(server.url);
+  }
+
+  /// Remembered servers above the address field: choose, rename, remove.
+  /// Typing a new address in the field adds it at the first connection.
+  Widget _serverPicker(){
+    if(widget.readServers==null||_servers.isEmpty)return const SizedBox.shrink();
+    final current=findServer(_servers,_serverText);
+    return Padding(padding:const EdgeInsets.only(bottom:12),child:Row(children:[
+      Expanded(child:DropdownButtonFormField<String>(
+        key:ValueKey('servers|${current?.url}|${_servers.length}'),
+        initialValue:current?.url,
+        isExpanded:true,
+        decoration:InputDecoration(labelText:S.t('servers.saved'),helperText:current==null?S.t('servers.newHelp'):null,border:const OutlineInputBorder()),
+        items:[for(final s in _servers)DropdownMenuItem(value:s.url,child:Text('${s.label} · ${s.shortAddress}',overflow:TextOverflow.ellipsis))],
+        onChanged:(v){final s=v==null?null:findServer(_servers,v);if(s!=null)_chooseServer(s);},
+      )),
+      if(current!=null)...[
+        IconButton(tooltip:S.t('servers.rename'),onPressed:()=>_renameServer(current),icon:const Icon(Icons.edit_outlined)),
+        if(canRemoveServer(current))IconButton(tooltip:S.t('servers.remove'),onPressed:()=>_removeServer(current),icon:const Icon(Icons.delete_outline)),
+      ],
+    ]));
   }
 
   Future<void> _signIn() async {
@@ -190,6 +262,7 @@ class _SettingsPageState extends State<SettingsPage> {
           Text(S.t('settings.intro'),style:Theme.of(context).textTheme.bodyLarge),
           const SizedBox(height:20),
         ],
+        _serverPicker(),
         Focus(
           // Leaving the server field reloads the events of that server.
           onFocusChange:(f){if(!f)_loadEvents();},
@@ -198,6 +271,7 @@ class _SettingsPageState extends State<SettingsPage> {
             decoration:InputDecoration(labelText:S.t('settings.server'),hintText:defaultServerUrl,helperText:S.t('settings.serverHelp'),border:const OutlineInputBorder()),
             keyboardType:TextInputType.url,autocorrect:false,validator:_url,
             onFieldSubmitted:(_)=>_loadEvents(),
+            onChanged:(_)=>setState((){}),
           ),
         ),
         _accessRow(),
