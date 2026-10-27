@@ -5,6 +5,7 @@ import '../../access/access_session.dart';
 import '../../config/app_config.dart';
 import '../../config/saved_servers.dart';
 import '../../config/version.dart';
+import '../map/drawing/drawing_controller.dart' show drawingPalette, defaultDrawColor;
 import '../../l10n/strings.dart';
 import '../../offline/outbox_policy.dart' show normalServer;
 import '../../operations/event_settings.dart';
@@ -42,6 +43,7 @@ class _SettingsPageState extends State<SettingsPage> {
   late final TextEditingController _callsign=TextEditingController(text:widget.initial.callsign);
   late String _language=widget.initial.language;
   late bool _aprsConsent=widget.initial.aprsTxConsent;
+  late int _drawColor=defaultDrawColor(widget.initial.drawColor);
   bool _saving=false;
   List<Map<String,dynamic>> _events=[];
   bool _loadingEvents=false, _eventsOffline=false, _accessRequired=false;
@@ -248,7 +250,7 @@ class _SettingsPageState extends State<SettingsPage> {
     if(!mounted)return;
     setState(()=>_saving=true);
     await widget.onSave(widget.initial.copyWith(serverUrl:server,eventId:event,deviceId:_device.text.trim(),
-      language:_language,callsign:_callsign.text.trim().toUpperCase(),aprsTxConsent:_aprsConsent));
+      language:_language,callsign:_callsign.text.trim().toUpperCase(),aprsTxConsent:_aprsConsent,drawColor:_drawColor));
     if(mounted)setState(()=>_saving=false);
   }
 
@@ -321,6 +323,19 @@ class _SettingsPageState extends State<SettingsPage> {
           contentPadding:EdgeInsets.zero,
           value:_aprsConsent,onChanged:(v)=>setState(()=>_aprsConsent=v),
           title:Text(S.t('settings.aprsConsent')),subtitle:Text(S.t('settings.aprsConsentHelp')),
+        ),
+        const SizedBox(height:8),
+        // Profile: colour of every new drawing (existing objects keep theirs).
+        InputDecorator(
+          decoration:InputDecoration(labelText:S.t('settings.drawColor'),helperText:S.t('settings.drawColorHelp'),border:const OutlineInputBorder()),
+          child:Wrap(spacing:8,runSpacing:8,children:[for(final c in drawingPalette)Semantics(
+            label:S.t('color.$c'),selected:c==_drawColor,button:true,
+            child:InkWell(customBorder:const CircleBorder(),onTap:()=>setState(()=>_drawColor=c),child:Container(
+              width:34,height:34,
+              decoration:BoxDecoration(color:Color(c),shape:BoxShape.circle,border:Border.all(color:c==_drawColor?Theme.of(context).colorScheme.primary:Colors.black26,width:c==_drawColor?3:1)),
+              child:c==_drawColor?Icon(Icons.check,size:18,color:c==0xFFFFFFFF||c==0xFFFDD835?Colors.black:Colors.white):null,
+            )),
+          )]),
         ),
         const SizedBox(height:24),
         FilledButton.icon(onPressed:_saving?null:_save,icon:const Icon(Icons.check),label:Text(S.t('common.save'))),

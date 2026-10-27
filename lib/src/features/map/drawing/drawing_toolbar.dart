@@ -139,7 +139,7 @@ class SelectionBar extends StatelessWidget {
           SingleChildScrollView(scrollDirection:Axis.horizontal,child:Row(mainAxisSize:MainAxisSize.min,children:[
             PopupMenuButton<int>(
               tooltip:S.t('groups.color'),onSelected:c.setColor,
-              itemBuilder:(_)=>[for(final col in drawingPalette)PopupMenuItem(value:col,child:Row(children:[Icon(Icons.circle,color:Color(col)),if(col==f.color)const Padding(padding:EdgeInsets.only(left:8),child:Icon(Icons.check,size:18))]))],
+              itemBuilder:(_)=>[for(final col in drawingPalette)PopupMenuItem(value:col,child:Row(children:[Container(width:22,height:22,decoration:BoxDecoration(color:Color(col),shape:BoxShape.circle,border:Border.all(color:Colors.black26))),if(col==f.color)const Padding(padding:EdgeInsets.only(left:8),child:Icon(Icons.check,size:18))]))],
               child:Padding(padding:const EdgeInsets.all(10),child:Icon(Icons.circle,color:Color(f.color),size:26)),
             ),
             if(f.kind!=FeatureKind.point&&f.kind!=FeatureKind.text)PopupMenuButton<double>(
