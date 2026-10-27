@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:js_interop';
+import 'dart:js_interop_unsafe';
 import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
@@ -58,4 +60,38 @@ Future<bool> requestPersistentStorage() async {
     if((await storage.persisted().toDart).toDart)return true;
     return (await storage.persist().toDart).toDart;
   }catch(_){return false;}
+}
+
+
+/// Compass of the browser: « deviceorientation » events. iPhone gives the
+/// heading itself (webkitCompassHeading, after a permission asked on a tap);
+/// Android Chrome gives an absolute orientation (360 − alpha). Degrees from
+/// magnetic north, clockwise; nothing on a computer.
+Future<Stream<double>?> compassHeadings() async {
+  try{
+    final doe=globalContext['DeviceOrientationEvent'];
+    if(doe==null)return null;
+    final o=doe as JSObject;
+    if(o.has('requestPermission')){
+      final answer=await (o.callMethod('requestPermission'.toJS) as JSPromise<JSString>).toDart;
+      if(answer.toDart!='granted')return null;
+    }
+  }catch(_){return null;}
+  late StreamController<double> out;
+  JSFunction? handler;
+  void listen(String type){
+    handler=((web.Event e){
+      final ev=e as JSObject;
+      final ios=ev['webkitCompassHeading'];
+      if(ios!=null&&ios.isA<JSNumber>()){out.add((ios as JSNumber).toDartDouble);return;}
+      final alpha=ev['alpha'], absolute=ev['absolute'];
+      if(alpha!=null&&alpha.isA<JSNumber>()&&(type=='deviceorientationabsolute'||(absolute!=null&&(absolute as JSBoolean).toDart))){
+        out.add((360-(alpha as JSNumber).toDartDouble)%360);
+      }
+    }).toJS;
+    web.window.addEventListener(type,handler);
+  }
+  final type=globalContext.has('ondeviceorientationabsolute')?'deviceorientationabsolute':'deviceorientation';
+  out=StreamController<double>.broadcast(onListen:()=>listen(type),onCancel:(){if(handler!=null)web.window.removeEventListener(type,handler);});
+  return out.stream;
 }
