@@ -109,7 +109,10 @@ async function sendMessage(page, body, { priority = 'Urgent' } = {}) {
   // Typed until Flutter holds it, then sent until the field empties: on a
   // busy CI machine the click could reach Flutter before the typed text
   // (message never sent, 26-27 October 2026).
-  const field = page.getByLabel('Short message');
+  // Once it has the focus, Flutter replaces the field's accessible node by
+  // its editing element (flt-text-editing-host), without the hint as label.
+  const field = page.getByLabel('Short message')
+    .or(page.locator('flt-text-editing-host textarea, flt-text-editing-host input')).first();
   // The priority menu must be closed again (a click during its opening
   // animation can be lost on a busy machine, the menu then hides the page).
   await expect(async () => {
