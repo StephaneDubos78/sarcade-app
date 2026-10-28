@@ -15,8 +15,10 @@ class AppConfig {
   /// Consent of the operator to ring the immediate messages in Do Not
   /// Disturb mode (Android, decision of 10 Oct 2026).
   final bool immediateBypassDnd;
+  /// Colour of new drawings (profile), null: the application default.
+  final int? drawColor;
   const AppConfig({required this.serverUrl,required this.eventId,required this.deviceId,required this.tileUrl,required this.tileAttribution,
-    this.language='system',this.callsign='',this.aprsTxConsent=false,this.immediateBypassDnd=false});
+    this.language='system',this.callsign='',this.aprsTxConsent=false,this.immediateBypassDnd=false,this.drawColor});
   factory AppConfig.fromEnvironment()=>AppConfig(
     // The web app is served by the SARCADE server itself: same origin as the API.
     serverUrl:const bool.hasEnvironment('SARCADE_SERVER_URL')?const String.fromEnvironment('SARCADE_SERVER_URL'):(servingOrigin()??defaultServerUrl),
@@ -37,13 +39,14 @@ class AppConfig {
     callsign:j['callsign'] as String?,
     aprsTxConsent:j['aprs_tx_consent'] as bool?,
     immediateBypassDnd:j['immediate_bypass_dnd'] as bool?,
+    drawColor:j['draw_color'] as int?,
   );
 
   Map<String,dynamic> toStored()=>{'server_url':serverUrl,'event_id':eventId,'device_id':deviceId,
-    'language':language,'callsign':callsign,'aprs_tx_consent':aprsTxConsent,'immediate_bypass_dnd':immediateBypassDnd};
+    'language':language,'callsign':callsign,'aprs_tx_consent':aprsTxConsent,'immediate_bypass_dnd':immediateBypassDnd,if(drawColor!=null)'draw_color':drawColor};
 
   AppConfig copyWith({String? serverUrl,String? eventId,String? deviceId,String? tileUrl,String? tileAttribution,
-      String? language,String? callsign,bool? aprsTxConsent,bool? immediateBypassDnd})=>AppConfig(
+      String? language,String? callsign,bool? aprsTxConsent,bool? immediateBypassDnd,int? drawColor})=>AppConfig(
     serverUrl:serverUrl??this.serverUrl,
     eventId:eventId??this.eventId,
     deviceId:deviceId??this.deviceId,
@@ -53,6 +56,7 @@ class AppConfig {
     callsign:callsign??this.callsign,
     aprsTxConsent:aprsTxConsent??this.aprsTxConsent,
     immediateBypassDnd:immediateBypassDnd??this.immediateBypassDnd,
+    drawColor:drawColor??this.drawColor,
   );
 
   bool get isComplete=>serverUrl.trim().isNotEmpty&&eventId.trim().isNotEmpty&&deviceId.trim().isNotEmpty;
