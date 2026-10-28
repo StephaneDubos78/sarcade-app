@@ -15,6 +15,10 @@ CI generates android/ and this script applies the SARCADE-specific settings:
 - dictation: RECORD_AUDIO and the speech recognition service in <queries>
 - notifications (POST_NOTIFICATIONS, Android 13+) and core library
   desugaring in the Gradle build, required by flutter_local_notifications
+- notification actions (Accept, Refuse, Read, Open) and reminders of the
+  immediate messages: receivers of flutter_local_notifications, boot
+  receiver, vibration, access to the Do Not Disturb policy (asked only with
+  the consent of the operator)
 
 - release signing with the fixed SARCADE key when the CI provides it
   (SARCADE_KEYSTORE and passwords in the environment, from GitHub secrets):
@@ -81,7 +85,23 @@ PERMISSIONS = [
     "android.permission.FOREGROUND_SERVICE",
     "android.permission.FOREGROUND_SERVICE_LOCATION",
     "android.permission.WAKE_LOCK",
+    # Notification actions and reminders of the immediate messages.
+    "android.permission.VIBRATE",
+    "android.permission.RECEIVE_BOOT_COMPLETED",
+    "android.permission.ACCESS_NOTIFICATION_POLICY",
 ]
+RECEIVERS = """
+        <receiver android:exported="false" android:name="com.dexterous.flutterlocalnotifications.ActionBroadcastReceiver" />
+        <receiver android:exported="false" android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver" />
+        <receiver android:exported="false" android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationBootReceiver">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED"/>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED"/>
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON"/>
+            </intent-filter>
+        </receiver>
+"""
 GRADLE_KTS = Path("android/app/build.gradle.kts")
 GRADLE = Path("android/app/build.gradle")
 DESUGAR = "com.android.tools:desugar_jdk_libs:2.1.5"
@@ -148,6 +168,12 @@ def main() -> int:
     if n != 1:
         print("error: <application> element not found", file=sys.stderr)
         return 1
+
+    if "ActionBroadcastReceiver" not in xml:
+        xml, n = re.subn(r"(\n\s*</application>)", RECEIVERS.rstrip("\n") + r"\1", xml, count=1)
+        if n != 1:
+            print("error: </application> not found", file=sys.stderr)
+            return 1
 
     MANIFEST.write_text(xml, encoding="utf-8")
     print(f"patched {MANIFEST}")

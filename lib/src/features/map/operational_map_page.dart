@@ -100,7 +100,39 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   static const _compactWidth=600.0;
   @override void didChangeDependencies(){super.didChangeDependencies();if(!_layoutInitialized){_layoutInitialized=true;if(MediaQuery.sizeOf(context).width<_compactWidth)_showPanel=false;}}
 
-  @override void initState(){super.initState();_notifications.initialize();unawaited(requestPersistentStorage());_sync=OfflineSyncService(api:widget.api,store:widget.store,eventId:widget.eventId,onRemoteChange:_onRemoteChange);_initDrawing();_initBearings();_loadLocal();_initRoutes();_initMeasure();_sync.start();_initOperations();_loadBasemaps();_initWebUpdate();_syncUiTimer=Timer.periodic(const Duration(seconds:2),(_){if(mounted)setState((){});});AccessManager.instance.addListener(_onAccessChanged);_start();}
+  StreamSubscription<String>? _opensSub; StreamSubscription<void>? _answersSub; bool _drainingAnswers=false;
+
+  /// Notification actions: Open shows the messages; an answer (Accept,
+  /// Refuse, Read) given from the notification, even application closed,
+  /// becomes an acknowledgement queued in the Outbox.
+  void _initNotificationActions(){
+    _opensSub=_notifications.opens.listen((_){if(mounted)_openMessages();});
+    _answersSub=_notifications.answers.listen((_)=>_drainAnswers());
+    _notifications.initialize().then((_)=>_drainAnswers());
+  }
+
+  Future<void> _drainAnswers() async {
+    if(_drainingAnswers)return;
+    _drainingAnswers=true;
+    try{
+      final answers=await takePendingAnswers();
+      for(final a in answers){
+        final ack=a.toAck();
+        await widget.store.cacheAck(ack);
+        await _sync.queue(objectId:a.id,objectType:'ack',payload:ack);
+        await _notifications.answered(a.messageId,a.status);
+      }
+      if(answers.isNotEmpty&&mounted)setState((){});
+    }catch(e){
+      debugPrint('SARCADE notification answers not queued yet: $e');
+    }finally{
+      _drainingAnswers=false;
+    }
+  }
+
+  void _openMessages()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>MessagesPage(api:widget.api,eventId:widget.eventId,
+    actorId:widget.deviceId,sync:_sync,store:widget.store)));
+  @override void initState(){super.initState();_initNotificationActions();unawaited(requestPersistentStorage());_sync=OfflineSyncService(api:widget.api,store:widget.store,eventId:widget.eventId,onRemoteChange:_onRemoteChange);_initDrawing();_initBearings();_loadLocal();_initRoutes();_initMeasure();_sync.start();_initOperations();_loadBasemaps();_initWebUpdate();_syncUiTimer=Timer.periodic(const Duration(seconds:2),(t){if(t.tick%3==0)_drainAnswers();if(mounted)setState((){});});AccessManager.instance.addListener(_onAccessChanged);_start();}
   bool _validPosition(SarcadePosition p){
     final t=p.time.toUtc(), now=DateTime.now().toUtc();
     return t.isAfter(DateTime.utc(2020)) && t.isBefore(now.add(const Duration(days:1)));
@@ -233,7 +265,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       // Realtime and synchronisation may both bring the message: only the
       // first arrival notifies; an old message caught up later stays silent.
       if(shouldNotifyMessage(alreadyReceived:existing,createdAt:m.createdAt,now:DateTime.now().toUtc())){
-        await _notifications.message(title:'SARCADE · ${S.t('priority.${m.priority}')} · ${m.senderId}',body:m.body,priority:m.priority);
+        await _notifications.message(title:'SARCADE · ${S.t('priority.${m.priority}')} · ${m.senderId}',body:m.body,priority:m.priority,
+          payload:NotificationPayload(eventId:widget.eventId,messageId:m.id,deviceId:widget.deviceId,priority:m.priority));
       }
     }
     if(mounted)setState((){});
@@ -1332,7 +1365,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     child:child,
   );
 
-  @override void dispose(){_headingSub?.cancel();_webUpdateTimer?.cancel();_saveViewTimer?.cancel();_bearings.dispose();_brgTarget.dispose();_positionsTimer?.cancel();_meSub?.cancel();_mapEvents?.cancel();AccessManager.instance.removeListener(_onAccessChanged);_rtSub?.cancel();_tracking.removeListener(_onOperationsChanged);_ops.removeListener(_onOperationsChanged);_tracking.dispose();_ops.dispose();_routes.removeListener(_onRoutesChanged);_nav.removeListener(_onRoutesChanged);_routes.dispose();_nav.dispose();_graphs.removeListener(_onRoutesChanged);_graphs.dispose();_measure.removeListener(_onRoutesChanged);_measure.dispose();_syncUiTimer?.cancel();_sync.dispose();_realtime.dispose();_drawing.dispose();widget.api.close();super.dispose();}
+  @override void dispose(){_headingSub?.cancel();_webUpdateTimer?.cancel();_saveViewTimer?.cancel();_bearings.dispose();_brgTarget.dispose();_positionsTimer?.cancel();_meSub?.cancel();_mapEvents?.cancel();AccessManager.instance.removeListener(_onAccessChanged);_opensSub?.cancel();_answersSub?.cancel();_rtSub?.cancel();_tracking.removeListener(_onOperationsChanged);_ops.removeListener(_onOperationsChanged);_tracking.dispose();_ops.dispose();_routes.removeListener(_onRoutesChanged);_nav.removeListener(_onRoutesChanged);_routes.dispose();_nav.dispose();_graphs.removeListener(_onRoutesChanged);_graphs.dispose();_measure.removeListener(_onRoutesChanged);_measure.dispose();_syncUiTimer?.cancel();_sync.dispose();_realtime.dispose();_drawing.dispose();widget.api.close();super.dispose();}
 
   @override Widget build(BuildContext context){
     final sorted=_positions.values.where((p)=>(p.isAprs?_showAprs:_showOperators)&&(!_withoutInternetOnly||worksWithoutInternet(p)||p.deviceId==widget.deviceId)).toList()..sort((a,b)=>a.deviceId.compareTo(b.deviceId));
@@ -1351,7 +1384,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     void openFiles()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>FilesPage(api:widget.api,eventId:widget.eventId,actorId:widget.deviceId)));
     void openAprs()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>AprsPage(api:widget.api,eventId:widget.eventId,actorId:widget.deviceId)));
     void openLogbook()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>LogbookPage(api:widget.api,eventId:widget.eventId)));
-    void openMessages()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>MessagesPage(api:widget.api,eventId:widget.eventId,actorId:widget.deviceId,sync:_sync,store:widget.store)));
+    void openMessages()=>_openMessages();
     void showMap()=>setState((){_showPanel=false;_showReferencePanel=false;_showRoutesPanel=false;_showNearby=false;_drawingRouteId=null;});
     // Every action of the former top bar, for the « Plus » sheet (phone) and the rail (computer).
     final actions=<_RailAction>[
