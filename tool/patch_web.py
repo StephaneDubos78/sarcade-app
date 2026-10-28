@@ -12,7 +12,8 @@ manifest and the page for that use:
 - the manifest fetched with the Cloudflare Access cookie (crossorigin)
 - a SARCADE service worker (web/sarcade_sw.js): network first, cached copy
   when the server cannot be reached, so the installed app still starts
-  offline (the Flutter service worker is deprecated). The API is never
+  offline (the Flutter service worker is deprecated and not registered:
+  custom web/flutter_bootstrap.js). The API is never
   cached: offline data lives in IndexedDB. Needs HTTPS, like installation.
 
 Idempotent, and fails loudly if the template changed shape.
@@ -27,8 +28,10 @@ INDEX = Path("web/index.html")
 THEME = "#173A6A"
 SERVICE_WORKER = Path("web/sarcade_sw.js")
 SW_JS = """// SARCADE service worker: the app starts without network once installed.
-const CACHE = 'sarcade-shell-v1';
-const SHELL = ['./', 'index.html', 'manifest.json', 'flutter_bootstrap.js', 'main.dart.js'];
+// The cache name and the code file carry the build (tool/version_web.py):
+// a new build never reuses the copy of an older one.
+const CACHE = 'sarcade-shell-__BUILD__';
+const SHELL = ['./', 'index.html', 'manifest.json', 'flutter_bootstrap.js', '__MAIN_JS__'];
 self.addEventListener('install', (event) => {
   self.skipWaiting();
   event.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).catch(() => undefined));
@@ -38,18 +41,41 @@ self.addEventListener('activate', (event) => {
     .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
     .then(() => self.clients.claim()));
 });
+function network(request) {
+  return fetch(request).then((response) => {
+    if (response.ok) {
+      const copy = response.clone();
+      caches.open(CACHE).then((c) => c.put(request, copy));
+    }
+    return response;
+  });
+}
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
   // The API and other origins are never cached: offline data is in IndexedDB.
   if (event.request.method !== 'GET' || url.origin !== self.location.origin || url.pathname.startsWith('/api/')) return;
-  event.respondWith(fetch(event.request).then((response) => {
-    if (response.ok) {
-      const copy = response.clone();
-      caches.open(CACHE).then((c) => c.put(event.request, copy));
+  event.respondWith((async () => {
+    try {
+      return await network(event.request);
+    } catch (e) {
+      // The copy is for a real loss of network only: online, a failed
+      // request (interrupted by a reload) is tried again first.
+      if (self.navigator.onLine !== false) {
+        try { return await network(event.request); } catch (_) { /* fall back on the copy */ }
+      }
+      return (await caches.match(event.request)) || (await caches.match('index.html')) || Response.error();
     }
-    return response;
-  }).catch(() => caches.match(event.request).then((r) => r || caches.match('index.html'))));
+  })());
 });
+"""
+# Flutter loader without its deprecated service worker: it was registered on
+# the same scope as sarcade_sw.js, each one replaced the other at every start
+# and the old code kept being served (28 October 2026).
+BOOTSTRAP = Path("web/flutter_bootstrap.js")
+BOOTSTRAP_JS = """{{flutter_js}}
+{{flutter_build_config}}
+
+_flutter.loader.load();
 """
 REGISTER = ("<script>if ('serviceWorker' in navigator) { window.addEventListener('load', "
             "() => navigator.serviceWorker.register('sarcade_sw.js')); }</script>")
@@ -98,8 +124,9 @@ def main() -> int:
     if "sarcade_sw.js" not in html:
         html = html.replace("</body>", f"  {REGISTER}\n</body>", 1)
     INDEX.write_text(html, encoding="utf-8")
-    SERVICE_WORKER.write_text(SW_JS, encoding="utf-8")
-    print(f"patched {MANIFEST}, {INDEX} and wrote {SERVICE_WORKER}")
+    SERVICE_WORKER.write_text(SW_JS.replace("__BUILD__", "dev").replace("__MAIN_JS__", "main.dart.js"), encoding="utf-8")
+    BOOTSTRAP.write_text(BOOTSTRAP_JS, encoding="utf-8")
+    print(f"patched {MANIFEST}, {INDEX} and wrote {SERVICE_WORKER}, {BOOTSTRAP}")
     return 0
 
 
