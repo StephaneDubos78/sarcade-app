@@ -19,7 +19,18 @@ Future<String?> chooseNavigationMode(BuildContext context,String label)=>showMod
 /// Card at the bottom of the map while navigating.
 class NavigationCard extends StatelessWidget {
   final NavigationController nav;
-  const NavigationCard({super.key,required this.nav});
+  /// Follow mode: map centred on the operator, turned in the direction of travel.
+  final bool following;
+  final VoidCallback? onRecentre;
+  /// Computers: option to turn the map in the direction of travel.
+  final bool? rotate;
+  final ValueChanged<bool>? onRotate;
+  const NavigationCard({super.key,required this.nav,this.following=false,this.onRecentre,this.rotate,this.onRotate});
+
+  String _delta(Itinerary alt,Itinerary main){
+    final minutes=((alt.durationS-main.durationS)/60).round();
+    return minutes==0?S.t('nav.variant.same'):(minutes>0?'+$minutes min':'$minutes min');
+  }
 
   String _eta(DateTime? t){if(t==null)return '-';final l=t.toLocal();return '${l.hour.toString().padLeft(2,'0')}:${l.minute.toString().padLeft(2,'0')}';}
 
@@ -42,6 +53,16 @@ class NavigationCard extends StatelessWidget {
         IconButton(tooltip:S.t('nav.stop'),onPressed:nav.cancel,icon:const Icon(Icons.close)),
       ]),
       if(instruction!=null)Padding(padding:const EdgeInsets.only(top:6),child:Text(instruction,style:theme.textTheme.bodyLarge)),
+      if(it!=null&&nav.alternatives.isNotEmpty&&nav.state==NavState.active)Padding(padding:const EdgeInsets.only(top:6),child:Wrap(spacing:6,runSpacing:4,children:[
+        for(var i=0;i<nav.alternatives.length;i++)ActionChip(
+          avatar:const Icon(Icons.alt_route,size:18,color:Colors.blueGrey),
+          label:Text(S.t('nav.variant',{'n':i+1,'delta':_delta(nav.alternatives[i],it),'length':formatDistance(nav.alternatives[i].lengthM)})),
+          onPressed:()=>nav.chooseAlternative(i)),
+      ])),
+      if(nav.state==NavState.active&&(onRecentre!=null||onRotate!=null))Padding(padding:const EdgeInsets.only(top:4),child:Wrap(spacing:6,crossAxisAlignment:WrapCrossAlignment.center,children:[
+        if(!following&&onRecentre!=null)FilledButton.tonalIcon(onPressed:onRecentre,icon:const Icon(Icons.my_location,size:18),label:Text(S.t('nav.recentre'))),
+        if(onRotate!=null&&rotate!=null)FilterChip(selected:rotate!,onSelected:onRotate,avatar:const Icon(Icons.explore,size:18),label:Text(S.t('nav.rotate'))),
+      ])),
       if(nav.notice!=null)Padding(padding:const EdgeInsets.only(top:6),child:Text(S.t('nav.notice.${nav.notice}'),style:theme.textTheme.bodySmall?.copyWith(color:nav.notice=='on_device'?null:theme.colorScheme.error))),
       if(nav.state==NavState.active)Padding(padding:const EdgeInsets.only(top:4),child:Text(S.t('nav.shared'),style:theme.textTheme.bodySmall)),
     ])));

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -64,6 +65,7 @@ import '../measure/external_maps.dart';
 import '../measure/measure_controller.dart';
 import '../measure/measure_widgets.dart';
 import '../navigation/navigation_widgets.dart';
+import '../navigation/follow_mode.dart';
 import '../routes/route_models.dart';
 import '../routes/routes_controller.dart';
 import '../routes/routes_layers.dart';
@@ -418,10 +420,80 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     _graphs.start();
     _nav=NavigationController(api:widget.api,routes:_routes,location:_location,eventId:widget.eventId,graphs:_graphs);
     _routes.addListener(_onRoutesChanged);
-    _nav.addListener(_onRoutesChanged);
+    _nav.addListener(_onNavigationChanged);
     _routes.refresh();
   }
   void _onRoutesChanged(){if(mounted)setState((){});}
+
+  // --- Follow mode and variants of the navigation (decisions of 10 Oct 2026) ---
+  bool _follow=false, _followPending=false; LatLng? _navStart, _lastFollowCenter; double? _lastFollowRotation;
+  final LayerHitNotifier<int> _variantHits=ValueNotifier(null);
+
+  static bool get _phoneOrTablet=>!kIsWeb&&(defaultTargetPlatform==TargetPlatform.android||defaultTargetPlatform==TargetPlatform.iOS);
+  /// Phones and tablets turn the map; computers keep north up unless chosen.
+  bool get _followRotates=>_phoneOrTablet||widget.store.preference('nav_rotate_desktop')=='1';
+
+  void _onNavigationChanged(){
+    if(_nav.state!=NavState.active){
+      if(_follow||_followPending)_setFollow(false);
+    }else{
+      final p=_nav.position, start=_navStart;
+      if(_followPending&&p!=null&&start!=null&&distanceM(start,p)>=followEngageDistanceM)_setFollow(true);
+      if(_follow)_applyFollow();
+    }
+    _onRoutesChanged();
+  }
+
+  void _setFollow(bool on){
+    _follow=on; _followPending=false;
+    _lastFollowCenter=null; _lastFollowRotation=null;
+    if(on){
+      // Drawing is off while following: drawn shapes assume north up.
+      _drawing.selectTool(null); _drawingTools=false;
+      if(_phoneOrTablet)_nav.startCompass();
+      _applyFollow();
+    }else{
+      _nav.stopCompass();
+      try{_map.rotate(0);}catch(_){/* map not ready */}
+    }
+    if(mounted)setState((){});
+  }
+
+  void _applyFollow(){
+    final p=_nav.position;
+    if(p==null)return;
+    final heading=followHeading(course:_nav.course,speedMs:_nav.speedMs,compassTrue:_nav.compassTrue,rotate:_followRotates);
+    final rotation=mapRotationFor(heading);
+    if(!followNeedsUpdate(lastCenter:_lastFollowCenter,lastRotation:_lastFollowRotation,center:p,rotation:rotation))return;
+    _lastFollowCenter=p; _lastFollowRotation=rotation;
+    try{
+      final zoom=_map.camera.zoom<followMinZoom?followMinZoom:_map.camera.zoom;
+      _map.moveAndRotate(p,zoom,rotation);
+    }catch(_){/* map not ready */}
+  }
+
+  /// A gesture of the operator on the map leaves the follow mode.
+  void _onMapEvent(MapEvent e){
+    const gestures={MapEventSource.dragStart,MapEventSource.onDrag,MapEventSource.multiFingerGestureStart,
+      MapEventSource.onMultiFinger,MapEventSource.doubleTap,MapEventSource.doubleTapHold,MapEventSource.scrollWheel,
+      MapEventSource.keyboard,MapEventSource.cursorKeyboardRotation};
+    if((_follow||_followPending)&&gestures.contains(e.source))_setFollow(false);
+  }
+
+  List<Widget> _variantLayers(){
+    final alts=_nav.state==NavState.active?_nav.alternatives:const <Itinerary>[];
+    if(alts.isEmpty)return const [];
+    return [MouseRegion(hitTestBehavior:HitTestBehavior.deferToChild,cursor:SystemMouseCursors.click,child:GestureDetector(
+      onTap:(){
+        final hit=_variantHits.value;
+        if(hit!=null&&hit.hitValues.isNotEmpty){_nav.chooseAlternative(hit.hitValues.first);if(_phoneOrTablet)_setFollow(true);}
+      },
+      child:PolylineLayer<int>(hitNotifier:_variantHits,polylines:[
+        for(var i=0;i<alts.length;i++)Polyline<int>(points:alts[i].geometry,strokeWidth:6,color:Colors.blueGrey.withValues(alpha:0.75),
+          borderStrokeWidth:1.5,borderColor:Colors.white,hitValue:i),
+      ]),
+    ))];
+  }
 
   /// Automatic passage when the operator enters the approach radius of the
   /// next waypoint of an active route (50 m by default).
@@ -439,9 +511,16 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   Future<void> _navigateTo(LatLng point,String label) async {
     final mode=await chooseNavigationMode(context,label);
     if(mode==null)return;
+    if(_follow)_setFollow(false);
     await _nav.start(point,label,mode);
     final it=_nav.itinerary;
-    if(it!=null&&it.geometry.length>1)_fitPoints(it.geometry);
+    _navStart=_nav.position;
+    if(it!=null&&it.geometry.length>1)_fitPoints([...it.geometry,for(final a in _nav.alternatives)...a.geometry]);
+    // Phones and tablets follow at once, or once the operator moves off when
+    // variants are shown to choose from.
+    if(_phoneOrTablet&&_nav.state==NavState.active){
+      if(_nav.alternatives.isEmpty){_setFollow(true);}else{setState(()=>_followPending=true);}
+    }
   }
 
   Future<void> _finishClosure() async {
@@ -1365,7 +1444,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     child:child,
   );
 
-  @override void dispose(){_headingSub?.cancel();_webUpdateTimer?.cancel();_saveViewTimer?.cancel();_bearings.dispose();_brgTarget.dispose();_positionsTimer?.cancel();_meSub?.cancel();_mapEvents?.cancel();AccessManager.instance.removeListener(_onAccessChanged);_opensSub?.cancel();_answersSub?.cancel();_rtSub?.cancel();_tracking.removeListener(_onOperationsChanged);_ops.removeListener(_onOperationsChanged);_tracking.dispose();_ops.dispose();_routes.removeListener(_onRoutesChanged);_nav.removeListener(_onRoutesChanged);_routes.dispose();_nav.dispose();_graphs.removeListener(_onRoutesChanged);_graphs.dispose();_measure.removeListener(_onRoutesChanged);_measure.dispose();_syncUiTimer?.cancel();_sync.dispose();_realtime.dispose();_drawing.dispose();widget.api.close();super.dispose();}
+  @override void dispose(){_headingSub?.cancel();_webUpdateTimer?.cancel();_saveViewTimer?.cancel();_bearings.dispose();_brgTarget.dispose();_positionsTimer?.cancel();_meSub?.cancel();_mapEvents?.cancel();AccessManager.instance.removeListener(_onAccessChanged);_opensSub?.cancel();_answersSub?.cancel();_rtSub?.cancel();_tracking.removeListener(_onOperationsChanged);_ops.removeListener(_onOperationsChanged);_tracking.dispose();_ops.dispose();_routes.removeListener(_onRoutesChanged);_nav.removeListener(_onNavigationChanged);_variantHits.dispose();_routes.dispose();_nav.dispose();_graphs.removeListener(_onRoutesChanged);_graphs.dispose();_measure.removeListener(_onRoutesChanged);_measure.dispose();_syncUiTimer?.cancel();_sync.dispose();_realtime.dispose();_drawing.dispose();widget.api.close();super.dispose();}
 
   @override Widget build(BuildContext context){
     final sorted=_positions.values.where((p)=>(p.isAprs?_showAprs:_showOperators)&&(!_withoutInternetOnly||worksWithoutInternet(p)||p.deviceId==widget.deviceId)).toList()..sort((a,b)=>a.deviceId.compareTo(b.deviceId));
@@ -1474,6 +1553,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           onPositionChanged:(camera,_)=>_onCameraChanged(camera),
           onLongPress:(_,point)=>_onLongPress(point),
           onSecondaryTap:(_,point)=>_onLongPress(point),
+          onMapEvent:_onMapEvent,
           // Rotation off: drawn arrows and handles assume north up.
           // Drag off while editing so handle and freehand gestures reach the shapes.
           interactionOptions:InteractionOptions(flags:InteractiveFlag.all&~InteractiveFlag.rotate&(_drawing.locksMapDrag?~InteractiveFlag.drag:~0)),
@@ -1487,6 +1567,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           if(_showDrawings)...buildDrawingLayers(_drawing),
           if(_showBearings||_bearings.taking)...buildBearingLayers(bearings:_showBearings?_bearings.all:const <Bearing>[],draft:_bearingDraft(),
             onTapBearing:_showBearingSheet,onTapZone:(c,_)=>_onLongPress(c)),
+          ..._variantLayers(),
           ...buildRouteLayers(_routes,selectedRouteId:_selectedRouteId,itinerary:_nav.itinerary?.geometry??const [],draftClosure:_closureDraft,
             onWaypointTap:(w)=>setState((){_showRoutesPanel=true;_showPanel=false;_showReferencePanel=false;_selectedRouteId=w.routeId;})),
           ...buildMeasureLayers(_measure,_coordFormat),
@@ -1510,8 +1591,9 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         else Positioned(top:8,left:8,right:8,child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
           // The drawing button stays in place and toggles the toolbar
           // (request of 23 October 2026: closing it after a tap by mistake
-          // meant reaching the small cross at the far right).
-          Row(crossAxisAlignment:CrossAxisAlignment.start,children:[
+          // meant reaching the small cross at the far right). Hidden in
+          // follow mode (navigation variants), like the toolbar before.
+          if(!_follow)Row(crossAxisAlignment:CrossAxisAlignment.start,children:[
             FloatingActionButton.small(heroTag:'drawing-tools',
               tooltip:_drawingTools?S.t('draw.close'):S.t('draw.open'),
               backgroundColor:_drawingTools?Theme.of(context).colorScheme.primary:null,
@@ -1555,7 +1637,14 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
             onChooseOrigin:_chooseOrigin,onDeclination:_editDeclination,mgrsDigits:_mgrsDigits,
             onMgrsDigits:(d) async {await widget.store.setPreference('mgrs_digits','$d');if(mounted)setState((){});},
             onFormat:(f) async {await widget.store.setPreference('coord_format',f.name);if(mounted)setState((){});}),
-          NavigationCard(nav:_nav),
+          NavigationCard(nav:_nav,following:_follow,onRecentre:()=>_setFollow(true),
+            rotate:_phoneOrTablet?null:_followRotates,
+            onRotate:_phoneOrTablet?null:(v) async {
+              await widget.store.setPreference('nav_rotate_desktop',v?'1':null);
+              _lastFollowRotation=null;
+              if(_follow)_applyFollow();
+              if(mounted)setState((){});
+            }),
         ])))),
       ]))
       ]))),

@@ -148,7 +148,8 @@ class RoadGraph {
   }
 
   /// A* on travel time. Returns the edges (encoded) from [a] to [b], or null.
-  List<int>? shortestPath(int a,int b,String mode,{Set<int> blocked=const {}}){
+  /// [penalty]: cost factor of some edges (variants by penalty).
+  List<int>? shortestPath(int a,int b,String mode,{Set<int> blocked=const {},Map<int,double> penalty=const {}}){
     if(a==b)return <int>[];
     final maxKmh=(speedsKmh[mode]??const [5.0]).fold<double>(1,math.max);
     final maxMs=maxKmh/3.6;
@@ -169,7 +170,7 @@ class RoadGraph {
         final e=code>>1, backward=(code&1)==1;
         if(blocked.contains(e)||!_allowed(e,backward,mode))continue;
         final v=backward?eFrom[e]:eTo[e];
-        final cost=g[u]!+eLength[e]/_speedMs(e,mode);
+        final cost=g[u]!+eLength[e]/_speedMs(e,mode)*(penalty[e]??1);
         if(cost<(g[v]??double.infinity)){g[v]=cost;via[v]=code;open.push(cost+h(v),v);}
       }
     }
@@ -185,6 +186,36 @@ class RoadGraph {
     if(a==null||b==null)return null;
     final path=shortestPath(a,b,mode,blocked:blockedEdges(closures));
     if(path==null)return null;
+    return _itinerary(path,a,b,from,to,mode,t);
+  }
+
+  /// Itinerary and up to [count] variants (decision of 10 Oct 2026): the
+  /// edges of the itineraries already found cost [factor] times more, then
+  /// the near-identical or much longer variants are dropped.
+  ({Itinerary main,List<Itinerary> alternatives})? routeWithAlternatives(LatLng from,LatLng to,String mode,
+      {List<List<LatLng>> closures=const [],String Function(String key,Map<String,Object?> args)? t,int count=2,double factor=1.8}){
+    final a=nearestVertex(from,mode), b=nearestVertex(to,mode);
+    if(a==null||b==null)return null;
+    final blocked=blockedEdges(closures);
+    final first=shortestPath(a,b,mode,blocked:blocked);
+    if(first==null)return null;
+    final main=_itinerary(first,a,b,from,to,mode,t);
+    final penalty=<int,double>{};
+    final candidates=<Itinerary>[];
+    var last=first;
+    for(var attempt=0;attempt<count+2;attempt++){
+      for(final code in last){final e=code>>1;penalty[e]=(penalty[e]??1)*factor;}
+      final next=shortestPath(a,b,mode,blocked:blocked,penalty:penalty);
+      if(next==null)break;
+      candidates.add(_itinerary(next,a,b,from,to,mode,t));
+      if(distinctAlternatives(main,candidates,max:count).length>=count)break;
+      last=next;
+    }
+    return (main:main,alternatives:distinctAlternatives(main,candidates,max:count));
+  }
+
+  Itinerary _itinerary(List<int> path,int a,int b,LatLng from,LatLng to,String mode,
+      String Function(String key,Map<String,Object?> args)? t){
     final geometry=<LatLng>[from];
     var duration=distanceM(from,vertex(a))/1.2;
     final steps=<({int edge,bool backward,int beginIndex})>[];
