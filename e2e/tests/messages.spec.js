@@ -7,6 +7,8 @@ const { createEvent, Terminal, joinEvent, openMessages, sendMessage, messageCard
 const RUN = `${Date.now()}`.slice(-6);
 const EVENT_NAME = `E2E ${RUN}`;
 
+const consoleLines = [];
+
 test.describe.serial('PCO (web) and a field terminal', () => {
   let eventId, field, page, api;
 
@@ -15,6 +17,10 @@ test.describe.serial('PCO (web) and a field terminal', () => {
     eventId = await createEvent(api, EVENT_NAME);
     field = new Terminal(api, eventId, 'ADR78-01');
     page = await browser.newPage({ baseURL, locale: 'en-US', viewport: { width: 1280, height: 900 } });
+    // Browser console kept for the failure message (CI artifacts are not
+    // always reachable): Flutter prints its exceptions there.
+    page.on('console', (m) => { if (['error', 'warning'].includes(m.type()) || /Exception|Error|SARCADE error/.test(m.text())) consoleLines.push(`${m.type()}: ${m.text()}`.slice(0, 1500)); });
+    page.on('pageerror', (e) => consoleLines.push(`pageerror: ${e.message}`.slice(0, 400)));
   });
 
   test.afterAll(async () => { await page?.close(); await api?.dispose(); });
@@ -36,14 +42,26 @@ test.describe.serial('PCO (web) and a field terminal', () => {
   test('2. PCO → field: urgent broadcast received, ACK back on the PCO', async ({}, testInfo) => {
     const body = `E2E urgent from PCO ${RUN}`;
     await openMessages(page);
-    await sendMessage(page, body, { priority: 'Urgent' });
+    try {
+      await sendMessage(page, body, { priority: 'Urgent' });
+    } catch (e) {
+      const screen = await page.locator('flt-semantics-host').innerText().catch(() => '?');
+      throw new Error(`${e.message}\nscreen: ${screen.replace(/\s+/g, ' ').slice(0, 1200)}\nconsole:\n${consoleLines.slice(-15).join('\n')}`);
+    }
 
     // The field terminal receives it through the server.
     let received;
-    await expect.poll(async () => {
-      received = (await field.changes()).find((c) => c.object_type === 'message' && c.payload.body === body);
-      return received?.payload;
-    }, { timeout: 60_000 }).toMatchObject({ sender_id: 'PCO', priority: 'urgent', recipient_ids: [] });
+    try {
+      await expect.poll(async () => {
+        received = (await field.changes()).find((c) => c.object_type === 'message' && c.payload.body === body);
+        return received?.payload;
+      }, { timeout: 60_000 }).toMatchObject({ sender_id: 'PCO', priority: 'urgent', recipient_ids: [] });
+    } catch (e) {
+      const screen = await page.locator('flt-semantics-host').innerText().catch(() => '?');
+      const messages = (await field.changes()).filter((c) => c.object_type === 'message').map((c) => `${c.payload.sender_id}: ${c.payload.body}`);
+      throw new Error(`message not on the server\nexpected: ${body}\nmessages of the event on the server: ${JSON.stringify(messages)}`
+        + `\nscreen: ${screen.replace(/\s+/g, ' ').slice(0, 1200)}\nconsole:\n${consoleLines.slice(-25).join('\n')}`);
+    }
 
     // It acknowledges; the PCO sees « ACK: Received ».
     await field.ack(received.payload.id, 'received');

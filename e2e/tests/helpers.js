@@ -104,10 +104,21 @@ async function openMessages(page) {
 
 /** Sends a message from the messages screen (general broadcast by default). */
 async function sendMessage(page, body, { priority = 'Urgent' } = {}) {
-  await page.getByRole('button', { name: /^(Routine|Urgent|Immediate)$/ }).click();
-  await page.getByRole('menuitem', { name: priority }).click();
-  await page.getByLabel('Short message').fill(body);
-  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  // Interface V2 (27 October 2026): typed first with real key presses while
+  // the field is found by its hint, priority chosen afterwards, then the
+  // proof is the message card shown by Flutter (not the DOM value, which
+  // Flutter may not have taken).
+  await expect(async () => {
+    const field = page.getByLabel('Short message');
+    await field.click();
+    await page.keyboard.press('Control+A');
+    await page.keyboard.press('Delete');
+    await page.keyboard.type(body, { delay: 10 });
+    await page.getByRole('button', { name: /^(Routine|Urgent|Immediate)$/ }).click();
+    await page.getByRole('menuitem', { name: priority }).click();
+    await page.getByRole('button', { name: 'Send', exact: true }).click();
+    await expect(messageCard(page, body)).toBeVisible({ timeout: 8_000 });
+  }).toPass({ timeout: 60_000 });
 }
 
 /** The message card, found by its text and, optionally, its ACK line.
