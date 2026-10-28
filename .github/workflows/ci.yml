@@ -314,8 +314,11 @@ jobs:
           flutter build ios --release --config-only --build-number=${{ github.run_number }} --dart-define=SARCADE_BUILD="${SARCADE_BRANCH}@${GITHUB_SHA::7}" 2>&1 | tee ios-build.log
           xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -configuration Release \
             -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/Runner.xcarchive" \
-            "${auth[@]}" archive 2>&1 | tee -a ios-build.log | grep -E "error|warning: .*sign|ARCHIVE" || true
+            CODE_SIGNING_ALLOWED=NO archive 2>&1 | tee -a ios-build.log | grep -E "error|warning: .*sign|ARCHIVE" || true
           test -d "$RUNNER_TEMP/Runner.xcarchive" || { echo "::error::archive failed"; exit 1; }
+          # Archive left unsigned (no development profile: the team has no
+          # registered device); the export signs it for the App Store with the
+          # distribution certificate managed by Apple (cloud signing).
           cat > "$RUNNER_TEMP/export.plist" <<PLIST
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
