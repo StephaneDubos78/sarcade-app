@@ -21,10 +21,12 @@ class OperationsBanners extends StatelessWidget {
   /// Web client: notifications not yet allowed; the browser only asks after
   /// a click, hence this banner.
   final VoidCallback? onEnableNotifications; final VoidCallback? onDismissNotifications;
+  /// Web client: a newer build is served; reloading runs it.
+  final VoidCallback? onWebUpdate;
   const OperationsBanners({super.key,required this.settings,required this.update,required this.alert,
     required this.heldPhotos,required this.onSyncNow,required this.onUpdate,
     this.accessRequired=false,this.accessRenewBy,this.onSignIn,this.onReload,
-    this.onEnableNotifications,this.onDismissNotifications});
+    this.onEnableNotifications,this.onDismissNotifications,this.onWebUpdate});
 
   static String _date(DateTime t){final l=t.toLocal();String two(int v)=>v.toString().padLeft(2,'0');return '${two(l.day)}/${two(l.month)} ${two(l.hour)}:${two(l.minute)}';}
 
@@ -43,6 +45,9 @@ class OperationsBanners extends StatelessWidget {
       if(onReload!=null)_Banner(icon:Icons.refresh,color:Colors.orange.shade100,
         text:S.t('access.webExpired'),
         action:TextButton(onPressed:onReload,child:Text(S.t('access.reload')))),
+      if(onWebUpdate!=null)_Banner(icon:Icons.system_update_alt,color:scheme.primaryContainer,
+        text:S.t('webUpdate.available'),
+        action:FilledButton.tonal(onPressed:onWebUpdate,child:Text(S.t('webUpdate.reload')))),
       if(onEnableNotifications!=null)_Banner(icon:Icons.notifications_active_outlined,color:scheme.secondaryContainer,
         text:S.t('notifications.prompt'),
         action:Row(mainAxisSize:MainAxisSize.min,children:[
