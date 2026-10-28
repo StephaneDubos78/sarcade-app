@@ -159,6 +159,28 @@ jobs:
           rm -f test/widget_test.dart
           python3 tool/patch_android.py
       - run: flutter pub get
+      - name: Firebase project for the wake-up (secret GOOGLE_SERVICES_JSON)
+        # Note « Réveil des appareils »: the identifiers of the Firebase
+        # project become --dart-define values; absent: no wake-up, as before.
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        shell: bash
+        run: |
+          if [ -z "$GOOGLE_SERVICES_JSON" ]; then echo "::warning::GOOGLE_SERVICES_JSON absent: Android not woken"; exit 0; fi
+          printf '%s' "$GOOGLE_SERVICES_JSON" | python3 -c '
+          import json, sys
+          g = json.load(sys.stdin)
+          client = next(c for c in g["client"] if c["client_info"]["android_client_info"]["package_name"] == "org.sarcade.sarcade_app")
+          key = client["api_key"][0]["current_key"]
+          print("::add-mask::" + key)
+          defines = " ".join([
+              "--dart-define=SARCADE_FCM_API_KEY=" + key,
+              "--dart-define=SARCADE_FCM_APP_ID=" + client["client_info"]["mobilesdk_app_id"],
+              "--dart-define=SARCADE_FCM_SENDER_ID=" + g["project_info"]["project_number"],
+              "--dart-define=SARCADE_FCM_PROJECT_ID=" + g["project_info"]["project_id"]])
+          open(__import__("os").environ["GITHUB_ENV"], "a").write("SARCADE_FCM_DEFINES=" + defines + "\n")
+          '
+          echo "::notice::Firebase wake-up built in"
       - name: Build APK
         shell: bash
         env:
@@ -167,7 +189,7 @@ jobs:
         run: |
           set -o pipefail
           # versionCode = CI run number: always increasing, as Google Play requires.
-          flutter build apk --release --build-number=${{ github.run_number }} --dart-define=SARCADE_BUILD="${SARCADE_BRANCH}@${GITHUB_SHA::7}" 2>&1 | tee android-build.log
+          flutter build apk --release --build-number=${{ github.run_number }} --dart-define=SARCADE_BUILD="${SARCADE_BRANCH}@${GITHUB_SHA::7}" ${SARCADE_FCM_DEFINES:-} 2>&1 | tee android-build.log
       - name: Build Play Store bundle (AAB)
         # Google Play only accepts an AAB signed with the upload key (the
         # SARCADE key; Google re-signs with its own key: Play App Signing).
@@ -179,7 +201,7 @@ jobs:
         run: |
           set -o pipefail
           if [ -z "${SARCADE_KEYSTORE:-}" ]; then echo "::warning::signing key absent: no AAB (Google Play refuses a debug key)"; exit 0; fi
-          flutter build appbundle --release --build-number=${{ github.run_number }} --dart-define=SARCADE_BUILD="${SARCADE_BRANCH}@${GITHUB_SHA::7}" 2>&1 | tee -a android-build.log
+          flutter build appbundle --release --build-number=${{ github.run_number }} --dart-define=SARCADE_BUILD="${SARCADE_BRANCH}@${GITHUB_SHA::7}" ${SARCADE_FCM_DEFINES:-} 2>&1 | tee -a android-build.log
           echo "::notice::AAB versionCode ${{ github.run_number }}"
       - name: Report Android build errors
         if: failure()

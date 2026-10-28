@@ -35,6 +35,9 @@ dependencies:
   url_launcher: ^6.3.1
   flutter_secure_storage: ^9.2.4
   webview_flutter: ^4.13.0
+  # Wake-up of Android when SARCADE is closed (note « Réveil des appareils »).
+  firebase_core: ^4.0.0
+  firebase_messaging: ^16.0.0
 dependency_overrides:
   # Windows storage of the Access session without the native ATL part
   # (third_party/flutter_secure_storage_windows/README.md).
