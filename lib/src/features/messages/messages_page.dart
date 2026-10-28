@@ -23,7 +23,10 @@ class MessagesPage extends StatefulWidget {
  final SarcadeApi api; final String eventId,actorId; final OfflineSyncService sync; final LocalStore store;
  /// Text prepared by another screen (a point sent from the measure).
  final String? initialText;
- const MessagesPage({super.key,required this.api,required this.eventId,required this.actorId,required this.sync,required this.store,this.initialText});
+ /// False while the screen is kept behind another tab (phone): nothing is
+ /// marked seen or read until the operator comes back to it.
+ final bool active;
+ const MessagesPage({super.key,required this.api,required this.eventId,required this.actorId,required this.sync,required this.store,this.initialText,this.active=true});
  @override State<MessagesPage> createState()=>_MessagesPageState();
 }
 class _MessagesPageState extends State<MessagesPage>{
@@ -52,7 +55,7 @@ class _MessagesPageState extends State<MessagesPage>{
      deviceId:widget.actorId,groups:{for(final g in _groups)g.id:g}).map((m)=>m.id).toSet();
    _markSeen();
    for(final s in widget.store.messageChanges()){_watch.add(s.listen((_){
-     _markSeen();
+     if(widget.active)_markSeen();
      if(!mounted)return;
      final follow=_atBottom; setState((){});
      // At the bottom, a new message stays in view (as on WhatsApp).
@@ -87,7 +90,18 @@ class _MessagesPageState extends State<MessagesPage>{
  }
 
  /// A received message shown on screen goes to « read » by itself.
+ @override void didUpdateWidget(MessagesPage old){
+   super.didUpdateWidget(old);
+   // Back on the Messages tab: same opening as a new screen (first unread).
+   if(widget.active&&!old.active){
+     _unreadAtOpen=unreadMessages(messages:_eventMessages,seen:widget.store.seenMessages(widget.eventId)??{},
+       deviceId:widget.actorId,groups:{for(final g in _groups)g.id:g}).map((m)=>m.id).toSet();
+     _markSeen();
+   }
+ }
+
  void _autoRead(SarcadeMessage m,List<SarcadeAck> acks){
+   if(!widget.active)return;
    if(_readSent.contains(m.id)||!needsAutoRead(message:m,deviceId:widget.actorId,acks:acks))return;
    _readSent.add(m.id);
    WidgetsBinding.instance.addPostFrameCallback((_)=>unawaited(_ack(m,'read')));
