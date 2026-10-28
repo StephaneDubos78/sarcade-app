@@ -272,6 +272,82 @@ jobs:
           releaseName: ${{ github.run_number }} main
           # max 50 characters for Google Play
 
+  ios-build:
+    # iPhone (note « Publication App Store (TestFlight) »). Pull requests:
+    # unsigned build, proves the app compiles. main: archive signed by Apple
+    # (cloud signing with the App Store Connect API key) and sent to
+    # TestFlight (also on a manual run of a branch, to test before merging);
+    # build number = CI run number. Secrets absent: unsigned only.
+    runs-on: macos-latest
+    concurrency:
+      group: ios-${{ github.ref }}
+      cancel-in-progress: false
+    env:
+      ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+      ASC_API_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - name: Generate iOS runner
+        run: |
+          if [ ! -d ios ]; then flutter create --platforms=ios --org org.sarcade --no-pub .; fi
+          rm -f test/widget_test.dart
+          python3 tool/patch_ios.py
+      - run: flutter pub get
+      - name: Build iOS (no code signing)
+        if: github.event_name == 'pull_request' || env.ASC_API_KEY == ''
+        shell: bash
+        run: |
+          set -o pipefail
+          flutter build ios --release --no-codesign --build-number=${{ github.run_number }} --dart-define=SARCADE_BUILD="${SARCADE_BRANCH}@${GITHUB_SHA::7}" 2>&1 | tee ios-build.log
+      - name: Archive, sign and send to TestFlight
+        if: github.event_name != 'pull_request' && env.ASC_API_KEY != ''
+        shell: bash
+        run: |
+          set -o pipefail
+          key="$RUNNER_TEMP/AuthKey_${ASC_KEY_ID}.p8"
+          printf '%s\n' "$ASC_API_KEY" > "$key"
+          auth=(-allowProvisioningUpdates -authenticationKeyPath "$key" -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID")
+          flutter build ios --release --config-only --build-number=${{ github.run_number }} --dart-define=SARCADE_BUILD="${SARCADE_BRANCH}@${GITHUB_SHA::7}" 2>&1 | tee ios-build.log
+          xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -configuration Release \
+            -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/Runner.xcarchive" \
+            CODE_SIGNING_ALLOWED=NO archive 2>&1 | tee -a ios-build.log | grep -E "error|warning: .*sign|ARCHIVE" || true
+          test -d "$RUNNER_TEMP/Runner.xcarchive" || { echo "::error::archive failed"; exit 1; }
+          # Archive left unsigned (no development profile: the team has no
+          # registered device); the export signs it for the App Store with the
+          # distribution certificate managed by Apple (cloud signing).
+          cat > "$RUNNER_TEMP/export.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>export</string>
+            <key>teamID</key><string>34785R7XLK</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>manageAppVersionAndBuildNumber</key><false/>
+            <key>uploadSymbols</key><true/>
+          </dict></plist>
+          PLIST
+          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/Runner.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/export.plist" -exportPath "$RUNNER_TEMP/export" \
+            "${auth[@]}" 2>&1 | tee -a ios-build.log
+          # Upload with altool: Xcode's own upload does not use the API key
+          # (« No Accounts with App Store Connect Access »).
+          ipa=$(ls "$RUNNER_TEMP"/export/*.ipa)
+          mkdir -p ~/.appstoreconnect/private_keys && cp "$key" ~/.appstoreconnect/private_keys/
+          xcrun altool --upload-app -f "$ipa" -t ios --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID" 2>&1 | tee -a ios-build.log
+          rm -f "$key" ~/.appstoreconnect/private_keys/*.p8
+          echo "::notice::iPhone build ${{ github.run_number }} sent to TestFlight"
+      - name: Report iOS build errors
+        if: failure()
+        shell: bash
+        run: |
+          grep -n -A8 -E "error:|Error:|FAILED|requires|deployment target|No profiles|Cloud signing|permission" ios-build.log \
+            | head -80 | sed 's/%/%25/g' | while IFS= read -r line; do echo "::error::${line}"; done || true
+
   linux-build:
     # Linux desktop client: Linux PCs and Chromebooks (Linux development
     # environment). On ChromeOS the Android app remains the main channel.
