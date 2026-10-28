@@ -1103,7 +1103,10 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         Row(children:[
           _stationIcon(p,size:40),const SizedBox(width:10),
           Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-            Text(p.label,style:const TextStyle(fontSize:17,fontWeight:FontWeight.w700)),
+            // APRS station linked to a terminal: its callsign stays visible
+            // (« PCO-demo · F4JPO-5 », decision of 28 Oct 2026).
+            Text(p.isAprs&&p.callsign!=null&&p.callsign!.isNotEmpty&&p.callsign!.toUpperCase()!=p.label.toUpperCase()
+              ?'${p.label} · ${p.callsign}':p.label,style:const TextStyle(fontSize:17,fontWeight:FontWeight.w700)),
             Text(details.join(' · '),style:TextStyle(fontSize:12,color:f==Freshness.fresh?s.onSurfaceVariant:s.tertiary)),
           ])),
           IconButton(tooltip:S.t(fav?'favourites.remove':'favourites.add'),onPressed:()=>_toggleFavourite(p.deviceId),icon:Icon(fav?Icons.star:Icons.star_border,color:fav?s.tertiary:null)),
