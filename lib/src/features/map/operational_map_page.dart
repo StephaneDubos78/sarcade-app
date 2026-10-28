@@ -87,7 +87,7 @@ class OperationalMapPage extends StatefulWidget {
 class _OperationalMapPageState extends State<OperationalMapPage> {
   final _map=MapController(); final _realtime=RealtimeService(); final _location=LocationService(); final _notifications=NotificationService(); final _uuid=const Uuid();
   final Map<String,SarcadePosition> _positions={}; final Map<String,SarcadePoi> _pois={}; final Map<String,ReferenceSite> _references={};
-  StreamSubscription? _rtSub; Timer? _syncUiTimer; bool _started=false, _starting=false; bool _showPanel=true; bool _showReferencePanel=false; bool _showHighPoints=true; bool _showRelays=true; String _referenceQuery=''; String? _selectedDevice; ReferenceSite? _selectedReference; List<SarcadePosition> _trace=[]; bool _traceLoading=false; late final OfflineSyncService _sync; bool _layoutInitialized=false;
+  StreamSubscription? _rtSub; Timer? _syncUiTimer; bool _started=false, _starting=false; bool _showPanel=true; bool _showReferencePanel=false; bool _showHighPoints=true; bool _showRelays=true; String? _selectedDevice; ReferenceSite? _selectedReference; List<SarcadePosition> _trace=[]; bool _traceLoading=false; late final OfflineSyncService _sync; bool _layoutInitialized=false;
   late final DrawingController _drawing; bool _drawingTools=false; final _mapKey=GlobalKey();
   late final TrackingService _tracking; late final OperationsService _ops; bool _updatePageShown=false;
   late final RoutesController _routes; late final NavigationController _nav; late final RoadGraphService _graphs;
@@ -102,6 +102,12 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
 
   // Phones get the map full width: side panels start closed and open as overlays.
   static const _compactWidth=600.0;
+  /// Phone: screen shown (note « Navigation et menus simplifiés », 27 Oct
+  /// 2026): 0 Carte, 1 Messages, 2 Équipes, 3 Main courante, 4 Plus. Each
+  /// one is built at its first visit and then kept as it was left.
+  int _tab=0; final Set<int> _builtTabs={0};
+  bool get _isCompact=>MediaQuery.sizeOf(context).width<_compactWidth;
+  void _goTab(int t){if(_tab==t)return;setState((){_tab=t;_builtTabs.add(t);});}
   @override void didChangeDependencies(){super.didChangeDependencies();if(!_layoutInitialized){_layoutInitialized=true;if(MediaQuery.sizeOf(context).width<_compactWidth)_showPanel=false;}}
 
   StreamSubscription<String>? _opensSub; StreamSubscription<void>? _answersSub; bool _drainingAnswers=false;
@@ -134,8 +140,11 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     }
   }
 
-  void _openMessages()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>MessagesPage(api:widget.api,eventId:widget.eventId,
-    actorId:widget.deviceId,sync:_sync,store:widget.store)));
+  void _openMessages(){
+    if(_isCompact){_goTab(1);return;}
+    Navigator.push(context,MaterialPageRoute(builder:(_)=>MessagesPage(api:widget.api,eventId:widget.eventId,
+      actorId:widget.deviceId,sync:_sync,store:widget.store)));
+  }
   @override void initState(){super.initState();_initNotificationActions();unawaited(requestPersistentStorage());_sync=OfflineSyncService(api:widget.api,store:widget.store,eventId:widget.eventId,onRemoteChange:_onRemoteChange);_initDrawing();_initBearings();_loadLocal();_initRoutes();_initMeasure();_sync.start();_initOperations();_loadBasemaps();_initWebUpdate();_syncUiTimer=Timer.periodic(const Duration(seconds:2),(t){if(t.tick%3==0)_drainAnswers();if(mounted)setState((){});});AccessManager.instance.addListener(_onAccessChanged);_start();}
   bool _validPosition(SarcadePosition p){
     final t=p.time.toUtc(), now=DateTime.now().toUtc();
@@ -199,7 +208,6 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     final n=_sync.inFlight;
     return n>0?'$_status · ${S.t('status.inFlight',{'n':n})}':_status;
   }
-  Color? get _statusColor=>AccessManager.instance.requiredFor(widget.api.baseUrl)||(_sync.lastSyncOk&&(_sync.unsent>0||_sync.eventUnknown))?Colors.deepOrange:null;
 
   /// « Se connecter »: after the sign-in everything that waited leaves.
   Future<void> _signIn() async {
@@ -399,21 +407,6 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   /// « Open in… » with the navigation app chosen by the organisation.
   Future<void> _openElsewhere(LatLng p,String label)=>openInOtherApp(context,p,label,
     app:widget.store.preference('nav_app')??'operator',hideTracking:widget.store.preference('nav_hide_tracking')=='1');
-
-  Future<void> _gotoCoordinates() async {
-    final controller=TextEditingController();
-    final text=await showDialog<String>(context:context,builder:(c)=>AlertDialog(
-      title:Text(S.t('measure.goto')),
-      content:TextField(controller:controller,autofocus:true,decoration:InputDecoration(hintText:S.t('measure.gotoHint'))),
-      actions:[TextButton(onPressed:()=>Navigator.pop(c),child:Text(S.t('common.cancel'))),
-        FilledButton(onPressed:()=>Navigator.pop(c,controller.text),child:Text(S.t('common.ok')))],
-    ));
-    if(text==null||!mounted)return;
-    final p=parseCoordinates(text);
-    if(p==null){ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(S.t('measure.gotoInvalid'))));return;}
-    _map.move(p,15);
-    await _measureTo(p,S.t('measure.coordinates'));
-  }
 
   void _initRoutes(){
     _routes=RoutesController(api:widget.api,store:widget.store,sync:_sync,eventId:widget.eventId,actorId:widget.deviceId);
@@ -631,6 +624,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     _map.fitCamera(CameraFit.bounds(bounds:LatLngBounds(LatLng(minLat,minLon),LatLng(maxLat,maxLon)),padding:const EdgeInsets.all(90),maxZoom:16));
   }
   Future<void> _select(SarcadePosition p,{bool move=true}) async {
+    if(_tab!=0)_goTab(0);
     setState((){_selectedDevice=p.deviceId;_traceLoading=true;_trace=[];_history=[];_scrub=null;});
     if(move)_map.move(LatLng(p.lat,p.lon),_map.camera.zoom<15?15:_map.camera.zoom);
     try{
@@ -649,18 +643,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       rethrow;
     }
   }
-  void _selectReference(ReferenceSite site){setState((){_selectedReference=site;_showReferencePanel=true;_showPanel=false;});_map.move(LatLng(site.lat,site.lon),14);}
-  List<ReferenceSite> _filteredReferences(){
-    final q=_referenceQuery.trim().toLowerCase();
-    final rows=_references.values.where((r){
-      if(r.isHighPoint&&!_showHighPoints)return false;
-      if(r.isRelay&&!_showRelays)return false;
-      if(q.isEmpty)return true;
-      final haystack=[r.name,r.callsign??'',r.mode??'',r.subtype??'',r.rxMhz?.toString()??'',r.txMhz?.toString()??''].join(' ').toLowerCase();
-      return haystack.contains(q.replaceAll(',','.'))||haystack.contains(q);
-    }).toList()..sort((a,b)=>a.name.toLowerCase().compareTo(b.name.toLowerCase()));
-    return rows;
-  }
+  void _selectReference(ReferenceSite site){setState((){_tab=0;_selectedReference=site;_showReferencePanel=true;_showPanel=false;});_map.move(LatLng(site.lat,site.lon),14);}
   String _frequency(double? value)=>value==null?'-':'${value.toStringAsFixed(3)} MHz';
   List<List<SarcadePosition>> _traceSegments(){
     if(_trace.length<2)return _trace.isEmpty?<List<SarcadePosition>>[]:[List<SarcadePosition>.from(_trace)];
@@ -878,22 +861,28 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     double rotation=0; try{rotation=_map.camera.rotation;}catch(_){}
     final rotated=rotation%360!=0;
     final scheme=Theme.of(context).colorScheme;
+    // One block within thumb reach, every target 48 px at least.
     return Column(mainAxisSize:MainAxisSize.min,children:[
-      FloatingActionButton.small(heroTag:'map-layers',tooltip:S.t('basemap.menu'),onPressed:_chooseBasemap,child:const Icon(Icons.layers_outlined)),
-      const SizedBox(height:8),
+      _fab('map-layers',S.t('basemap.menu'),const Icon(Icons.layers_outlined),_chooseBasemap),
+      const SizedBox(height:10),
       if(rotated)...[
-        FloatingActionButton.small(heroTag:'map-north',tooltip:S.t('map.north'),onPressed:(){
+        _fab('map-north',S.t('map.north'),Transform.rotate(angle:-rotation*3.141592653589793/180,child:const Icon(Icons.explore_outlined)),(){
             if(_meMode==MeMode.compass){_stopCompass();_meMode=MeMode.follow;}
-            _map.rotate(0);setState((){});},
-          child:Transform.rotate(angle:-rotation*3.141592653589793/180,child:const Icon(Icons.explore_outlined))),
-        const SizedBox(height:8),
+            _map.rotate(0);setState((){});}),
+        const SizedBox(height:10),
       ],
-      FloatingActionButton.small(heroTag:'map-me',onPressed:_myPosition,
-        tooltip:S.t(switch(_meMode){MeMode.off=>'map.myPosition',MeMode.follow=>'map.followMeOn',MeMode.compass=>'map.compassOn'}),
-        backgroundColor:_followMe?scheme.primary:null,foregroundColor:_followMe?scheme.onPrimary:null,
-        child:Icon(switch(_meMode){MeMode.off=>Icons.my_location,MeMode.follow=>Icons.navigation,MeMode.compass=>Icons.explore})),
+      _fab('map-fit',S.t('map.fit'),const Icon(Icons.center_focus_strong),_fitOperators),
+      const SizedBox(height:10),
+      _fab('map-me',S.t(switch(_meMode){MeMode.off=>'map.myPosition',MeMode.follow=>'map.followMeOn',MeMode.compass=>'map.compassOn'}),
+        Icon(switch(_meMode){MeMode.off=>Icons.my_location,MeMode.follow=>Icons.navigation,MeMode.compass=>Icons.explore}),_myPosition,
+        background:_followMe?scheme.primary:null,foreground:_followMe?scheme.onPrimary:null),
     ]);
   }
+
+  /// Floating button of 48 × 48 px (the small ones were 40 px).
+  Widget _fab(String tag,String tooltip,Widget icon,VoidCallback onPressed,{Color? background,Color? foreground})=>
+    SizedBox(width:48,height:48,child:FloatingActionButton(heroTag:tag,tooltip:tooltip,onPressed:onPressed,
+      backgroundColor:background,foregroundColor:foreground,shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(14)),child:icon));
 
   /// Map search (request of 26 Oct 2026): what the device knows, then the
   /// addresses from the server. The chosen result gets a red pin; a tap on
@@ -939,6 +928,53 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   bool get _showOperators=>widget.store.preference('show_ops:${widget.eventId}')!='0';
   bool get _showDrawings=>widget.store.preference('show_draw:${widget.eventId}')!='0';
   Future<void> _setShown(String key,bool v) async {await widget.store.setPreference('$key:${widget.eventId}',v?null:'0');if(mounted)setState((){});}
+  /// Phone: the filters in one « Filtres » button (computer: chips visible).
+  Widget _filtersButton(){
+    final off=[!_showOperators,!_showAprs,!_showHighPoints,!_showRelays,!_showDrawings,!_showBearings,_withoutInternetOnly].where((x)=>x).length;
+    return Material(color:Colors.transparent,child:InkWell(borderRadius:BorderRadius.circular(24),onTap:_openFilters,
+      child:Container(height:48,padding:const EdgeInsets.symmetric(horizontal:16),decoration:glass(context,radius:24),
+        child:Row(mainAxisSize:MainAxisSize.min,children:[const Icon(Icons.tune,size:20),const SizedBox(width:8),
+          Text(off==0?S.t('map.filters'):'${S.t('map.filters')} · $off')]))));
+  }
+
+  void _openFilters()=>showModalBottomSheet<void>(context:context,showDragHandle:true,builder:(c)=>StatefulBuilder(builder:(c,refresh){
+    Widget toggle(String label,bool on,Future<void> Function(bool) set)=>SwitchListTile(title:Text(label),value:on,
+      onChanged:(v) async {await set(v);refresh((){});});
+    return SafeArea(child:SingleChildScrollView(child:Column(mainAxisSize:MainAxisSize.min,children:[
+      toggle(S.t('chips.operators'),_showOperators,(v)=>_setShown('show_ops',v)),
+      toggle('APRS',_showAprs,(v) async =>setState(()=>_showAprs=v)),
+      toggle(S.t('refs.highPoints'),_showHighPoints,(v) async =>setState(()=>_showHighPoints=v)),
+      toggle(S.t('refs.relays'),_showRelays,(v) async =>setState(()=>_showRelays=v)),
+      toggle(S.t('chips.drawings'),_showDrawings,(v)=>_setShown('show_draw',v)),
+      toggle(S.t('chips.bearings'),_showBearings,(v)=>_setShown('show_brg',v)),
+      toggle(S.t('chips.withoutInternet'),_withoutInternetOnly,(v) async =>setState(()=>_withoutInternetOnly=v)),
+    ])));
+  }));
+
+  /// « Équipes »: the stations and « À proximité » in one place, a screen on
+  /// the phone, a panel next to the map on a computer.
+  Widget _teams(List<SarcadePosition> sorted,{required bool screen}){
+    final list=Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+      Padding(padding:const EdgeInsets.fromLTRB(14,14,14,4),child:Text(S.t('operators.title',{'n':sorted.length}),style:Theme.of(context).textTheme.titleMedium)),
+      if(_positions.values.any((p)=>p.isAprs))Padding(padding:const EdgeInsets.symmetric(horizontal:12),child:Align(alignment:Alignment.centerLeft,child:Tooltip(message:S.t('operators.aprsHint'),
+        child:FilterChip(avatar:const Icon(Icons.settings_input_antenna,size:18),label:Text(S.t('operators.aprs')),selected:_showAprs,onSelected:(v)=>setState(()=>_showAprs=v))))),
+      Expanded(child:ListView(children:sortStations(sorted,_favourites).map((p)=>_stationTile(p)).toList())),
+    ]);
+    final tabs=DefaultTabController(length:2,child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+      TabBar(tabs:[Tab(text:S.t('teams.list')),Tab(text:S.t('nearby.title'))]),
+      Expanded(child:TabBarView(children:[list,_nearbyPanel(closable:false)])),
+    ]));
+    if(!screen)return tabs;
+    return Scaffold(appBar:AppBar(title:Text(S.t('tabs.teams'))),body:tabs);
+  }
+
+  /// Phone « Plus »: a normal screen, a list of large buttons.
+  Widget _moreScreen(List<_RailAction> items)=>Scaffold(appBar:AppBar(title:Text(S.t('tabs.more'))),
+    body:ListView(padding:const EdgeInsets.symmetric(vertical:8),children:[
+      for(final a in items)ListTile(minTileHeight:64,leading:Icon(a.icon,size:28),
+        title:Text(a.label,style:const TextStyle(fontSize:17)),trailing:const Icon(Icons.chevron_right),onTap:a.onTap),
+    ]));
+
   Widget _filterChips(){
     Widget chip(String label,bool on,ValueChanged<bool> set)=>Padding(padding:const EdgeInsets.only(right:6),
       child:FilterChip(label:Text(label),selected:on,onSelected:set,showCheckmark:false,visualDensity:VisualDensity.compact));
@@ -1004,7 +1040,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   }
 
   // --- Stations V2: freshness, source, APRS symbols, favourites, trace, proximity ---
-  bool _withoutInternetOnly=false, _showNearby=false;
+  bool _withoutInternetOnly=false;
   List<SarcadePosition> _history=[]; int _traceHours=1; SarcadePosition? _scrub;
   int get _ageingMin=>(_ops.settings.raw['position_ageing_min'] as num?)?.toInt()??2;
   int get _staleMin=>(_ops.settings.raw['position_stale_min'] as num?)?.toInt()??10;
@@ -1152,7 +1188,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
 
   /// « À proximité » (Tesla): from the search pin, else the measure target,
   /// else the map centre; operators, stations and reference sites.
-  Widget _nearbyPanel(){
+  Widget _nearbyPanel({bool closable=true}){
     final s=Theme.of(context).colorScheme;
     final from=_searchPin??_measure.target??_mapCentre();
     final fromLabel=_searchPin!=null?S.t('nearby.fromPin'):_measure.target!=null?S.t('nearby.fromTarget'):S.t('nearby.fromCentre');
@@ -1162,10 +1198,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     ];
     final list=from==null?<Nearby<({String title,String subtitle,LatLng at,Widget icon,VoidCallback onTap})>>[]:nearest(from,items,(i)=>i.at);
     return Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
-      Padding(padding:const EdgeInsets.fromLTRB(14,12,6,0),child:Row(children:[
-        Expanded(child:Text(S.t('nearby.title'),style:Theme.of(context).textTheme.titleMedium)),
-        IconButton(tooltip:S.t('common.close'),onPressed:()=>setState(()=>_showNearby=false),icon:const Icon(Icons.close)),
-      ])),
+      if(closable)Padding(padding:const EdgeInsets.fromLTRB(14,12,6,0),child:Text(S.t('nearby.title'),style:Theme.of(context).textTheme.titleMedium))
+      else const SizedBox(height:10),
       Padding(padding:const EdgeInsets.symmetric(horizontal:14),child:Text(fromLabel,style:TextStyle(fontSize:12,color:s.onSurfaceVariant))),
       const SizedBox(height:6),
       Expanded(child:ListView(children:[for(final n in list)ListTile(leading:SizedBox(width:34,child:Center(child:n.item.icon)),
@@ -1464,35 +1498,49 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     // On a phone a panel takes most of the width, leaving a strip of map visible.
     double panelWidth(double w)=>compact?(screenWidth*0.85).clamp(0.0,w):w;
     void toggleOperators()=>setState((){_showPanel=!_showPanel;if(_showPanel)_showReferencePanel=false;});
-    void toggleReferences()=>setState((){_showReferencePanel=!_showReferencePanel;if(_showReferencePanel){_showPanel=false;_showRoutesPanel=false;}});
     void toggleRoutes()=>setState((){_showRoutesPanel=!_showRoutesPanel;if(_showRoutesPanel){_showPanel=false;_showReferencePanel=false;}else{_drawingRouteId=null;}});
     void openFiles()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>FilesPage(api:widget.api,eventId:widget.eventId,actorId:widget.deviceId)));
     void openAprs()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>AprsPage(api:widget.api,eventId:widget.eventId,actorId:widget.deviceId)));
     void openLogbook()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>LogbookPage(api:widget.api,eventId:widget.eventId)));
     void openMessages()=>_openMessages();
-    void showMap()=>setState((){_showPanel=false;_showReferencePanel=false;_showRoutesPanel=false;_showNearby=false;_drawingRouteId=null;});
-    // Every action of the former top bar, for the « Plus » sheet (phone) and the rail (computer).
-    final actions=<_RailAction>[
-      _RailAction(Icons.groups_outlined,S.t('map.operators'),toggleOperators,selected:_showPanel),
-      _RailAction(Icons.cell_tower,S.t('map.references'),toggleReferences,selected:_showReferencePanel),
-      _RailAction(Icons.track_changes,S.t('bearings.take'),()=>_bearings.startTaking()),
-      _RailAction(Icons.near_me_outlined,S.t('nearby.title'),()=>setState((){_showNearby=!_showNearby;if(_showNearby){_showPanel=false;_showReferencePanel=false;_showRoutesPanel=false;}}),selected:_showNearby),
-      _RailAction(Icons.route,S.t('routes.menu'),toggleRoutes,selected:_showRoutesPanel),
-      _RailAction(Icons.cloud_outlined,S.t('weather.menu'),()=>_openWeather()),
-      _RailAction(Icons.pin_drop_outlined,S.t('measure.goto'),_gotoCoordinates),
-      _RailAction(Icons.center_focus_strong,S.t('map.fit'),_fitOperators),
-      _RailAction(Icons.folder_copy_outlined,S.t('map.files'),openFiles),
-      _RailAction(Icons.receipt_long,S.t('map.logbook'),openLogbook),
+    void showMap()=>setState((){_tab=0;_showPanel=false;_showReferencePanel=false;_showRoutesPanel=false;_drawingRouteId=null;});
+    // Phone: an entry of « Plus » that works on the map comes back to it.
+    void onMap(VoidCallback f){if(_tab!=0)_goTab(0);f();}
+    void takeBearing()=>onMap(()=>_bearings.startTaking());
+    void openRoutes()=>onMap((){if(!_showRoutesPanel)toggleRoutes();});
+    // « Plus » (note « Navigation et menus simplifiés »): phone screen, and
+    // last entry of the rail on a computer.
+    final more=<_RailAction>[
+      if(compact)...[
+        _RailAction(Icons.route,S.t('routes.menu'),openRoutes),
+        _RailAction(Icons.track_changes,S.t('bearings.take'),takeBearing),
+        _RailAction(Icons.cloud_outlined,S.t('weather.menu'),()=>_openWeather()),
+        _RailAction(Icons.folder_copy_outlined,S.t('map.files'),openFiles),
+      ],
       if(isPco(widget.deviceId))_RailAction(Icons.settings_input_antenna,S.t('aprs.title'),openAprs),
-      _RailAction(Icons.outbox_outlined,'${S.t('unsent.title')} (${_sync.unsent})',_openUnsent),
+      _RailAction(Theme.of(context).brightness==Brightness.dark?Icons.light_mode_outlined:Icons.dark_mode_outlined,S.t('ui.dayNight'),_toggleDayNight),
+      if(widget.onSettings!=null)_RailAction(Icons.settings_outlined,S.t('map.settings'),widget.onSettings!),
     ];
-    void openMore()=>showModalBottomSheet<void>(context:context,showDragHandle:true,builder:(c)=>SafeArea(child:SingleChildScrollView(child:Column(mainAxisSize:MainAxisSize.min,children:[
-      for(final a in actions)ListTile(leading:Icon(a.icon),title:Text(a.label),selected:a.selected,onTap:(){Navigator.pop(c);a.onTap();}),
-      ListTile(leading:Icon(Theme.of(context).brightness==Brightness.dark?Icons.light_mode_outlined:Icons.dark_mode_outlined),title:Text(S.t('ui.dayNight')),onTap:(){Navigator.pop(c);_toggleDayNight();}),
-      if(widget.onSettings!=null)ListTile(leading:const Icon(Icons.settings_outlined),title:Text(S.t('map.settings')),onTap:(){Navigator.pop(c);widget.onSettings!();}),
-    ]))));
-    final messagesButton=IconButton(tooltip:S.t('map.messages'),onPressed:openMessages,icon:_messagesIcon());
-    return Scaffold(
+    void openMoreSheet()=>showModalBottomSheet<void>(context:context,showDragHandle:true,builder:(c)=>SafeArea(child:Column(mainAxisSize:MainAxisSize.min,children:[
+      for(final a in more)ListTile(minTileHeight:56,leading:Icon(a.icon),title:Text(a.label),onTap:(){Navigator.pop(c);a.onTap();}),
+    ])));
+    // Computer: 9 entries (Carte and Messages are drawn by the rail itself).
+    final rail=<_RailAction>[
+      _RailAction(Icons.groups_outlined,S.t('tabs.teams'),toggleOperators,selected:_showPanel),
+      _RailAction(Icons.route,S.t('routes.menu'),toggleRoutes,selected:_showRoutesPanel),
+      _RailAction(Icons.track_changes,S.t('bearings.take'),()=>_bearings.startTaking()),
+      _RailAction(Icons.receipt_long,S.t('map.logbook'),openLogbook),
+      _RailAction(Icons.folder_copy_outlined,S.t('map.files'),openFiles),
+      _RailAction(Icons.cloud_outlined,S.t('weather.menu'),()=>_openWeather()),
+      _RailAction(Icons.more_horiz,S.t('tabs.more'),openMoreSheet),
+    ];
+    final messagesButton=IconButton(tooltip:S.t('map.messages'),onPressed:openMessages,icon:_messagesIcon(),
+      style:IconButton.styleFrom(fixedSize:const Size(48,48)));
+    return PopScope(
+      // Phone: Back first returns to the Carte tab, then leaves the application.
+      canPop:!compact||_tab==0,
+      onPopInvokedWithResult:(didPop,_){if(!didPop&&_tab!=0)_goTab(0);},
+      child:Scaffold(
       body:SafeArea(bottom:false,child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
         OperationsBanners(settings:_ops.settings,update:_ops.update,
           alert:syncAlert(_sync.currentItems,DateTime.now(),_ops.settings.syncAlertMinutes),
@@ -1511,10 +1559,9 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
             Expanded(child:Text(S.t('graph.mobile',{'mb':(_graphs.pendingMobileBytes!/1048576).toStringAsFixed(1)}),style:Theme.of(context).textTheme.bodySmall)),
             TextButton(onPressed:()=>_graphs.check(allowMobile:true),child:Text(S.t('graph.download'))),
           ]))),
-        Expanded(child:_withDrawingShortcuts(Row(children:[
+        Expanded(child:IndexedStack(index:compact?_tab:0,children:[_withDrawingShortcuts(Row(children:[
         // Computer: rail on the left (mock-up V2).
-        if(!compact)_Rail(messages:messagesButton,actions:actions,onMap:showMap,mapSelected:!_showPanel&&!_showReferencePanel&&!_showRoutesPanel,
-          onDayNight:_toggleDayNight,onSettings:widget.onSettings,status:_statusLine,statusColor:_statusColor,onStatus:_openUnsent),
+        if(!compact)_Rail(messages:messagesButton,actions:rail,onMap:showMap,mapSelected:!_showPanel&&!_showReferencePanel&&!_showRoutesPanel),
         if(_showRoutesPanel)SizedBox(width:panelWidth(360),child:Material(elevation:3,child:RoutesPanel(
           controller:_routes,api:widget.api,actorId:widget.deviceId,selectedRouteId:_selectedRouteId,drawingRouteId:_drawingRouteId,
           groups:widget.store.groups(widget.eventId).map(CommGroup.fromJson).toList(),
@@ -1524,16 +1571,14 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           onNavigate:_navigateTo,
           onFocus:_fitPoints,
         ))),
-        if(_showReferencePanel)SizedBox(width:panelWidth(355),child:Material(elevation:3,child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
-          Padding(padding:const EdgeInsets.fromLTRB(14,8,6,0),child:Row(children:[Expanded(child:Text(S.t('refs.title',{'n':_filteredReferences().length}),style:Theme.of(context).textTheme.titleMedium)),IconButton(tooltip:S.t('refs.refresh'),onPressed:()=>_refreshReferences(),icon:const Icon(Icons.refresh))])),
-          Padding(padding:const EdgeInsets.symmetric(horizontal:12,vertical:4),child:TextField(decoration:InputDecoration(prefixIcon:const Icon(Icons.search),hintText:S.t('refs.search'),isDense:true,border:const OutlineInputBorder()),onChanged:(v)=>setState(()=>_referenceQuery=v))),
-          Padding(padding:const EdgeInsets.symmetric(horizontal:12,vertical:6),child:Wrap(spacing:8,children:[
-            FilterChip(label:Text(S.t('refs.highPoints')),selected:_showHighPoints,onSelected:(v)=>setState(()=>_showHighPoints=v)),
-            FilterChip(label:Text(S.t('refs.relays')),selected:_showRelays,onSelected:(v)=>setState(()=>_showRelays=v)),
-          ])),
-          Expanded(child:ListView.builder(itemCount:_filteredReferences().length,itemBuilder:(context,index){final r=_filteredReferences()[index];return ListTile(selected:_selectedReference?.id==r.id,leading:Icon(r.isHighPoint?Icons.terrain:Icons.cell_tower,color:r.isHighPoint?Colors.indigo:Colors.deepOrange),title:Text(r.name),subtitle:Text(r.subtitle),onTap:()=>_selectReference(r));})),
-          if(_selectedReference!=null)Builder(builder:(context){final r=_selectedReference!;return Container(padding:const EdgeInsets.all(14),decoration:BoxDecoration(border:Border(top:BorderSide(color:Theme.of(context).dividerColor))),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-            Text(r.name,style:const TextStyle(fontWeight:FontWeight.bold)),
+        // Reference: the detailed sheet of a high point or a relay only;
+        // filters by the chips, search by the search bar.
+        if(_showReferencePanel&&_selectedReference!=null)SizedBox(width:panelWidth(355),child:Material(elevation:3,child:Builder(builder:(context){final r=_selectedReference!;return SingleChildScrollView(padding:const EdgeInsets.fromLTRB(14,8,6,14),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+            Row(children:[
+              Icon(r.isHighPoint?Icons.terrain:Icons.cell_tower,color:r.isHighPoint?Colors.indigo:Colors.deepOrange),const SizedBox(width:8),
+              Expanded(child:Text(r.name,style:Theme.of(context).textTheme.titleMedium)),
+              IconButton(tooltip:S.t('common.close'),onPressed:()=>setState((){_showReferencePanel=false;_selectedReference=null;}),icon:const Icon(Icons.close)),
+            ]),
             if(r.callsign?.isNotEmpty==true)Text(S.t(r.isHighPoint?'refs.reference':'refs.callsign',{'v':r.callsign})),
             if(r.isHighPoint&&r.altM!=null)Text(S.t('refs.altitude',{'v':r.altM!.toStringAsFixed(0)})),
             if(r.subtype?.isNotEmpty==true)Text(S.t('refs.type',{'v':r.subtype})),
@@ -1545,15 +1590,9 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
             if(r.access?.isNotEmpty==true)Text(S.t('refs.access',{'v':r.access})),
             if(r.clearance?.isNotEmpty==true)Text(S.t('refs.clearance',{'v':r.clearance})),
             if(r.verifiedAt?.isNotEmpty==true)Text(S.t('refs.verified',{'v':r.verifiedAt})),
-          ]));}),
-        ]))),
-        if(_showPanel)SizedBox(width:panelWidth(285),child:Material(elevation:3,child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
-          Padding(padding:const EdgeInsets.fromLTRB(14,14,14,4),child:Text(S.t('operators.title',{'n':sorted.length}),style:Theme.of(context).textTheme.titleMedium)),
-          if(_positions.values.any((p)=>p.isAprs))Padding(padding:const EdgeInsets.symmetric(horizontal:12),child:Align(alignment:Alignment.centerLeft,child:Tooltip(message:S.t('operators.aprsHint'),
-            child:FilterChip(avatar:const Icon(Icons.settings_input_antenna,size:18),label:Text(S.t('operators.aprs')),selected:_showAprs,onSelected:(v)=>setState(()=>_showAprs=v))))),
-          Expanded(child:ListView(children:sortStations(sorted,_favourites).map((p)=>_stationTile(p)).toList())),
-        ]))),
-        if(_showNearby)SizedBox(width:panelWidth(340),child:Material(elevation:3,child:_nearbyPanel())),
+          ]));}))),
+        // Computer: « Équipes » panel next to the map (list and nearby).
+        if(_showPanel&&!compact)SizedBox(width:panelWidth(320),child:Material(elevation:3,child:_teams(sorted,screen:false))),
         Expanded(child:Stack(key:_mapKey,children:[FlutterMap(mapController:_map,options:MapOptions(
           initialCenter:_savedView==null?const LatLng(48.8566,2.3522):LatLng(_savedView.lat,_savedView.lon),initialZoom:_savedView?.zoom??11,maxZoom:20,onTap:_onMapTap,
           onPositionChanged:(camera,_)=>_onCameraChanged(camera),
@@ -1600,12 +1639,9 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           // meant reaching the small cross at the far right). Hidden in
           // follow mode (navigation variants), like the toolbar before.
           if(!_follow)Row(crossAxisAlignment:CrossAxisAlignment.start,children:[
-            FloatingActionButton.small(heroTag:'drawing-tools',
-              tooltip:_drawingTools?S.t('draw.close'):S.t('draw.open'),
-              backgroundColor:_drawingTools?Theme.of(context).colorScheme.primary:null,
-              foregroundColor:_drawingTools?Theme.of(context).colorScheme.onPrimary:null,
-              onPressed:_toggleDrawingTools,
-              child:Icon(_drawingTools?Icons.draw:Icons.draw_outlined)),
+            _fab('drawing-tools',_drawingTools?S.t('draw.close'):S.t('draw.open'),Icon(_drawingTools?Icons.draw:Icons.draw_outlined),_toggleDrawingTools,
+              background:_drawingTools?Theme.of(context).colorScheme.primary:null,
+              foreground:_drawingTools?Theme.of(context).colorScheme.onPrimary:null),
             if(_drawingTools)...[
               const SizedBox(width:8),
               Flexible(child:DrawingToolbar(controller:_drawing,onExport:_exportGeoJson,onImport:_importFile,onClose:_toggleDrawingTools)),
@@ -1616,8 +1652,9 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
               _linksPill(),
             ],
           ]),
-          if(!_drawingTools)Padding(padding:const EdgeInsets.only(top:8),child:_filterChips()),
-          if(!_drawingTools)Padding(padding:const EdgeInsets.only(top:8),child:Wrap(spacing:8,runSpacing:8,children:[_trackingBadge(),?_staleBanner()])),
+          // Phone: filters in one button; computer: chips visible.
+          if(!_drawingTools)Padding(padding:const EdgeInsets.only(top:8),child:compact?_filtersButton():_filterChips()),
+          if(!_drawingTools)Padding(padding:const EdgeInsets.only(top:8),child:Wrap(spacing:8,runSpacing:8,children:[if(!compact)_trackingBadge(),?_staleBanner()])),
           if(_drawing.isDrawing)Padding(padding:const EdgeInsets.only(top:8),child:DraftBar(controller:_drawing)),
           if(_drawing.selected!=null)Padding(padding:const EdgeInsets.only(top:8),child:SelectionBar(controller:_drawing,onEditLabel:_editSelectedLabel)),
           if(_drawingClosure)Padding(padding:const EdgeInsets.only(top:8),child:Card(child:Padding(padding:const EdgeInsets.symmetric(horizontal:12,vertical:6),child:Row(mainAxisSize:MainAxisSize.min,children:[
@@ -1627,16 +1664,14 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
             FilledButton(onPressed:_finishClosure,child:Text(S.t('closures.finish'))),
           ])))),
         ])),
-        Positioned(right:12,bottom:compact?104:24,child:_mapButtons()),
-        if(_bearings.taking)Positioned(left:0,right:0,bottom:compact?92:16,child:Center(child:ConstrainedBox(constraints:const BoxConstraints(maxWidth:520),child:Padding(padding:const EdgeInsets.symmetric(horizontal:12),child:_bearingTakeSheet()))))
-        else if(selected!=null)Positioned(left:12,right:compact?12:null,bottom:compact?96:24,
+        Positioned(right:12,bottom:compact?60:24,child:_mapButtons()),
+        // Phone: « Suivi actif » just above the tab bar.
+        if(compact&&!_bearings.taking&&selected==null)Positioned(left:12,bottom:12,child:_trackingBadge()),
+        if(_bearings.taking)Positioned(left:0,right:0,bottom:16,child:Center(child:ConstrainedBox(constraints:const BoxConstraints(maxWidth:520),child:Padding(padding:const EdgeInsets.symmetric(horizontal:12),child:_bearingTakeSheet()))))
+        else if(selected!=null)Positioned(left:12,right:compact?12:null,bottom:compact?12:24,
           child:ConstrainedBox(constraints:const BoxConstraints(maxWidth:420),child:_stationSheet(selected))),
-        Positioned(left:16,bottom:compact?108:24,child:IgnorePointer(child:_scaleBar())),
-        // Phone: floating tab bar at the bottom (mock-up V2).
-        if(compact)Positioned(left:12,right:12,bottom:12,child:SafeArea(top:false,child:_TabBar(
-          messages:messagesButton,onMap:showMap,mapSelected:!_showPanel&&!_showReferencePanel&&!_showRoutesPanel,
-          onTeams:toggleOperators,teamsSelected:_showPanel,onLogbook:openLogbook,onMore:openMore))),
-        Positioned(left:0,right:0,bottom:compact?100:72,child:Center(child:ConstrainedBox(constraints:const BoxConstraints(maxWidth:520),child:Column(mainAxisSize:MainAxisSize.min,children:[
+        Positioned(left:16,bottom:compact?56:24,child:IgnorePointer(child:_scaleBar())),
+        Positioned(left:0,right:0,bottom:compact?60:72,child:Center(child:ConstrainedBox(constraints:const BoxConstraints(maxWidth:520),child:Column(mainAxisSize:MainAxisSize.min,children:[
           MeasureCard(m:_measure,format:_coordFormat,onSavePoi:_savePoi,onSendMessage:_sendMeasure,
             onFit:(){final o=_measure.origin,t=_measure.target;if(t!=null)_fitPoints([?o?.point,t]);},
             onOpenElsewhere:(){final t=_measure.target;if(t!=null)_openElsewhere(t,_measure.targetLabel);},
@@ -1653,9 +1688,19 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
             }),
         ])))),
       ]))
-      ]))),
       ])),
-    );
+        // Phone: the other tabs, built at their first visit then kept.
+        if(compact)...[
+          _builtTabs.contains(1)?MessagesPage(api:widget.api,eventId:widget.eventId,actorId:widget.deviceId,sync:_sync,store:widget.store,active:_tab==1):const SizedBox.shrink(),
+          _builtTabs.contains(2)?_teams(sorted,screen:true):const SizedBox.shrink(),
+          _builtTabs.contains(3)?LogbookPage(api:widget.api,eventId:widget.eventId):const SizedBox.shrink(),
+          _builtTabs.contains(4)?_moreScreen(more):const SizedBox.shrink(),
+        ],
+      ])),
+      ])),
+      // Phone: tab bar always visible, each tab a real screen.
+      bottomNavigationBar:compact?_TabBar(index:_tab,messagesIcon:_messagesIcon(),onSelect:_goTab):null,
+    ));
   }
 }
 
@@ -1665,12 +1710,11 @@ class _RailAction {
   const _RailAction(this.icon,this.label,this.onTap,{this.selected=false});
 }
 
-/// Computer: vertical rail on the left (mock-up V2).
+/// Computer: vertical rail on the left, 9 entries (note « Navigation et
+/// menus simplifiés »): Carte, Messages, then [actions], « Plus » last.
 class _Rail extends StatelessWidget {
-  final Widget messages; final List<_RailAction> actions; final VoidCallback onMap, onDayNight, onStatus; final bool mapSelected;
-  final VoidCallback? onSettings; final String status; final Color? statusColor;
-  const _Rail({required this.messages,required this.actions,required this.onMap,required this.mapSelected,required this.onDayNight,
-    required this.onSettings,required this.status,required this.statusColor,required this.onStatus});
+  final Widget messages; final List<_RailAction> actions; final VoidCallback onMap; final bool mapSelected;
+  const _Rail({required this.messages,required this.actions,required this.onMap,required this.mapSelected});
   @override Widget build(BuildContext context){
     final scheme=Theme.of(context).colorScheme;
     Widget button(IconData icon,String label,VoidCallback onTap,{bool selected=false})=>Padding(padding:const EdgeInsets.symmetric(vertical:3),
@@ -1679,46 +1723,40 @@ class _Rail extends StatelessWidget {
           backgroundColor:selected?scheme.primaryContainer:null,foregroundColor:selected?scheme.primary:scheme.onSurfaceVariant),
         icon:Icon(icon)));
     return Container(width:72,margin:const EdgeInsets.fromLTRB(8,8,0,8),decoration:glass(context),
-      child:Column(children:[
-        const SizedBox(height:10),
-        Tooltip(message:status,child:InkWell(onTap:onStatus,borderRadius:BorderRadius.circular(12),child:Container(width:40,height:40,alignment:Alignment.center,
-          decoration:BoxDecoration(color:statusColor??scheme.primary,borderRadius:BorderRadius.circular(12)),
-          child:Text('S',style:TextStyle(fontWeight:FontWeight.w800,fontSize:18,color:statusColor==null?scheme.onPrimary:Colors.white))))),
-        const SizedBox(height:10),
-        Expanded(child:SingleChildScrollView(child:Column(children:[
-          button(Icons.map_outlined,S.t('tabs.map'),onMap,selected:mapSelected),
-          Padding(padding:const EdgeInsets.symmetric(vertical:3),child:messages),
-          for(final a in actions)button(a.icon,a.label,a.onTap,selected:a.selected),
-        ]))),
-        button(Theme.of(context).brightness==Brightness.dark?Icons.light_mode_outlined:Icons.dark_mode_outlined,S.t('ui.dayNight'),onDayNight),
-        if(onSettings!=null)button(Icons.settings_outlined,S.t('map.settings'),onSettings!),
-        const SizedBox(height:8),
-      ]));
+      child:SingleChildScrollView(padding:const EdgeInsets.symmetric(vertical:10),child:Column(children:[
+        button(Icons.map_outlined,S.t('tabs.map'),onMap,selected:mapSelected),
+        Padding(padding:const EdgeInsets.symmetric(vertical:3),child:messages),
+        for(final a in actions)button(a.icon,a.label,a.onTap,selected:a.selected),
+      ])));
   }
 }
 
-/// Phone: floating tab bar at the bottom (Facebook, Meshtastic, Plex).
+/// Phone: tab bar always visible; each tab is a real screen.
 class _TabBar extends StatelessWidget {
-  final Widget messages; final VoidCallback onMap, onTeams, onLogbook, onMore; final bool mapSelected, teamsSelected;
-  const _TabBar({required this.messages,required this.onMap,required this.mapSelected,required this.onTeams,required this.teamsSelected,required this.onLogbook,required this.onMore});
+  final int index; final Widget messagesIcon; final ValueChanged<int> onSelect;
+  const _TabBar({required this.index,required this.messagesIcon,required this.onSelect});
   @override Widget build(BuildContext context){
     final scheme=Theme.of(context).colorScheme;
-    Widget tab(IconData icon,String label,VoidCallback onTap,{bool selected=false})=>Expanded(child:Tooltip(message:label,excludeFromSemantics:true,child:InkWell(
-      onTap:onTap,borderRadius:BorderRadius.circular(28),
-      child:Semantics(button:true,selected:selected,label:label,excludeSemantics:true,child:Container(height:56,
-        decoration:BoxDecoration(color:selected?scheme.primaryContainer:null,borderRadius:BorderRadius.circular(28)),
+    Widget tab(int i,Widget icon,String label,{String? tooltip})=>Expanded(child:Tooltip(message:tooltip??label,excludeFromSemantics:true,child:InkWell(
+      onTap:()=>onSelect(i),borderRadius:BorderRadius.circular(28),
+      child:Semantics(button:true,selected:index==i,label:tooltip??label,excludeSemantics:true,child:Container(height:60,
+        decoration:BoxDecoration(color:index==i?scheme.primaryContainer:null,borderRadius:BorderRadius.circular(28)),
         child:Column(mainAxisAlignment:MainAxisAlignment.center,children:[
-          Icon(icon,color:selected?scheme.primary:scheme.onSurfaceVariant),
-          Text(label,maxLines:1,overflow:TextOverflow.ellipsis,style:TextStyle(fontSize:11,color:selected?scheme.primary:scheme.onSurfaceVariant)),
+          IconTheme(data:IconThemeData(color:index==i?scheme.primary:scheme.onSurfaceVariant),child:icon),
+          const SizedBox(height:2),
+          Text(label,maxLines:1,overflow:TextOverflow.ellipsis,style:TextStyle(fontSize:13,fontWeight:index==i?FontWeight.w700:FontWeight.w500,
+            color:index==i?scheme.primary:scheme.onSurfaceVariant)),
         ]))))));
-    return Container(height:68,padding:const EdgeInsets.symmetric(horizontal:6),decoration:glass(context,radius:34),
+    return SafeArea(top:false,child:Container(height:72,margin:const EdgeInsets.fromLTRB(8,4,8,8),padding:const EdgeInsets.symmetric(horizontal:4),
+      decoration:glass(context,radius:34),
       child:Row(children:[
-        tab(Icons.map_outlined,S.t('tabs.map'),onMap,selected:mapSelected),
-        Expanded(child:Center(child:messages)),
-        tab(Icons.groups_outlined,S.t('tabs.teams'),onTeams,selected:teamsSelected),
-        tab(Icons.receipt_long,S.t('tabs.logbook'),onLogbook),
-        tab(Icons.more_horiz,S.t('tabs.more'),onMore),
-      ]));
+        tab(0,const Icon(Icons.map_outlined),S.t('tabs.map')),
+        // Same tooltip as before: « Messages » (tests and screen readers).
+        tab(1,messagesIcon,S.t('tabs.messages'),tooltip:S.t('map.messages')),
+        tab(2,const Icon(Icons.groups_outlined),S.t('tabs.teams')),
+        tab(3,const Icon(Icons.receipt_long),S.t('tabs.logbook')),
+        tab(4,const Icon(Icons.more_horiz),S.t('tabs.more')),
+      ])));
   }
 }
 
