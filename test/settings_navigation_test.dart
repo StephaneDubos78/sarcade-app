@@ -4,6 +4,7 @@ import 'package:sarcade_app/src/config/app_config.dart';
 import 'package:sarcade_app/src/features/settings/about_page.dart';
 import 'package:sarcade_app/src/features/settings/settings_page.dart';
 import 'package:sarcade_app/src/l10n/strings.dart';
+import 'package:sarcade_app/src/ui/theme.dart';
 
 const config = AppConfig(
   serverUrl: 'https://example.org', eventId: 'active-event', deviceId: 'TEST',
@@ -22,19 +23,17 @@ void main() {
       onSave: (_) async { saves++; },
       onOpenLogbook: () { logbookOpened = true; },
     )));
-    // The second field is the event when no remote event loader is supplied.
+    // General tab: server, event (no remote event loader), terminal.
     await tester.enterText(find.byType(TextFormField).at(1), 'unsaved-event');
-    await tester.scrollUntilVisible(find.text('Diagnostic'), 300, scrollable: find.byType(Scrollable).first);
     await tester.tap(find.text('Diagnostic'));
     await tester.pumpAndSettle();
     expect(find.text('Événement actif : active-event'), findsOneWidget);
-    expect(find.textContaining('unsaved-event'), findsNothing);
-    await tester.tap(find.text('Main courante'));
+    expect(find.text('unsaved-event'), findsNothing);
+    await tester.tap(find.text('Ouvrir'));
     expect(logbookOpened, isTrue);
     expect(saves, 0);
-    await tester.pageBack();
+    await tester.tap(find.text('Général'));
     await tester.pumpAndSettle();
-    await tester.scrollUntilVisible(find.text('unsaved-event'), -300, scrollable: find.byType(Scrollable).first);
     expect(find.text('unsaved-event'), findsOneWidget);
     expect(saves, 0);
   });
@@ -44,15 +43,48 @@ void main() {
       initial: config, firstRun: true, onSave: (_) async {},
       onOpenLogbook: () {},
     )));
-    await tester.scrollUntilVisible(find.text('À propos de SARCADE'), 300, scrollable: find.byType(Scrollable).first);
     expect(find.text('Diagnostic'), findsNothing);
-    await tester.tap(find.text('À propos de SARCADE'));
+    expect(find.text('Notifications'), findsNothing);
+    await tester.tap(find.text('À propos'));
     await tester.pumpAndSettle();
-    expect(find.byType(SarcadeAboutPage), findsOneWidget);
     expect(find.text('Édité par SDUBOS Consulting'), findsOneWidget);
-    await tester.pageBack();
+  });
+
+  testWidgets('theme: day, night or automatic, applied at once and kept', (tester) async {
+    ThemeMode? kept;
+    await tester.pumpWidget(MaterialApp(home: SettingsPage(
+      initial: config, onSave: (_) async {}, onThemeChanged: (m) => kept = m,
+    )));
+    await tester.tap(find.text('Affichage'));
     await tester.pumpAndSettle();
-    expect(find.byType(SettingsPage), findsOneWidget);
+    await tester.tap(find.text('Nuit'));
+    await tester.pumpAndSettle();
+    expect(themeMode.value, ThemeMode.dark);
+    expect(kept, ThemeMode.dark);
+    await tester.tap(find.text('Automatique'));
+    await tester.pumpAndSettle();
+    expect(themeMode.value, ThemeMode.system);
+    expect(kept, ThemeMode.system);
+  });
+
+  test('automatic theme by default', () {
+    expect(themeModeFrom(null), ThemeMode.system);
+    expect(themeModeFrom('dark'), ThemeMode.dark);
+    expect(themeModeFrom('light'), ThemeMode.light);
+  });
+
+  testWidgets('a refused field in a hidden tab is shown', (tester) async {
+    var saves = 0;
+    await tester.pumpWidget(MaterialApp(home: SettingsPage(
+      initial: config, onSave: (_) async { saves++; },
+    )));
+    await tester.enterText(find.byType(TextFormField).at(2), '');
+    await tester.tap(find.text('Profil'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Enregistrer'));
+    await tester.pumpAndSettle();
+    expect(find.text('Champ obligatoire'), findsOneWidget);
+    expect(saves, 0);
   });
 
   testWidgets('About is translated and readable on a narrow screen with large text', (tester) async {
