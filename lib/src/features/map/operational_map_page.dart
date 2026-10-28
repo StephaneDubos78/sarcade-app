@@ -955,12 +955,14 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   /// the phone, a panel next to the map on a computer.
   Widget _teams(List<SarcadePosition> sorted,{required bool screen}){
     final list=Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
-      Padding(padding:const EdgeInsets.fromLTRB(14,14,14,4),child:Text(S.t('operators.title',{'n':sorted.length}),style:Theme.of(context).textTheme.titleMedium)),
+      const SizedBox(height:6),
       if(_positions.values.any((p)=>p.isAprs))Padding(padding:const EdgeInsets.symmetric(horizontal:12),child:Align(alignment:Alignment.centerLeft,child:Tooltip(message:S.t('operators.aprsHint'),
         child:FilterChip(avatar:const Icon(Icons.settings_input_antenna,size:18),label:Text(S.t('operators.aprs')),selected:_showAprs,onSelected:(v)=>setState(()=>_showAprs=v))))),
       Expanded(child:ListView(children:sortStations(sorted,_favourites).map((p)=>_stationTile(p)).toList())),
     ]);
     final tabs=DefaultTabController(length:2,child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+      // Count of the stations above the two tabs (as the former panel).
+      Padding(padding:const EdgeInsets.fromLTRB(14,14,14,4),child:Text(S.t('operators.title',{'n':sorted.length}),style:Theme.of(context).textTheme.titleMedium)),
       TabBar(tabs:[Tab(text:S.t('teams.list')),Tab(text:S.t('nearby.title'))]),
       Expanded(child:TabBarView(children:[list,_nearbyPanel(closable:false)])),
     ]));
