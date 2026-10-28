@@ -75,6 +75,13 @@ Future<void> reloadFresh() async {
       if(name.startsWith('sarcade-shell'))await web.window.caches.delete(name).toDart;
     }
   }catch(_){}
+  // Service workers left by older versions (the deprecated Flutter one
+  // replaced the SARCADE one at every start): removed, the page registers
+  // sarcade_sw.js again on load.
+  try{
+    final regs=(await web.window.navigator.serviceWorker.getRegistrations().toDart).toDart;
+    for(final r in regs){await r.unregister().toDart;}
+  }catch(_){}
   web.window.location.reload();
 }
 bool get browserOnline=>web.window.navigator.onLine;
