@@ -28,6 +28,22 @@ class S {
 }
 
 const Texts _fr={
+  'settings.diagnostics':'Diagnostic',
+  'diagnostics.description':'Informations de diagnostic et historique de l’opération active.',
+  'diagnostics.activeEvent':'Événement actif : {event}',
+  'about.title':'À propos de SARCADE',
+  'about.description':'Plateforme open source de cartographie partagée et de coordination terrain : équipes, messages et suivi des opérations, y compris hors connexion.',
+  'about.version':'Version : {version}',
+  'about.build':'Build : {build}',
+  'about.publisher':'Édité par SDUBOS Consulting',
+  'about.website':'Site SARCADE',
+  'about.source':'Code source et contributions',
+  'about.feedback':'Signaler un problème ou proposer une amélioration',
+  'about.privacy':'Politique de confidentialité',
+  'about.license':'Licence de l’application (MPL-2.0)',
+  'about.credits':'Crédits et licences des composants',
+  'about.linkFailed':'Impossible d’ouvrir ce lien. Vérifiez qu’un navigateur est disponible.',
+
   // General
   'app.title':'SARCADE',
   'common.cancel':'Annuler','common.ok':'OK','common.save':'Enregistrer','common.close':'Fermer',
@@ -241,6 +257,22 @@ const Texts _fr={
 };
 
 const Texts _en={
+  'settings.diagnostics':'Diagnostics',
+  'diagnostics.description':'Diagnostic information and history of the active operation.',
+  'diagnostics.activeEvent':'Active event: {event}',
+  'about.title':'About SARCADE',
+  'about.description':'Open-source shared mapping and field coordination: teams, messages and operational tracking, including offline use.',
+  'about.version':'Version: {version}',
+  'about.build':'Build: {build}',
+  'about.publisher':'Published by SDUBOS Consulting',
+  'about.website':'SARCADE website',
+  'about.source':'Source code and contributions',
+  'about.feedback':'Report a problem or suggest an improvement',
+  'about.privacy':'Privacy policy',
+  'about.license':'Application licence (MPL-2.0)',
+  'about.credits':'Credits and component licences',
+  'about.linkFailed':'Unable to open this link. Check that a browser is available.',
+
   'app.title':'SARCADE',
   'common.cancel':'Cancel','common.ok':'OK','common.save':'Save','common.close':'Close',
   'common.retry':'Retry','common.copy':'Copy','common.copied':'Copied',

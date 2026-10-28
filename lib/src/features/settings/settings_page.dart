@@ -5,6 +5,8 @@ import '../../access/access_session.dart';
 import '../../config/app_config.dart';
 import '../../config/saved_servers.dart';
 import '../../config/version.dart';
+import 'about_page.dart';
+import 'diagnostics_page.dart';
 import '../map/drawing/drawing_controller.dart' show drawingPalette, defaultDrawColor;
 import '../../l10n/strings.dart';
 import '../../offline/outbox_policy.dart' show normalServer;
@@ -19,6 +21,8 @@ class SettingsPage extends StatefulWidget {
   final AppConfig initial;
   final Future<void> Function(AppConfig) onSave;
   final bool firstRun;
+  /// Opens the logbook of the active session, not the unsaved form values.
+  final VoidCallback? onOpenLogbook;
   /// Events of a server (« Choix de l'événement dans une liste »): fetched
   /// list, and the last list known for offline use.
   final Future<List<Map<String,dynamic>>> Function(String server)? loadEvents;
@@ -32,7 +36,7 @@ class SettingsPage extends StatefulWidget {
   final List<SavedServer> Function()? readServers;
   final Future<void> Function(List<SavedServer>)? saveServers;
   const SettingsPage({super.key,required this.initial,required this.onSave,this.firstRun=false,
-    this.loadEvents,this.cachedEvents,this.waitingFor,this.sendFirst,this.readServers,this.saveServers});
+    this.loadEvents,this.cachedEvents,this.waitingFor,this.sendFirst,this.readServers,this.saveServers,this.onOpenLogbook});
   @override State<SettingsPage> createState()=>_SettingsPageState();
 }
 
@@ -356,6 +360,19 @@ class _SettingsPageState extends State<SettingsPage> {
         const SizedBox(height:24),
         FilledButton.icon(onPressed:_saving?null:_save,icon:const Icon(Icons.check),label:Text(S.t('common.save'))),
         const SizedBox(height:16),
+        if(!widget.firstRun&&widget.onOpenLogbook!=null)ListTile(
+          leading:const Icon(Icons.bug_report_outlined),
+          title:Text(S.t('settings.diagnostics')),
+          trailing:const Icon(Icons.chevron_right),
+          onTap:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>DiagnosticsPage(
+            eventId:widget.initial.eventId,onOpenLogbook:widget.onOpenLogbook!))),
+        ),
+        ListTile(
+          leading:const Icon(Icons.info_outline),
+          title:Text(S.t('about.title')),
+          trailing:const Icon(Icons.chevron_right),
+          onTap:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>const SarcadeAboutPage())),
+        ),
         SelectableText('SARCADE $appVersion${appBuild.isEmpty?'':' · $appBuild'}',textAlign:TextAlign.center,style:Theme.of(context).textTheme.bodySmall),
       ])),
     ))),
