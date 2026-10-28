@@ -84,6 +84,7 @@ void reloadApp(){}
 /// Installed apps are updated by their package: no served web build.
 Future<String?> fetchServedBuild() async=>null;
 Future<void> reloadFresh() async {}
+Future<String?> webPushSubscription(String publicKey) async=>null;
 bool get browserOnline=>false;
 
 /// Installed apps keep their data in their own folder.
