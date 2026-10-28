@@ -18,7 +18,6 @@ import '../../models/message.dart';
 import '../../models/position.dart';
 import '../../models/reference_site.dart';
 import '../messages/messages_page.dart';
-import '../logbook/logbook_page.dart';
 import '../aprs/aprs_page.dart';
 import '../search/map_search.dart';
 import '../search/map_search_bar.dart';
@@ -1557,7 +1556,6 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     void toggleRoutes()=>setState((){_showRoutesPanel=!_showRoutesPanel;if(_showRoutesPanel){_showPanel=false;_showReferencePanel=false;}else{_drawingRouteId=null;}});
     void openFiles()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>FilesPage(api:widget.api,eventId:widget.eventId,actorId:widget.deviceId)));
     void openAprs()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>AprsPage(api:widget.api,eventId:widget.eventId,actorId:widget.deviceId)));
-    void openLogbook()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>LogbookPage(api:widget.api,eventId:widget.eventId)));
     void openMessages()=>_openMessages();
     void showMap()=>setState((){_tab=0;_showPanel=false;_showReferencePanel=false;_showRoutesPanel=false;_drawingRouteId=null;});
     // Phone: an entry of « Plus » that works on the map comes back to it.
@@ -1569,7 +1567,6 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     final more=<_RailAction>[
       if(compact)...[
         _RailAction(Icons.route,S.t('routes.menu'),openRoutes),
-        _RailAction(Icons.receipt_long,S.t('map.logbook'),openLogbook),
         _RailAction(Icons.cloud_outlined,S.t('weather.menu'),()=>_openWeather()),
         _RailAction(Icons.folder_copy_outlined,S.t('map.files'),openFiles),
       ],
@@ -1580,12 +1577,10 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     void openMoreSheet()=>showModalBottomSheet<void>(context:context,showDragHandle:true,builder:(c)=>SafeArea(child:Column(mainAxisSize:MainAxisSize.min,children:[
       for(final a in more)ListTile(minTileHeight:56,leading:Icon(a.icon),title:Text(a.label),onTap:(){Navigator.pop(c);a.onTap();}),
     ])));
-    // Computer: 9 entries (Carte and Messages are drawn by the rail itself).
+    // Computer: 8 entries (Carte and Messages are drawn by the rail itself).
     final rail=<_RailAction>[
       _RailAction(Icons.groups_outlined,S.t('tabs.teams'),toggleOperators,selected:_showPanel),
       _RailAction(Icons.route,S.t('routes.menu'),toggleRoutes,selected:_showRoutesPanel),
-      // Logbook before the bearing (request of 28 Oct 2026).
-      _RailAction(Icons.receipt_long,S.t('map.logbook'),openLogbook),
       _RailAction(Icons.track_changes,S.t('bearings.take'),()=>_bearings.startTaking()),
       _RailAction(Icons.folder_copy_outlined,S.t('map.files'),openFiles),
       _RailAction(Icons.cloud_outlined,S.t('weather.menu'),()=>_openWeather()),

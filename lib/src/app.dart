@@ -6,6 +6,7 @@ import 'config/saved_servers.dart';
 import 'ui/theme.dart';
 import 'features/map/operational_map_page.dart';
 import 'features/settings/settings_page.dart';
+import 'features/logbook/logbook_page.dart';
 import 'services/sarcade_api.dart';
 import 'offline/local_store.dart';
 import 'offline/outbox_policy.dart' as outbox;
@@ -96,6 +97,8 @@ class _SarcadeAppState extends State<SarcadeApp> {
     waitingFor:(server,eventId)=>outbox.waitingFor(widget.store.pending(),server,eventId),
     sendFirst:_sendFirst,
     readServers:_readServers,saveServers:_saveServers,
+    onOpenLogbook:firstRun?null:()=>_navigator.currentState?.push(MaterialPageRoute(
+      builder:(_)=>LogbookPage(api:_apiFor(_config),eventId:_config.eventId))),
   );
 
   Future<List<Map<String,dynamic>>> _loadEvents(String server) async {
