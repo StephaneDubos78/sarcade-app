@@ -121,6 +121,11 @@ jobs:
 
   android-build:
     runs-on: ubuntu-latest
+    # Two merges close together: the Google Play upload of the second one
+    # used to fail (« This edit has expired », 28 Oct 2026). One at a time.
+    concurrency:
+      group: android-${{ github.ref }}
+      cancel-in-progress: false
     permissions:
       contents: write
     steps:
