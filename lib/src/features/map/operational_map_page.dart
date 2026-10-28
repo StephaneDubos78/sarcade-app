@@ -165,6 +165,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       _realtime.connect(widget.api.websocketUri(widget.eventId),headers:widget.api.realtimeHeaders);
       await _rtSub?.cancel();
       _rtSub=_realtime.events.listen(_onRealtime);
+      unawaited(_registerWakeup());
       if(mounted){setState(()=>_started=true);if(_savedView==null)WidgetsBinding.instance.addPostFrameCallback((_)=>_fitOperators());}
     } catch(e){if(mounted)setState((){});} finally {_starting=false;}
   }
@@ -547,7 +548,38 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     final ok=await _notifications.requestFromUser();
     if(!mounted)return;
     setState((){});
+    if(ok)unawaited(_registerWakeup());
     if(!ok)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(S.t('notifications.refused'))));
+  }
+
+  /// Wake-up when SARCADE is closed (note « Réveil des appareils »): the
+  /// Web Push subscription of this browser is given to the server. Android
+  /// (Firebase) comes with its own step.
+  Future<bool> _registerWakeup() async {
+    if(!isWebPlatform)return false;
+    try{
+      final config=await widget.api.wakeupConfig();
+      final key=config['webpush_public_key'] as String?;
+      if(key==null||key.isEmpty)return false;
+      final subscription=await webPushSubscription(key);
+      if(subscription==null)return false;
+      await widget.api.registerWakeToken(widget.eventId,widget.deviceId,'webpush',subscription);
+      return true;
+    }catch(e){
+      debugPrint('SARCADE wake-up not registered: $e');
+      return false;
+    }
+  }
+
+  /// « Tester le réveil »: the server sends a signal to this device only.
+  Future<void> _testWakeup() async {
+    await _registerWakeup();
+    String text;
+    try{
+      final r=await widget.api.testWakeup(widget.eventId,widget.deviceId);
+      text=((r['sent'] as num?)??0)>0?S.t('wakeup.sent'):S.t('wakeup.none');
+    }catch(_){text=S.t('wakeup.failed');}
+    if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(text)));
   }
 
   /// Unread messages: count on the Messages button, red when one is urgent.
@@ -1008,6 +1040,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         ListTile(leading:const Icon(Icons.info_outline),title:Text(_statusLine)),
         ListTile(leading:const Icon(Icons.sync),title:Text(S.t('map.sync')),onTap:() async {Navigator.pop(c);await _sync.syncNow();if(mounted)setState((){});}),
         ListTile(leading:const Icon(Icons.outbox_outlined),title:Text('${S.t('unsent.title')} (${_sync.unsent})'),onTap:(){Navigator.pop(c);_openUnsent();}),
+        if(isWebPlatform)ListTile(leading:const Icon(Icons.notifications_active_outlined),title:Text(S.t('wakeup.test')),subtitle:Text(S.t('wakeup.testHelp')),
+          onTap:(){Navigator.pop(c);unawaited(_testWakeup());}),
         if(access)ListTile(leading:const Icon(Icons.lock_outline),title:Text(S.t('access.signIn')),onTap:(){Navigator.pop(c);_signIn();}),
       ]))),
       child:Container(height:48,padding:const EdgeInsets.symmetric(horizontal:12),decoration:glass(context,radius:24),

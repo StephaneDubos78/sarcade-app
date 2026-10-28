@@ -130,6 +130,23 @@ class SarcadeApi {
     final r=await _client.delete(Uri.parse('$baseUrl/api/v0.1/aprs/groups/$id'));
     if(r.statusCode!=204&&r.statusCode!=404) throw SarcadeHttpException('aprs_group_delete',r.statusCode);
   }
+  /// Wake-up of the devices (note « Réveil des appareils »).
+  Future<Map<String,dynamic>> wakeupConfig() async {
+    final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/wakeup/config'));
+    if(r.statusCode!=200) throw SarcadeHttpException('wakeup_config',r.statusCode,r.body);
+    return Map<String,dynamic>.from(jsonDecode(r.body) as Map);
+  }
+  Future<void> registerWakeToken(String eventId,String deviceId,String platform,String token) async {
+    final r=await _client.put(Uri.parse('$baseUrl/api/v0.1/events/${Uri.encodeComponent(eventId)}/devices/${Uri.encodeComponent(deviceId)}/wakeup'),
+      headers:{'content-type':'application/json'},body:jsonEncode({'platform':platform,'token':token}));
+    if(r.statusCode!=200) throw SarcadeHttpException('wakeup_register',r.statusCode,r.body);
+  }
+  /// « Tester le réveil »: {sent, failed, removed}.
+  Future<Map<String,dynamic>> testWakeup(String eventId,String deviceId) async {
+    final r=await _client.post(Uri.parse('$baseUrl/api/v0.1/events/${Uri.encodeComponent(eventId)}/devices/${Uri.encodeComponent(deviceId)}/wakeup/test'));
+    if(r.statusCode!=200) throw SarcadeHttpException('wakeup_test',r.statusCode,r.body);
+    return Map<String,dynamic>.from(jsonDecode(r.body) as Map);
+  }
   Future<Map<String,dynamic>> aprsStatus() async {
     final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/aprs/status'));
     if(r.statusCode!=200) throw SarcadeHttpException('aprs_status',r.statusCode);

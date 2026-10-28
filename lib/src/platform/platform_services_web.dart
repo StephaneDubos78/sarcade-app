@@ -5,6 +5,7 @@ import 'dart:js_interop_unsafe';
 import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:hive_ce_flutter/hive_ce_flutter.dart';
 import 'package:web/web.dart' as web;
 import 'package:web_socket_channel/web_socket_channel.dart';
@@ -85,6 +86,28 @@ Future<void> reloadFresh() async {
   web.window.location.reload();
 }
 bool get browserOnline=>web.window.navigator.onLine;
+
+/// Web Push subscription of this browser (note « Réveil des appareils »),
+/// as the JSON the server expects; null when push is unavailable or the
+/// notifications are not allowed. The SARCADE service worker shows the
+/// notification when no SARCADE window is visible.
+Future<String?> webPushSubscription(String publicKey) async {
+  try{
+    if(web.Notification.permission!='granted')return null;
+    final reg=await web.window.navigator.serviceWorker.ready.toDart;
+    var sub=await reg.pushManager.getSubscription().toDart;
+    sub??=await reg.pushManager.subscribe(web.PushSubscriptionOptionsInit(userVisibleOnly:true,applicationServerKey:publicKey.toJS)).toDart;
+    String key(String name){
+      final buffer=sub!.getKey(name);
+      if(buffer==null)throw StateError('no $name');
+      return base64Url.encode(buffer.toDart.asUint8List()).replaceAll('=','');
+    }
+    return jsonEncode({'endpoint':sub.endpoint,'keys':{'p256dh':key('p256dh'),'auth':key('auth')}});
+  }catch(e){
+    debugPrint('SARCADE web push unavailable: $e');
+    return null;
+  }
+}
 
 /// Asks the browser to keep the offline data (IndexedDB) instead of evicting
 /// it when space runs low: an installed PCO may hold unsent messages.

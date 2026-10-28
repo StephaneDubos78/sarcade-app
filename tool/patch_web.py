@@ -67,6 +67,32 @@ self.addEventListener('fetch', (event) => {
     }
   })());
 });
+// Wake-up of the devices (note « Réveil des appareils »): a signal without
+// content; a visible SARCADE window synchronises by itself, otherwise a
+// notification asks to open SARCADE.
+self.addEventListener('push', (event) => {
+  let data = {};
+  try { data = event.data ? event.data.json() : {}; } catch (e) { data = {}; }
+  event.waitUntil((async () => {
+    const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    windows.forEach((w) => w.postMessage({ sarcade: 'wake', data }));
+    if (windows.some((w) => w.visibilityState === 'visible')) return;
+    const urgent = data.priority === 'urgent' || data.priority === 'immediate';
+    const title = data.kind === 'test' ? 'SARCADE : réveil reçu'
+      : (urgent ? 'SARCADE : message prioritaire' : 'SARCADE : nouveau message');
+    await self.registration.showNotification(title, {
+      body: 'Ouvrez SARCADE pour le lire.', tag: 'sarcade-' + (data.event_id || ''),
+      renotify: urgent, requireInteraction: urgent, icon: 'icons/Icon-192.png', data });
+  })());
+});
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  event.waitUntil((async () => {
+    const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    if (windows.length) { await windows[0].focus(); return; }
+    await self.clients.openWindow('./');
+  })());
+});
 """
 # Flutter loader without its deprecated service worker: it was registered on
 # the same scope as sarcade_sw.js, each one replaced the other at every start
