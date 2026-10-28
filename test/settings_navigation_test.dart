@@ -24,7 +24,7 @@ void main() {
     )));
     // The second field is the event when no remote event loader is supplied.
     await tester.enterText(find.byType(TextFormField).at(1), 'unsaved-event');
-    await tester.scrollUntilVisible(find.text('Diagnostic'), 300);
+    await tester.scrollUntilVisible(find.text('Diagnostic'), 300, scrollable: find.byType(Scrollable).first);
     await tester.tap(find.text('Diagnostic'));
     await tester.pumpAndSettle();
     expect(find.text('Événement actif : active-event'), findsOneWidget);
@@ -34,7 +34,7 @@ void main() {
     expect(saves, 0);
     await tester.pageBack();
     await tester.pumpAndSettle();
-    await tester.scrollUntilVisible(find.text('unsaved-event'), -300);
+    await tester.scrollUntilVisible(find.text('unsaved-event'), -300, scrollable: find.byType(Scrollable).first);
     expect(find.text('unsaved-event'), findsOneWidget);
     expect(saves, 0);
   });
@@ -44,7 +44,7 @@ void main() {
       initial: config, firstRun: true, onSave: (_) async {},
       onOpenLogbook: () {},
     )));
-    await tester.scrollUntilVisible(find.text('À propos de SARCADE'), 300);
+    await tester.scrollUntilVisible(find.text('À propos de SARCADE'), 300, scrollable: find.byType(Scrollable).first);
     expect(find.text('Diagnostic'), findsNothing);
     await tester.tap(find.text('À propos de SARCADE'));
     await tester.pumpAndSettle();
@@ -69,7 +69,7 @@ void main() {
       home: const SarcadeAboutPage(),
     ));
     expect(find.text('About SARCADE'), findsOneWidget);
-    await tester.scrollUntilVisible(find.text('Credits and component licences'), 300);
+    await tester.scrollUntilVisible(find.text('Credits and component licences'), 300, scrollable: find.byType(Scrollable).first);
     expect(tester.takeException(), isNull);
   });
 }
