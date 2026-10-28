@@ -1,13 +1,22 @@
 /// Coordinate formats (note « Mesure de distance vers un point désigné »,
 /// validated): decimal degrees (default), degrees and decimal minutes (SAR,
-/// aeronautical), QTH locator (radio amateurs). WGS 84. Pure code.
+/// aeronautical), QTH locator (radio amateurs); since 10 Oct 2026 also
+/// degrees-minutes-seconds, UTM and MGRS, in display and input. WGS 84.
+/// Pure code.
 library;
 
 import 'package:latlong2/latlong.dart';
+import 'utm.dart';
 
-enum CoordFormat{dd,dm,qth}
+export 'utm.dart' show formatUtm, formatMgrs, parseUtm, parseMgrs, toUtm, fromUtm;
 
-CoordFormat coordFormatFrom(String? v)=>switch(v){'dm'=>CoordFormat.dm,'qth'=>CoordFormat.qth,_=>CoordFormat.dd};
+enum CoordFormat{dd,dm,qth,dms,utm,mgrs}
+
+/// The three formats always shown on the card; the others behind « More formats ».
+const baseFormats=[CoordFormat.dd,CoordFormat.dm,CoordFormat.qth];
+const extraFormats=[CoordFormat.dms,CoordFormat.utm,CoordFormat.mgrs];
+
+CoordFormat coordFormatFrom(String? v)=>CoordFormat.values.firstWhere((f)=>f.name==v,orElse:()=>CoordFormat.dd);
 
 String _hemi(double v,String pos,String neg)=>v>=0?pos:neg;
 
@@ -22,6 +31,18 @@ String formatDm(LatLng p,{String decimal=','}){
     final a=v.abs(); var d=a.floor(); var m=(a-d)*60;
     if(double.parse(m.toStringAsFixed(3))>=60){d+=1;m=0;}
     return '${d.toString().padLeft(degWidth,'0')}°${m.toStringAsFixed(3).padLeft(6,'0').replaceAll('.',decimal)}′';
+  }
+  return '${part(p.latitude,2)} ${_hemi(p.latitude,'N','S')} · ${part(p.longitude,3)} ${_hemi(p.longitude,'E','O')}';
+}
+
+/// « 48°48′04,4″ N · 002°08′04,4″ E » (tenth of a second, about 3 m).
+String formatDms(LatLng p,{String decimal=','}){
+  String part(double v,int degWidth){
+    final a=v.abs(); var d=a.floor(); final mm=(a-d)*60; var m=mm.floor(); var sec=(mm-m)*60;
+    if(double.parse(sec.toStringAsFixed(1))>=60){sec=0;m+=1;}
+    if(m>=60){m=0;d+=1;}
+    return '${d.toString().padLeft(degWidth,'0')}°${m.toString().padLeft(2,'0')}′'
+      '${sec.toStringAsFixed(1).padLeft(4,'0').replaceAll('.',decimal)}″';
   }
   return '${part(p.latitude,2)} ${_hemi(p.latitude,'N','S')} · ${part(p.longitude,3)} ${_hemi(p.longitude,'E','O')}';
 }
@@ -74,7 +95,16 @@ LatLng? parseQth(String text){
 LatLng? parseCoordinates(String text){
   final qth=parseQth(text);
   if(qth!=null)return qth;
-  final t=text.trim().toUpperCase().replaceAll('′',"'").replaceAll('″','"');
+  final grid=parseMgrs(text)??parseUtm(text);
+  if(grid!=null)return grid;
+  final t=text.trim().toUpperCase().replaceAll('′',"'").replaceAll('″','"').replaceAll("''",'"');
+  // Degrees, minutes and seconds.
+  final dms=RegExp(r"""(\d{1,3})\s*[°D ]\s*(\d{1,2})\s*['M ]\s*(\d{1,2}(?:[.,]\d+)?)\s*"?\s*([NS])[\s,;·]+(\d{1,3})\s*[°D ]\s*(\d{1,2})\s*['M ]\s*(\d{1,2}(?:[.,]\d+)?)\s*"?\s*([EWO])""").firstMatch(t);
+  if(dms!=null){
+    double v(String d,String m,String sec)=>int.parse(d)+int.parse(m)/60+double.parse(sec.replaceAll(',','.'))/3600;
+    final lat=v(dms[1]!,dms[2]!,dms[3]!)*(dms[4]=='S'?-1:1), lon=v(dms[5]!,dms[6]!,dms[7]!)*((dms[8]=='W'||dms[8]=='O')?-1:1);
+    return _valid(lat,lon);
+  }
   // Degrees and minutes.
   final dm=RegExp(r"""(\d{1,3})\s*[°D ]\s*(\d{1,2}(?:[.,]\d+)?)\s*'?\s*([NS])[\s,;·]+(\d{1,3})\s*[°D ]\s*(\d{1,2}(?:[.,]\d+)?)\s*'?\s*([EWO])""").firstMatch(t);
   if(dm!=null){
@@ -98,4 +128,20 @@ LatLng? parseCoordinates(String text){
 
 LatLng? _valid(double lat,double lon)=>(lat.abs()<=90&&lon.abs()<=180)?LatLng(lat,lon):null;
 
-String formatCoordinates(LatLng p,CoordFormat f)=>switch(f){CoordFormat.dd=>formatDd(p),CoordFormat.dm=>formatDm(p),CoordFormat.qth=>formatQth(p)};
+/// [mgrsDigits]: 4 (10 m, default) or 5 (1 m). UTM and MGRS give « — »
+/// in the polar areas.
+String formatCoordinates(LatLng p,CoordFormat f,{int mgrsDigits=4})=>switch(f){
+  CoordFormat.dd=>formatDd(p),
+  CoordFormat.dm=>formatDm(p),
+  CoordFormat.qth=>formatQth(p),
+  CoordFormat.dms=>formatDms(p),
+  CoordFormat.utm=>formatUtm(p)??'—',
+  CoordFormat.mgrs=>formatMgrs(p,digits:mgrsDigits)??'—',
+};
+
+/// Formats shown on the card: the main format first, then the base ones;
+/// the remaining formats behind « More formats ».
+({List<CoordFormat> shown,List<CoordFormat> more}) cardFormats(CoordFormat main){
+  final shown=[main,...baseFormats.where((f)=>f!=main)];
+  return (shown:shown,more:[for(final f in CoordFormat.values) if(!shown.contains(f)) f]);
+}
