@@ -1,0 +1,43 @@
+name: Clean test releases
+
+# Test APKs are published per branch as « android-<branch> » pre-releases.
+# Once the pull request is merged or closed they are of no use: this job
+# deletes them (and their tags), keeping android-dev (main) and the
+# releases of the pull requests still open. Request of 27 October 2026.
+on:
+  pull_request:
+    types: [closed]
+  push:
+    branches: [main]
+  schedule:
+    - cron: "17 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: read
+
+concurrency:
+  group: clean-releases
+  cancel-in-progress: false
+
+jobs:
+  clean:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Delete test releases of merged or closed pull requests
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          open=$(gh pr list -R "$REPO" --state open --limit 200 --json headRefName --jq '.[].headRefName' | sed 's#/#-#g; s#^#android-#')
+          keep=$(printf 'android-dev\n%s\n' "$open")
+          gh release list -R "$REPO" --limit 500 --json tagName --jq '.[].tagName' | grep '^android-' | while read -r tag; do
+            if grep -qxF "$tag" <<<"$keep"; then
+              echo "keep    $tag"
+            else
+              echo "delete  $tag"
+              gh release delete "$tag" -R "$REPO" --yes --cleanup-tag || echo "::warning::could not delete $tag"
+            fi
+          done
