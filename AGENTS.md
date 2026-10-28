@@ -3,7 +3,7 @@
 Consignes pour tout assistant de code (Claude, ChatGPT/Codex, autre) qui reprend ce dépôt. À lire avant toute modification.
 
 ## Le projet en bref
-Application **Flutter** de SARCADE (Android, iPhone, Windows, Linux, web/PWA) pour les bénévoles ADRASEC : carte opérationnelle, positions et stations APRS, messages prioritaires, relevés, main courante, fonctionnement hors ligne (file d'envoi Outbox, Hive). Serveur : `sdubos-consulting/sarcade-server`. Spécifications et Kanban : dépôt privé `sdubos-consulting/sarcade-vault` (coffre Obsidian).
+Application **Flutter** de SARCADE (Android, iPhone, Windows, Linux, web/PWA) pour les bénévoles ADRASEC : carte opérationnelle, positions et stations APRS, messages prioritaires, relevés, main courante, fonctionnement hors ligne (file d'envoi Outbox, Hive). Serveur : `sdubos-consulting/sarcade-server`. État actuel : `SARCADE/00 - Accueil/Reprise du projet par un autre assistant.md` du coffre (seule page d'état à jour ; `99 - Archives` = notes périmées). Spécifications et Kanban : dépôt privé `sdubos-consulting/sarcade-vault` (coffre Obsidian).
 
 ## Règles de travail avec le porteur (Stéphane, SDUBOS Consulting)
 1. **Aucun développement sans demande explicite.** Une idée nouvelle → proposition avec des **choix par défaut numérotés**, validée avant de coder.
@@ -11,6 +11,7 @@ Application **Flutter** de SARCADE (Android, iPhone, Windows, Linux, web/PWA) po
 3. **Aucun secret dans la conversation.** Les secrets restent dans GitHub (signature Android, Google Play, Firebase) et ne sont lus que par la CI.
 4. Commandes pour le porteur : **un bloc copiable par machine**, avec le **résultat attendu**.
 5. Une branche et une PR par sujet ; **fusion après accord du porteur et CI verte**. Éviter de fusionner deux PR à quelques secondes d'intervalle.
+   **Une fusion n'est pas une recette** : après fusion, la carte du Kanban va en « À recetter » ; elle ne passe en « Validé » que sur confirmation du porteur.
 6. Commits signés `SDUBOS Consulting <github@sdubos.com>`.
 7. Mettre le coffre à jour (note, Kanban, fiche de test) après chaque étape.
 
