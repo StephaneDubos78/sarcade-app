@@ -54,4 +54,10 @@ void main(){
     expect(parsed.first.toAck(),{'id':'a1','event_id':'evt-1','message_id':'m-42','actor_id':'TEL-01','status':'accepted',
       'time':'2026-10-10T13:01:00.000Z'});
   });
+
+  test('a notification launch has a stable identity, distinct per notification',(){
+    expect(launchKey(7,null,'p1'),launchKey(7,null,'p1'));
+    expect(launchKey(7,null,'p1'),isNot(launchKey(8,null,'p2')));
+    expect(launchKey(7,'accept','p1'),isNot(launchKey(7,null,'p1')));
+  });
 }
