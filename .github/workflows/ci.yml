@@ -324,7 +324,7 @@ jobs:
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0"><dict>
             <key>method</key><string>app-store-connect</string>
-            <key>destination</key><string>upload</string>
+            <key>destination</key><string>export</string>
             <key>teamID</key><string>34785R7XLK</string>
             <key>signingStyle</key><string>automatic</string>
             <key>manageAppVersionAndBuildNumber</key><false/>
@@ -334,7 +334,12 @@ jobs:
           xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/Runner.xcarchive" \
             -exportOptionsPlist "$RUNNER_TEMP/export.plist" -exportPath "$RUNNER_TEMP/export" \
             "${auth[@]}" 2>&1 | tee -a ios-build.log
-          rm -f "$key"
+          # Upload with altool: Xcode's own upload does not use the API key
+          # (« No Accounts with App Store Connect Access »).
+          ipa=$(ls "$RUNNER_TEMP"/export/*.ipa)
+          mkdir -p ~/.appstoreconnect/private_keys && cp "$key" ~/.appstoreconnect/private_keys/
+          xcrun altool --upload-app -f "$ipa" -t ios --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID" 2>&1 | tee -a ios-build.log
+          rm -f "$key" ~/.appstoreconnect/private_keys/*.p8
           echo "::notice::iPhone build ${{ github.run_number }} sent to TestFlight"
       - name: Report iOS build errors
         if: failure()
