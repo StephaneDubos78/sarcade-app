@@ -62,6 +62,7 @@ class OperationsService extends ChangeNotifier {
       settings=EventSettings.fromHeartbeat(answer);
       serverTrackingIntervalS=(answer['tracking_interval_s'] as num?)?.toInt();
       if(answer['client_update'] is Map)update=ClientUpdate.fromJson(Map<String,dynamic>.from(answer['client_update'] as Map));
+      await _saveOrganization(answer['organization']);
       lastContact=DateTime.now().toUtc();
       await store.saveEventSettings(eventId,settings.toJson());
       _applyToSync();
@@ -78,8 +79,17 @@ class OperationsService extends ChangeNotifier {
     try{
       final j=await api.clientCheck(deviceId,platform,appVersion);
       update=ClientUpdate.fromJson(j);
+      await _saveOrganization(j['organization']);
       notifyListeners();
     }catch(_){/* checked again with the heartbeats */}
+  }
+
+  /// Navigation app chosen by the organisation (« Open in… »), kept offline.
+  Future<void> _saveOrganization(Object? organization) async {
+    if(organization is! Map||organization['navigation'] is! Map)return;
+    final nav=organization['navigation'] as Map;
+    await store.setPreference('nav_app','${nav['app']??'operator'}');
+    await store.setPreference('nav_hide_tracking',nav['hide_tracking_apps']==true?'1':null);
   }
 
   void _applyToSync()=>sync.setLowBandwidth(settings.lowBandwidth,intervalS:settings.lowBandwidthIntervalS);
