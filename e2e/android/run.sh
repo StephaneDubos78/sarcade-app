@@ -20,9 +20,9 @@ GRANTER=$!
 # Notifications are read while the test runs: the app is removed at the end.
 mkdir -p e2e/android/out
 (
-  for i in $(seq 1 600); do
+  for i in $(seq 1 1800); do
     adb shell dumpsys notification --noredact 2>/dev/null | grep -E "android.title=|android.text=" >> e2e/android/out/notifications.txt
-    sleep 3
+    sleep 1
   done
 ) &
 WATCHER=$!

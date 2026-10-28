@@ -152,6 +152,12 @@ void main() {
     await pumpUntilTrue(t, () async => (await pco.changes()).any((c) => c['object_type'] == 'ack'
         && c['payload']['message_id'] == urgent['id'] && c['payload']['actor_id'] == device
         && c['payload']['status'] == 'received'), 'ACK « received » from $device');
+    // Leave the urgent notification on screen a few seconds: opening the
+    // messages marks it read and removes it (notification actions, lot 3),
+    // before the Android watcher of e2e/android/run.sh could read it.
+    for (var i = 0; i < 8; i++) {
+      await t.pump(const Duration(seconds: 1));
+    }
     await t.tap(find.byTooltip(S.t('map.messages')));
     await pumpUntil(t, find.text('E2E urgent from PCO $run'));
 
