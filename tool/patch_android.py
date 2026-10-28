@@ -15,6 +15,7 @@ CI generates android/ and this script applies the SARCADE-specific settings:
   Play Store also offers the app on Chromebooks without touch screen or GPS:
   a location permission otherwise implies a required GPS feature
 - foreground service of location for the Beacon (positions screen off)
+- dictation: RECORD_AUDIO and the speech recognition service in <queries>
 - notifications (POST_NOTIFICATIONS, Android 13+) and core library
   desugaring in the Gradle build, required by flutter_local_notifications
 - notification actions (Accept, Refuse, Read, Open) and reminders of the
@@ -81,6 +82,8 @@ PERMISSIONS = [
     "android.permission.ACCESS_FINE_LOCATION",
     "android.permission.ACCESS_COARSE_LOCATION",
     "android.permission.POST_NOTIFICATIONS",
+    # Dictation (speech_to_text): microphone, speech service of the device.
+    "android.permission.RECORD_AUDIO",
     # Beacon: positions keep going screen off, from a location foreground service.
     "android.permission.FOREGROUND_SERVICE",
     "android.permission.FOREGROUND_SERVICE_LOCATION",
@@ -172,6 +175,13 @@ def main() -> int:
             tag = tag.replace("<application", '<application\n        android:networkSecurityConfig="@xml/network_security_config"', 1)
         return tag
 
+    # Android 11+: the speech recognition service must be declared visible.
+    speech = '<intent><action android:name="android.speech.RecognitionService"/></intent>'
+    if "android.speech.RecognitionService" not in xml:
+        if "<queries>" in xml:
+            xml = xml.replace("<queries>", "<queries>\n        " + speech, 1)
+        else:
+            xml = xml.replace("</manifest>", "    <queries>\n        " + speech + "\n    </queries>\n</manifest>", 1)
     xml, n = re.subn(r"<application\b[^>]*>", patch_application, xml, count=1)
     if n != 1:
         print("error: <application> element not found", file=sys.stderr)
