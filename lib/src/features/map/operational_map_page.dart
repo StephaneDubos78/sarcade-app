@@ -103,7 +103,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   // Phones get the map full width: side panels start closed and open as overlays.
   static const _compactWidth=600.0;
   /// Phone: screen shown (note « Navigation et menus simplifiés », 27 Oct
-  /// 2026): 0 Carte, 1 Messages, 2 Équipes, 3 Main courante, 4 Plus. Each
+  /// 2026): 0 Carte, 1 Messages, 2 Équipes, 3 Relevé (action on the map, 28 Oct 2026), 4 Plus. Each
   /// one is built at its first visit and then kept as it was left.
   int _tab=0; final Set<int> _builtTabs={0};
   bool get _isCompact=>MediaQuery.sizeOf(context).width<_compactWidth;
@@ -228,7 +228,11 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
 
   void _toggleDrawingTools(){
     // Each opening of the tools starts from the profile colour.
-    if(_drawingTools){_drawing.selectTool(null);}else{_drawing.color=_profileDrawColor;}
+    if(_drawingTools){_drawing.selectTool(null);}else{
+      _drawing.color=_profileDrawColor;
+      // Drawing with the drawings hidden shows nothing (28 Oct 2026): shown again.
+      if(!_showDrawings)unawaited(_setShown('show_draw',true));
+    }
     setState(()=>_drawingTools=!_drawingTools);
   }
   void _openUnsent()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>UnsentPage(sync:_sync,actorId:widget.deviceId))).then((_){if(mounted)setState((){});});
@@ -1515,7 +1519,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     final more=<_RailAction>[
       if(compact)...[
         _RailAction(Icons.route,S.t('routes.menu'),openRoutes),
-        _RailAction(Icons.track_changes,S.t('bearings.take'),takeBearing),
+        _RailAction(Icons.receipt_long,S.t('map.logbook'),openLogbook),
         _RailAction(Icons.cloud_outlined,S.t('weather.menu'),()=>_openWeather()),
         _RailAction(Icons.folder_copy_outlined,S.t('map.files'),openFiles),
       ],
@@ -1530,8 +1534,9 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     final rail=<_RailAction>[
       _RailAction(Icons.groups_outlined,S.t('tabs.teams'),toggleOperators,selected:_showPanel),
       _RailAction(Icons.route,S.t('routes.menu'),toggleRoutes,selected:_showRoutesPanel),
-      _RailAction(Icons.track_changes,S.t('bearings.take'),()=>_bearings.startTaking()),
+      // Logbook before the bearing (request of 28 Oct 2026).
       _RailAction(Icons.receipt_long,S.t('map.logbook'),openLogbook),
+      _RailAction(Icons.track_changes,S.t('bearings.take'),()=>_bearings.startTaking()),
       _RailAction(Icons.folder_copy_outlined,S.t('map.files'),openFiles),
       _RailAction(Icons.cloud_outlined,S.t('weather.menu'),()=>_openWeather()),
       _RailAction(Icons.more_horiz,S.t('tabs.more'),openMoreSheet),
@@ -1695,13 +1700,14 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         if(compact)...[
           _builtTabs.contains(1)?MessagesPage(api:widget.api,eventId:widget.eventId,actorId:widget.deviceId,sync:_sync,store:widget.store,active:_tab==1):const SizedBox.shrink(),
           _builtTabs.contains(2)?_teams(sorted,screen:true):const SizedBox.shrink(),
-          _builtTabs.contains(3)?LogbookPage(api:widget.api,eventId:widget.eventId):const SizedBox.shrink(),
+          // Tab 3 is « Relevé »: an action on the map, not a screen.
+          const SizedBox.shrink(),
           _builtTabs.contains(4)?_moreScreen(more):const SizedBox.shrink(),
         ],
       ])),
       ])),
       // Phone: tab bar always visible, each tab a real screen.
-      bottomNavigationBar:compact?_TabBar(index:_tab,messagesIcon:_messagesIcon(),onSelect:_goTab):null,
+      bottomNavigationBar:compact?_TabBar(index:_tab,messagesIcon:_messagesIcon(),onSelect:(i){if(i==3){_goTab(0);takeBearing();}else{_goTab(i);}}):null,
     ));
   }
 }
@@ -1756,7 +1762,7 @@ class _TabBar extends StatelessWidget {
         // Same tooltip as before: « Messages » (tests and screen readers).
         tab(1,messagesIcon,S.t('tabs.messages'),tooltip:S.t('map.messages')),
         tab(2,const Icon(Icons.groups_outlined),S.t('tabs.teams')),
-        tab(3,const Icon(Icons.receipt_long),S.t('tabs.logbook')),
+        tab(3,const Icon(Icons.track_changes),S.t('tabs.bearing')),
         tab(4,const Icon(Icons.more_horiz),S.t('tabs.more')),
       ])));
   }
