@@ -40,6 +40,7 @@ import 'drawing/geometry.dart';
 import 'drawing/hit_test.dart';
 import 'drawing/import_formats.dart';
 import 'drawing/map_feature.dart';
+import '../../services/wakeup_fcm.dart';
 import '../../services/notification_service.dart';
 import '../../services/location_service.dart';
 import '../../services/realtime_service.dart';
@@ -560,6 +561,19 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   /// Web Push subscription of this browser is given to the server. Android
   /// (Firebase) comes with its own step.
   Future<bool> _registerWakeup() async {
+    if(fcmAvailable){
+      try{
+        final token=await fcmToken();
+        if(token==null)return false;
+        await widget.api.registerWakeToken(widget.eventId,widget.deviceId,'fcm',token);
+        _fcmRefresh??=fcmTokenRefresh().listen((t)=>unawaited(widget.api.registerWakeToken(widget.eventId,widget.deviceId,'fcm',t).catchError((_){})));
+        _fcmForeground??=fcmForeground().listen((_)=>unawaited(_sync.syncNow()));
+        return true;
+      }catch(e){
+        debugPrint('SARCADE wake-up not registered: $e');
+        return false;
+      }
+    }
     if(!isWebPlatform)return false;
     try{
       final config=await widget.api.wakeupConfig();
@@ -574,6 +588,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       return false;
     }
   }
+
+  StreamSubscription<String>? _fcmRefresh; StreamSubscription<Map<String,dynamic>>? _fcmForeground;
 
   /// « Tester le réveil »: the server sends a signal to this device only.
   Future<void> _testWakeup() async {
@@ -1044,7 +1060,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         ListTile(leading:const Icon(Icons.info_outline),title:Text(_statusLine)),
         ListTile(leading:const Icon(Icons.sync),title:Text(S.t('map.sync')),onTap:() async {Navigator.pop(c);await _sync.syncNow();if(mounted)setState((){});}),
         ListTile(leading:const Icon(Icons.outbox_outlined),title:Text('${S.t('unsent.title')} (${_sync.unsent})'),onTap:(){Navigator.pop(c);_openUnsent();}),
-        if(isWebPlatform)ListTile(leading:const Icon(Icons.notifications_active_outlined),title:Text(S.t('wakeup.test')),subtitle:Text(S.t('wakeup.testHelp')),
+        if(isWebPlatform||fcmAvailable)ListTile(leading:const Icon(Icons.notifications_active_outlined),title:Text(S.t('wakeup.test')),subtitle:Text(S.t('wakeup.testHelp')),
           onTap:(){Navigator.pop(c);unawaited(_testWakeup());}),
         if(access)ListTile(leading:const Icon(Icons.lock_outline),title:Text(S.t('access.signIn')),onTap:(){Navigator.pop(c);_signIn();}),
       ]))),
@@ -1524,7 +1540,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     child:child,
   );
 
-  @override void dispose(){_headingSub?.cancel();_webUpdateTimer?.cancel();_saveViewTimer?.cancel();_bearings.dispose();_brgTarget.dispose();_positionsTimer?.cancel();_meSub?.cancel();_mapEvents?.cancel();AccessManager.instance.removeListener(_onAccessChanged);_opensSub?.cancel();_answersSub?.cancel();_rtSub?.cancel();_tracking.removeListener(_onOperationsChanged);_ops.removeListener(_onOperationsChanged);_tracking.dispose();_ops.dispose();_routes.removeListener(_onRoutesChanged);_nav.removeListener(_onNavigationChanged);_variantHits.dispose();_routes.dispose();_nav.dispose();_graphs.removeListener(_onRoutesChanged);_graphs.dispose();_measure.removeListener(_onRoutesChanged);_measure.dispose();_syncUiTimer?.cancel();_sync.dispose();_realtime.dispose();_drawing.dispose();widget.api.close();super.dispose();}
+  @override void dispose(){_headingSub?.cancel();_webUpdateTimer?.cancel();_saveViewTimer?.cancel();_bearings.dispose();_brgTarget.dispose();_positionsTimer?.cancel();_meSub?.cancel();_mapEvents?.cancel();AccessManager.instance.removeListener(_onAccessChanged);_fcmRefresh?.cancel();_fcmForeground?.cancel();_opensSub?.cancel();_answersSub?.cancel();_rtSub?.cancel();_tracking.removeListener(_onOperationsChanged);_ops.removeListener(_onOperationsChanged);_tracking.dispose();_ops.dispose();_routes.removeListener(_onRoutesChanged);_nav.removeListener(_onNavigationChanged);_variantHits.dispose();_routes.dispose();_nav.dispose();_graphs.removeListener(_onRoutesChanged);_graphs.dispose();_measure.removeListener(_onRoutesChanged);_measure.dispose();_syncUiTimer?.cancel();_sync.dispose();_realtime.dispose();_drawing.dispose();widget.api.close();super.dispose();}
 
   @override Widget build(BuildContext context){
     final sorted=_positions.values.where((p)=>(p.isAprs?_showAprs:_showOperators)&&(!_withoutInternetOnly||worksWithoutInternet(p)||p.deviceId==widget.deviceId)).toList()..sort((a,b)=>a.deviceId.compareTo(b.deviceId));
