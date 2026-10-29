@@ -27,6 +27,10 @@ def main() -> int:
             return 1
         CMAKE.write_text(text, encoding="utf-8")
     print(f"patched {CMAKE}")
+    # SARCADE icon (assets/icon/generated, tool/make_app_icons.py).
+    ico = Path("windows/runner/resources/app_icon.ico")
+    ico.write_bytes(Path("assets/icon/generated/windows/app_icon.ico").read_bytes())
+    print(f"patched {ico}")
     return 0
 
 
