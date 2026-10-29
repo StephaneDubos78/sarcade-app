@@ -448,7 +448,7 @@ class _SettingsPageState extends State<SettingsPage> {
       )))),
     _row(S.t('settings.languageRow'),child:_compact(DropdownButtonFormField<String>(
       initialValue:_language,isExpanded:true,
-      decoration:_field(label:S.t('settings.language')),
+      decoration:_field(),
       items:[
         DropdownMenuItem(value:'system',child:Text(S.t('settings.languageSystem'))),
         const DropdownMenuItem(value:'fr',child:Text('Français')),
