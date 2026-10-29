@@ -28,6 +28,11 @@ class _FilesPageState extends State<FilesPage> with SingleTickerProviderStateMix
   final _search=TextEditingController(); bool _messagePhotos=false;
   String _eventPath='', _personalPath='';
   bool get _grid=>widget.store?.preference('files_grid')=='1';
+  /// Computer (29 Oct 2026, « comme l'Explorateur Windows »): folder tree on
+  /// the left, details of the selected folder on the right.
+  bool _wide=false;
+  final Set<String> _expanded={'e:','p:'};
+  String _sortBy='name'; bool _sortUp=true;
 
   bool get _personalTab=>_tabs.index==1;
   String get _path=>_personalTab?_personalPath:_eventPath;
@@ -198,21 +203,123 @@ class _FilesPageState extends State<FilesPage> with SingleTickerProviderStateMix
   Widget _items(List<String> folders,List<SarcadeSharedFile> files,{bool showFolder=false}){
     final t=Theme.of(context);
     if(folders.isEmpty&&files.isEmpty)return _empty();
+    if(_wide&&!_grid)return _details(folders,files,showFolder:showFolder);
     if(_grid){
       return GridView.extent(maxCrossAxisExtent:180,padding:const EdgeInsets.fromLTRB(12,8,12,96),mainAxisSpacing:10,crossAxisSpacing:10,childAspectRatio:1.05,children:[
-        for(final f in folders)_tile(icon:_kindIcon((icon:Icons.folder,color:folderColor),size:56),title:folderLabel(f),subtitle:'',onTap:()=>setState(()=>_path=f),menu:_folderMenu(f)),
+        for(final f in folders)_tile(icon:_kindIcon((icon:Icons.folder,color:folderColor),size:56),title:folderLabel(f),subtitle:'',onTap:()=>_select(_personalTab,f),menu:_folderMenu(f)),
         for(final f in files)_tile(icon:_kindIcon(fileKind(f),size:56),title:f.name,subtitle:'${_size(f.sizeBytes)} · ${_date(f.createdAt)}',onTap:()=>_open(f),menu:_fileMenu(f)),
       ]);
     }
     return ListView(padding:const EdgeInsets.only(bottom:96),children:[
       for(final f in folders)ListTile(leading:_kindIcon((icon:Icons.folder,color:folderColor)),title:Text(folderLabel(f),style:const TextStyle(fontWeight:FontWeight.w500)),
         subtitle:Text(S.t('files.folderCount',{'n':_currentFiles.where((x)=>normalFolder(x.folder)==f||normalFolder(x.folder).startsWith('$f/')).length})),
-        onTap:()=>setState(()=>_path=f),trailing:_folderMenu(f)),
+        onTap:()=>_select(_personalTab,f),trailing:_folderMenu(f)),
       for(final f in files)ListTile(leading:_kindIcon(fileKind(f)),title:Text(f.name,maxLines:1,overflow:TextOverflow.ellipsis),
         subtitle:Text([if(showFolder&&normalFolder(f.folder).isNotEmpty)folderLabel(normalFolder(f.folder)),if(!_personalTab)f.senderId,_size(f.sizeBytes),_date(f.createdAt)].join(' · '),
           style:t.textTheme.bodySmall?.copyWith(color:t.colorScheme.onSurfaceVariant)),
         onTap:()=>_open(f),trailing:_fileMenu(f)),
     ]);
+  }
+
+  static String _type(SarcadeSharedFile f){
+    final i=f.name.lastIndexOf('.');
+    return i<0||i==f.name.length-1?'—':f.name.substring(i+1).toUpperCase();
+  }
+
+  /// Details view (computer): Nom, Type, Taille, Modifié, sortable by a
+  /// click on the header; folders first.
+  Widget _details(List<String> folders,List<SarcadeSharedFile> files,{bool showFolder=false}){
+    final t=Theme.of(context); final muted=t.textTheme.bodySmall?.copyWith(color:t.colorScheme.onSurfaceVariant);
+    final sorted=[...files]..sort((a,b){
+      final c=switch(_sortBy){
+        'type'=>_type(a).compareTo(_type(b)),
+        'size'=>a.sizeBytes.compareTo(b.sizeBytes),
+        'date'=>a.createdAt.compareTo(b.createdAt),
+        _=>a.name.toLowerCase().compareTo(b.name.toLowerCase()),
+      };
+      return _sortUp?c:-c;
+    });
+    final dirs=[...folders]; if(_sortBy=='name'&&!_sortUp)dirs.setAll(0,dirs.reversed.toList());
+    Widget head(String key,String label,int flex,{TextAlign align=TextAlign.start}){
+      final on=_sortBy==key;
+      return Expanded(flex:flex,child:InkWell(onTap:()=>setState((){if(on){_sortUp=!_sortUp;}else{_sortBy=key;_sortUp=key!='date';}}),
+        child:Padding(padding:const EdgeInsets.symmetric(vertical:8,horizontal:6),child:Row(
+          mainAxisAlignment:align==TextAlign.end?MainAxisAlignment.end:MainAxisAlignment.start,children:[
+          Flexible(child:Text(label,overflow:TextOverflow.ellipsis,style:t.textTheme.labelMedium?.copyWith(fontWeight:on?FontWeight.w700:FontWeight.w500))),
+          if(on)Icon(_sortUp?Icons.arrow_upward:Icons.arrow_downward,size:14),
+        ]))));
+    }
+    Widget row({required Widget icon,required String name,required String type,required String size,required String date,
+        required VoidCallback onTap,Widget? menu,String? folder}){
+      return InkWell(onTap:onTap,child:Container(
+        decoration:BoxDecoration(border:Border(bottom:BorderSide(color:t.dividerColor.withValues(alpha:0.4)))),
+        padding:const EdgeInsets.symmetric(horizontal:8),height:44,child:Row(children:[
+          Expanded(flex:6,child:Row(children:[icon,const SizedBox(width:10),
+            Expanded(child:Text(folder==null?name:'$name  ·  $folder',maxLines:1,overflow:TextOverflow.ellipsis))])),
+          Expanded(flex:2,child:Padding(padding:const EdgeInsets.symmetric(horizontal:6),child:Text(type,style:muted,overflow:TextOverflow.ellipsis))),
+          Expanded(flex:2,child:Padding(padding:const EdgeInsets.symmetric(horizontal:6),child:Text(size,style:muted,textAlign:TextAlign.end))),
+          Expanded(flex:3,child:Padding(padding:const EdgeInsets.symmetric(horizontal:6),child:Text(date,style:muted,overflow:TextOverflow.ellipsis))),
+          SizedBox(width:48,child:menu),
+        ])));
+    }
+    return Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+      Container(padding:const EdgeInsets.symmetric(horizontal:8),
+        decoration:BoxDecoration(border:Border(bottom:BorderSide(color:t.dividerColor))),
+        child:Row(children:[
+          head('name',S.t('files.colName'),6),head('type',S.t('files.colType'),2),
+          head('size',S.t('files.colSize'),2,align:TextAlign.end),head('date',S.t('files.colDate'),3),
+          const SizedBox(width:48),
+        ])),
+      Expanded(child:ListView(padding:const EdgeInsets.only(bottom:96),children:[
+        for(final f in dirs)row(icon:const Icon(Icons.folder,color:folderColor,size:22),name:folderLabel(f),type:S.t('files.typeFolder'),
+          size:S.t('files.folderCount',{'n':_currentFiles.where((x)=>normalFolder(x.folder)==f||normalFolder(x.folder).startsWith('$f/')).length}),date:'',
+          onTap:()=>_select(_personalTab,f),menu:_folderMenu(f)),
+        for(final f in sorted)row(icon:Icon(fileKind(f).icon,color:fileKind(f).color,size:22),name:f.name,type:_type(f),size:_size(f.sizeBytes),
+          date:_date(f.createdAt),folder:showFolder&&normalFolder(f.folder).isNotEmpty?folderLabel(normalFolder(f.folder)):null,
+          onTap:()=>_open(f),menu:_fileMenu(f)),
+      ])),
+    ]);
+  }
+
+  /// Opens a folder of a root (Événement or Personnel) and unfolds its parents.
+  void _select(bool personal,String path){
+    if(_tabs.index!=(personal?1:0))_tabs.index=personal?1:0;
+    setState((){
+      if(personal){_personalPath=path;}else{_eventPath=path;}
+      var x=path; final r=personal?'p:':'e:';
+      _expanded.add(r);
+      while(x.isNotEmpty){_expanded.add('$r$x');x=parentFolder(x);}
+    });
+  }
+
+  /// Folder tree (computer): the two roots, folders up to 3 levels, a
+  /// chevron to unfold, the selected folder highlighted.
+  Widget _tree(){
+    final t=Theme.of(context); final s=t.colorScheme;
+    final rows=<Widget>[];
+    void node({required bool personal,required String path,required String label,required IconData icon,required Set<String> folders,int depth=0}){
+      final key='${personal?'p:':'e:'}$path';
+      final kids=childFolders(folders,path);
+      final open=_expanded.contains(key);
+      final selected=_tabs.index==(personal?1:0)&&(personal?_personalPath:_eventPath)==path;
+      rows.add(Material(color:selected?s.primaryContainer.withValues(alpha:0.6):Colors.transparent,borderRadius:BorderRadius.circular(8),
+        child:InkWell(borderRadius:BorderRadius.circular(8),onTap:()=>_select(personal,path),child:SizedBox(height:36,child:Row(children:[
+          SizedBox(width:8.0+depth*16),
+          SizedBox(width:24,child:kids.isEmpty?null:InkWell(customBorder:const CircleBorder(),
+            onTap:()=>setState((){if(open){_expanded.remove(key);}else{_expanded.add(key);}}),
+            child:Icon(open?Icons.expand_more:Icons.chevron_right,size:20,color:s.onSurfaceVariant))),
+          Icon(icon,size:20,color:path.isEmpty?s.primary:folderColor),const SizedBox(width:8),
+          Expanded(child:Text(label,maxLines:1,overflow:TextOverflow.ellipsis,
+            style:TextStyle(fontWeight:selected||path.isEmpty?FontWeight.w600:FontWeight.w400))),
+        ])))));
+      if(open){for(final k in kids){node(personal:personal,path:k,label:folderLabel(k),icon:Icons.folder,folders:folders,depth:depth+1);}}
+    }
+    node(personal:false,path:'',label:S.t('files.tabEvent'),icon:Icons.groups_outlined,folders:_folders);
+    if(_personal!=null){
+      node(personal:true,path:'',label:S.t('files.tabPersonal'),icon:Icons.folder_shared_outlined,
+        folders:allFolders(_personal!.folders,_personal!.files));
+    }
+    return ListView(padding:const EdgeInsets.all(8),children:rows);
   }
 
   Widget _tile({required Widget icon,required String title,required String subtitle,required VoidCallback onTap,Widget? menu})=>Card(elevation:0,
@@ -314,17 +421,30 @@ class _FilesPageState extends State<FilesPage> with SingleTickerProviderStateMix
 
   @override Widget build(BuildContext context){
     final t=Theme.of(context);
-    return Scaffold(
-      appBar:AppBar(title:Text(S.t('map.files')),actions:[
-        ?_quota(),
-        IconButton(tooltip:S.t('routes.refresh'),onPressed:(){_load();_loadPersonal();},icon:const Icon(Icons.refresh))],
-        bottom:PreferredSize(preferredSize:const Size.fromHeight(70),child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
-          // Tabs on the left, underlined (not spread over the whole width).
-          TabBar(controller:_tabs,isScrollable:true,tabAlignment:TabAlignment.start,tabs:[Tab(text:S.t('files.tabEvent')),Tab(text:S.t('files.tabPersonal'))]),
-          Padding(padding:const EdgeInsets.fromLTRB(16,4,16,4),child:Text(S.t(_personalTab?'files.personalHelpShort':'files.eventHelpShort'),
-            maxLines:1,overflow:TextOverflow.ellipsis,style:t.textTheme.bodySmall?.copyWith(color:t.colorScheme.onSurfaceVariant))),
-        ]))),
-      body:TabBarView(controller:_tabs,children:[_eventTab(),_personalTabView()]),
-    );
+    return LayoutBuilder(builder:(context,c){
+      _wide=c.maxWidth>=760;
+      final help=Padding(padding:const EdgeInsets.fromLTRB(16,4,16,4),child:Text(S.t(_personalTab?'files.personalHelpShort':'files.eventHelpShort'),
+        maxLines:1,overflow:TextOverflow.ellipsis,style:t.textTheme.bodySmall?.copyWith(color:t.colorScheme.onSurfaceVariant)));
+      final actions=[?_quota(),
+        IconButton(tooltip:S.t('routes.refresh'),onPressed:(){_load();_loadPersonal();},icon:const Icon(Icons.refresh))];
+      if(_wide){
+        return Scaffold(
+          appBar:AppBar(title:Text(S.t('map.files')),actions:actions,bottom:PreferredSize(preferredSize:const Size.fromHeight(26),child:help)),
+          body:Row(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+            SizedBox(width:260,child:_tree()),
+            const VerticalDivider(width:1),
+            Expanded(child:_personalTab?_personalTabView():_eventTab()),
+          ]));
+      }
+      return Scaffold(
+        appBar:AppBar(title:Text(S.t('map.files')),actions:actions,
+          bottom:PreferredSize(preferredSize:const Size.fromHeight(70),child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+            // Tabs on the left, underlined (not spread over the whole width).
+            TabBar(controller:_tabs,isScrollable:true,tabAlignment:TabAlignment.start,tabs:[Tab(text:S.t('files.tabEvent')),Tab(text:S.t('files.tabPersonal'))]),
+            help,
+          ]))),
+        body:TabBarView(controller:_tabs,children:[_eventTab(),_personalTabView()]),
+      );
+    });
   }
 }

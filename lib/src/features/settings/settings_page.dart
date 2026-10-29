@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../access/access_login_page.dart';
 import '../../access/access_manager.dart';
 import '../../access/access_session.dart';
@@ -16,7 +17,6 @@ import '../../models/comm_group.dart' show isPco, myRoles;
 import '../../services/sarcade_api.dart' show SarcadeApi, SarcadeHttpException;
 import 'event_settings_section.dart';
 import '../tv/tv_screens_page.dart';
-import '../tv/tv_code.dart' show canScanTvQr;
 import '../bearings/signal_defaults_page.dart';
 import '../../offline/local_store.dart';
 import '../../ui/save_bar.dart';
@@ -163,7 +163,8 @@ class _SettingsPageState extends State<SettingsPage> {
           key:ValueKey('servers|${current?.url}|${_servers.length}|$_serverText'),
           initialValue:current?.url??_serverText,
           isExpanded:true,
-          decoration:_field(label:S.t('settings.server')),
+          // The row already says « Serveur » (29 Oct 2026: no word twice).
+          decoration:_field(),
           items:[
             for(final s in _servers)DropdownMenuItem(value:s.url,child:Text('${s.label} · ${s.shortAddress}',overflow:TextOverflow.ellipsis)),
             if(current==null&&_serverText.isNotEmpty)DropdownMenuItem(value:_serverText,child:Text(S.t('servers.new',{'url':_serverText}),overflow:TextOverflow.ellipsis)),
@@ -251,7 +252,7 @@ class _SettingsPageState extends State<SettingsPage> {
         key:ValueKey('$current|${_events.length}'),
         initialValue:current.isEmpty?null:current,
         isExpanded:true,
-        decoration:_field(label:S.t('settings.event'),help:help),
+        decoration:_field(label:widget.firstRun?S.t('settings.event'):null,help:help),
         items:items,
         onChanged:(v)=>setState((){_event.text=v??'';_dirty=true;}),
         validator:(_)=>_required(_event.text),
@@ -379,7 +380,7 @@ class _SettingsPageState extends State<SettingsPage> {
         onFocusChange:(f){if(!f)_loadEvents();},
         child:TextFormField(
           controller:_server,
-          decoration:_field(label:S.t('settings.server'),hint:defaultServerUrl),
+          decoration:_field(hint:defaultServerUrl),
           keyboardType:TextInputType.url,autocorrect:false,validator:_url,
           onFieldSubmitted:(_)=>_loadEvents(),
           onChanged:(_)=>setState((){}),
@@ -388,17 +389,15 @@ class _SettingsPageState extends State<SettingsPage> {
       _accessRow(),
     ])),
     _row(S.t('settings.eventRow'),help:S.t('settings.eventHelp'),child:widget.loadEvents!=null?_eventPicker():TextFormField(
-      controller:_event,decoration:_field(label:S.t('settings.event')),autocorrect:false,validator:_required)),
+      controller:_event,decoration:_field(),autocorrect:false,validator:_required)),
     _row(S.t('settings.deviceRow'),help:S.t('settings.deviceHelp'),child:_compact(TextFormField(
-      controller:_device,decoration:_field(label:S.t('settings.device'),hint:'TERRAIN-01'),autocorrect:false,validator:_required))),
+      controller:_device,decoration:_field(hint:'TERRAIN-01'),autocorrect:false,validator:_required))),
   ]);
 
   Widget _profileTab()=>Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
     _row(S.t('settings.callsignRow'),help:S.t('settings.callsignHelp'),child:_compact(TextFormField(
-      controller:_callsign,decoration:_field(label:S.t('settings.callsign'),hint:'F4ABC-7'),
+      controller:_callsign,decoration:_field(hint:'F4ABC-7'),
       autocorrect:false,textCapitalization:TextCapitalization.characters,validator:_callsignCheck))),
-    _row(S.t('settings.aprsConsent'),help:S.t('settings.aprsConsentHelp'),child:Align(alignment:Alignment.centerRight,
-      child:Switch(value:_aprsConsent,onChanged:(v)=>setState((){_aprsConsent=v;_dirty=true;})))),
     // Colour of every new drawing (existing objects keep theirs).
     _row(S.t('settings.drawColor'),help:S.t('settings.drawColorHelp'),child:Wrap(spacing:8,runSpacing:8,crossAxisAlignment:WrapCrossAlignment.center,children:[
       for(final c in [...drawingPalette,if(!drawingPalette.contains(_drawColor))_drawColor])Semantics(
@@ -411,6 +410,9 @@ class _SettingsPageState extends State<SettingsPage> {
     ),
       ActionChip(avatar:const Icon(Icons.palette_outlined,size:18),label:Text(S.t('settings.otherColor')),onPressed:_pickOtherColor),
     ])),
+    // Under « Couleur de dessin » (29 Oct 2026).
+    _row(S.t('settings.aprsConsent'),help:S.t('settings.aprsConsentHelp'),child:Align(alignment:Alignment.centerRight,
+      child:Switch(value:_aprsConsent,onChanged:(v)=>setState((){_aprsConsent=v;_dirty=true;})))),
   ]);
 
   /// « Autre couleur »: free choice of the hue, light enough to read on
@@ -453,17 +455,9 @@ class _SettingsPageState extends State<SettingsPage> {
       ],
       onChanged:(v)=>setState((){_language=v??'system';_dirty=true;}),
     ))),
-    // Smart TV screens (any operator, decision of 29 Oct 2026): Paramètres › Affichage › Écrans.
-    // « Scanner le QR code » beside « Gérer les écrans » (Android, iPhone):
-    // one touch less (decision of 29 Oct 2026, 12 h 19).
-    if(widget.api!=null)_row(S.t('tv.title'),help:S.t('tv.help'),child:Align(alignment:Alignment.centerLeft,child:Wrap(spacing:8,runSpacing:8,children:[
-      if(canScanTvQr)FilledButton.icon(icon:const Icon(Icons.qr_code_scanner),
-        onPressed:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>TvScreensPage(api:widget.api!,eventId:widget.initial.eventId,scanOnOpen:true))),
-        label:Text(S.t('tv.scan'))),
-      FilledButton.tonal(
-        onPressed:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>TvScreensPage(api:widget.api!,eventId:widget.initial.eventId))),
-        child:Text(S.t('tv.manage'))),
-    ]))),
+    // Smart TV screens (any operator, decision of 29 Oct 2026): the content
+    // of the former « Gérer les écrans » directly here (29 Oct 2026, 17 h 02).
+    if(widget.api!=null)_row(S.t('tv.title'),help:S.t('tv.help'),child:TvScreensPanel(api:widget.api!,eventId:widget.initial.eventId)),
   ]);
 
   Widget _notificationsTab()=>Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
@@ -487,7 +481,15 @@ class _SettingsPageState extends State<SettingsPage> {
     _row(S.t('diagnostics.device'),child:_value(widget.initial.deviceId)),
     _row(S.t('map.logbook'),help:S.t('diagnostics.activeEvent',{'event':widget.initial.eventId}),
       child:_value('',action:S.t('diagnostics.open'),onAction:widget.onOpenLogbook)),
-    _row(S.t('diagnostics.version'),child:_value('SARCADE $appVersionFull${appBuild.isEmpty?'':' · $appBuild'}')),
+    // « Copier » at the far right (29 Oct 2026).
+    _row(S.t('diagnostics.version'),child:Builder(builder:(c){
+      final v='SARCADE $appVersionFull${appBuild.isEmpty?'':' · $appBuild'}';
+      return Row(children:[Expanded(child:SelectableText(v)),
+        IconButton(tooltip:S.t('common.copy'),icon:const Icon(Icons.copy_outlined),onPressed:() async {
+          await Clipboard.setData(ClipboardData(text:v));
+          if(c.mounted)ScaffoldMessenger.of(c).showSnackBar(SnackBar(content:Text(S.t('common.copied'))));
+        })]);
+    })),
   ]);
 
   Widget _tabBody(String id)=>switch(id){

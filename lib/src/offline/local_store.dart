@@ -30,6 +30,7 @@ class LocalStore {
 
   Future<void> cachePosition(Map<String,dynamic> v)=>_positionBox.put(v['id'],v);
   Future<void> cachePoi(Map<String,dynamic> v)=>_poiBox.put(v['id'],v);
+  Future<void> deletePoi(String id)=>_poiBox.delete(id);
   /// A deletion is merged onto the known message, which never comes back
   /// with its text (see message_deletion.dart).
   Future<void> cacheMessage(Map<String,dynamic> v) async {

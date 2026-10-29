@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../config/version.dart';
 import '../../l10n/strings.dart';
@@ -45,10 +46,28 @@ class SarcadeAboutContent extends StatelessWidget {
         const SizedBox(height: 8),
         Text(S.t('about.description')),
         const SizedBox(height: 16),
-        SelectableText(S.t('about.version', {'version': appVersion})),
-        if (appBuild.isNotEmpty) SelectableText(S.t('about.build', {'build': appBuild})),
-        const SizedBox(height: 8),
-        Text(S.t('about.publisher')),
+        // Version, build and publisher copied in one go (29 Oct 2026).
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            SelectableText(S.t('about.version', {'version': appVersion})),
+            if (appBuild.isNotEmpty) SelectableText(S.t('about.build', {'build': appBuild})),
+            const SizedBox(height: 8),
+            Text(S.t('about.publisher')),
+          ])),
+          IconButton(
+            tooltip: S.t('common.copy'),
+            icon: const Icon(Icons.copy_outlined),
+            onPressed: () async {
+              final text = [
+                S.t('about.version', {'version': appVersion}),
+                if (appBuild.isNotEmpty) S.t('about.build', {'build': appBuild}),
+                S.t('about.publisher'),
+              ].join('\n');
+              await Clipboard.setData(ClipboardData(text: text));
+              if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(S.t('common.copied'))));
+            },
+          ),
+        ]),
         const Divider(height: 32),
         _link(context, Icons.language, 'about.website', 'https://sarcade.org'),
         _link(context, Icons.code, 'about.source', 'https://github.com/sdubos-consulting/sarcade-app'),
