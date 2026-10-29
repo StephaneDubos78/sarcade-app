@@ -105,6 +105,13 @@ class SarcadeApi {
     return (jsonDecode(r.body) as List).map((e)=>LogbookEntry.fromJson(e)).toList();
   }
   /// Every group of the event, archived included (the PCO sees everything).
+  /// Channels of a model added to the event (« adrasec »: PCO, Équipes
+  /// terrain, Transmissions, Logistique); returns how many were created.
+  Future<int> addGroupTemplate(String eventId,String template) async {
+    final r=await _client.post(Uri.parse('$baseUrl/api/v0.1/events/$eventId/groups/defaults?template=$template'));
+    if(r.statusCode!=200) throw SarcadeHttpException('group_template',r.statusCode,r.body);
+    return ((jsonDecode(r.body) as Map)['created'] as num?)?.toInt()??0;
+  }
   Future<List<Map<String,dynamic>>> groups(String eventId) async {
     final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/events/$eventId/groups'));
     if(r.statusCode!=200) throw SarcadeHttpException('groups',r.statusCode);
