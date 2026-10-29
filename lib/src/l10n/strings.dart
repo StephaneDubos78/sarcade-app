@@ -28,6 +28,8 @@ class S {
 }
 
 const Texts _fr={
+  'favourites.only':'Favoris','favourites.none':'Aucun favori : touchez l’étoile d’un opérateur','teams.active':'Actifs','teams.silent':'Sans nouvelles','teams.old':'Anciens',
+  'operators.none':'Aucun opérateur',
   'bearings.signal':'Signal recherché','bearings.signalNew':'Nouveau signal','bearings.colorBy':'Colorer les relevés par','bearings.colorSignal':'Signal','bearings.colorOperator':'Opérateur',
   'settings.subtitle':'Connexion, profil, affichage et outils de diagnostic de cet appareil.','settings.subtitleFirst':'Indique le serveur SARCADE et ton identifiant pour cet événement.',
   'settings.statusEvent':'Événement : {v}','settings.statusDevice':'Terminal : {v}',
@@ -264,6 +266,8 @@ const Texts _fr={
 };
 
 const Texts _en={
+  'favourites.only':'Favourites','favourites.none':'No favourite: tap the star of an operator','teams.active':'Active','teams.silent':'No news','teams.old':'Old',
+  'operators.none':'No operator',
   'bearings.signal':'Signal searched','bearings.signalNew':'New signal','bearings.colorBy':'Colour bearings by','bearings.colorSignal':'Signal','bearings.colorOperator':'Operator',
   'settings.subtitle':'Connection, profile, display and diagnostic tools of this device.','settings.subtitleFirst':'Enter the SARCADE server and your identifier for this event.',
   'settings.statusEvent':'Event: {v}','settings.statusDevice':'Terminal: {v}',
