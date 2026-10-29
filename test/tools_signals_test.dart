@@ -76,7 +76,7 @@ void main() {
     expect(c.validSights.length, 2);
     expect(c.poorGeometry, isTrue);
     c.setMagnetic(0, true);
-    expect(c.trueAzimuth(c.sights[0]), closeTo((c.declination + 360) % 360, 1e-9));
+    expect(c.trueAzimuth(c.sights[0]), closeTo((c.declination + 360) % 360, 1e-6)); // declination read at two instants
     c.dispose();
   });
 }
