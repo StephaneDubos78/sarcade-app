@@ -11,7 +11,9 @@ class DictationButton extends StatefulWidget {
   final TextEditingController controller;
   /// Called after each recognised piece (the search runs again).
   final VoidCallback? onChanged;
-  const DictationButton({super.key,required this.controller,this.onChanged});
+  /// Round coloured button (the send position of the message bar).
+  final bool filled;
+  const DictationButton({super.key,required this.controller,this.onChanged,this.filled=false});
   @override State<DictationButton> createState()=>_DictationButtonState();
 }
 
@@ -51,10 +53,17 @@ class _DictationButtonState extends State<DictationButton> {
   @override void dispose(){if(_listening){_speech.stop();}super.dispose();}
 
   @override
-  Widget build(BuildContext context)=>IconButton(
-    tooltip:_listening?S.t('dictation.stop'):S.t('dictation.start'),
-    onPressed:_toggle,
-    color:_listening?Colors.red:null,
-    icon:Icon(_listening?Icons.mic:Icons.mic_none),
-  );
+  Widget build(BuildContext context)=>widget.filled
+    ? IconButton.filled(
+        tooltip:_listening?S.t('dictation.stop'):S.t('dictation.start'),
+        onPressed:_toggle,
+        style:_listening?IconButton.styleFrom(backgroundColor:Colors.red):null,
+        icon:Icon(_listening?Icons.stop:Icons.mic),
+      )
+    : IconButton(
+        tooltip:_listening?S.t('dictation.stop'):S.t('dictation.start'),
+        onPressed:_toggle,
+        color:_listening?Colors.red:null,
+        icon:Icon(_listening?Icons.mic:Icons.mic_none),
+      );
 }
