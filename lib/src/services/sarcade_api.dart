@@ -130,6 +130,22 @@ class SarcadeApi {
     final r=await _client.delete(Uri.parse('$baseUrl/api/v0.1/aprs/groups/$id'));
     if(r.statusCode!=204&&r.statusCode!=404) throw SarcadeHttpException('aprs_group_delete',r.statusCode);
   }
+  /// Smart TV (« Affichage sur Smart TV »): approve the code shown by the
+  /// TV for this event; list and revoke the screens.
+  Future<void> approveDisplay(String code,String eventId) async {
+    final r=await _client.post(Uri.parse('$baseUrl/api/v0.1/tv/approve'),headers:_json,body:jsonEncode({'code':code,'event_id':eventId}));
+    if(r.statusCode!=200) throw SarcadeHttpException('tv_approve',r.statusCode,r.body);
+  }
+  Future<List<Map<String,dynamic>>> displays(String eventId) async {
+    final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/events/$eventId/displays'));
+    if(r.statusCode!=200) throw SarcadeHttpException('displays',r.statusCode,r.body);
+    return [for(final d in jsonDecode(r.body) as List)Map<String,dynamic>.from(d as Map)];
+  }
+  Future<void> revokeDisplay(String eventId,String id) async {
+    final r=await _client.delete(Uri.parse('$baseUrl/api/v0.1/events/$eventId/displays/$id'));
+    if(r.statusCode!=204) throw SarcadeHttpException('display_revoke',r.statusCode,r.body);
+  }
+
   /// Who the server sees (email checked by Cloudflare Access) and the
   /// rights it gives; null for an older server.
   Future<Map<String,dynamic>?> me() async {
