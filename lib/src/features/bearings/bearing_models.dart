@@ -35,7 +35,7 @@ class Bearing {
     final updated=DateTime.parse(j['updated_at'] as String);
     return Bearing(id:j['id'] as String,eventId:j['event_id'] as String,origin:LatLng((p[0] as num).toDouble(),(p[1] as num).toDouble()),
       azimuthDeg:n(b['azimuth_deg'])!,lengthM:n(b['length_m'])??10000,coneDeg:n(b['cone_deg'])??5,strength:(b['strength'] as num?)?.toInt()??0,
-      target:(b['target'] as String?)??'',comment:(b['comment'] as String?)??'',search:(b['search'] as String?)??'',method:(b['method'] as String?)??'manual',
+      target:'',comment:legacyComment((b['target'] as String?)??'',(b['comment'] as String?)??''),search:(b['search'] as String?)??'',method:(b['method'] as String?)??'manual',
       magneticDeg:n(b['magnetic_deg']),declinationDeg:n(b['declination_deg']),accuracyM:n(b['accuracy_m']),operatorColor:(b['operator_color'] as num?)?.toInt(),
       takenAt:DateTime.tryParse('${b['taken_at']??''}')??updated,
       createdBy:(j['created_by'] as String?)??(j['updated_by'] as String),updatedBy:j['updated_by'] as String,updatedAt:updated);
@@ -43,7 +43,7 @@ class Bearing {
 
   /// Payload of the map_feature operation.
   Map<String,dynamic> toJson()=>{'id':id,'event_id':eventId,'kind':'bearing','points':[[origin.latitude,origin.longitude]],
-    'color':searchColor(search),'stroke_width':2.0,'label':target,'created_by':createdBy,'updated_by':updatedBy,
+    'color':searchColor(search),'stroke_width':2.0,'label':search,'created_by':createdBy,'updated_by':updatedBy,
     'updated_at':updatedAt.toUtc().toIso8601String(),
     'bearing':{'azimuth_deg':azimuthDeg,'length_m':lengthM,'cone_deg':coneDeg,'strength':strength,'target':target,'comment':comment,
       'search':search,'method':method,'taken_at':takenAt.toUtc().toIso8601String(),
@@ -102,4 +102,34 @@ Map<String,List<Bearing>> bySearch(Iterable<Bearing> list){
   final out=<String,List<Bearing>>{};
   for(final b in list){(out[b.search]??=[]).add(b);}
   return out;
+}
+
+/// « Signal recherché » (decision of 28 Oct 2026): the search becomes the
+/// signal, the old « Cible » goes into the comment.
+String legacyComment(String target,String comment){
+  final t=target.trim();
+  if(t.isEmpty||comment.contains(t))return comment;
+  return comment.isEmpty?t:'$t · $comment';
+}
+
+/// Signals already searched in the event, most recent bearing first.
+List<String> signalsByRecency(Iterable<Bearing> list){
+  final sorted=[...list]..sort((a,b)=>b.takenAt.compareTo(a.takenAt));
+  final out=<String>[];
+  for(final b in sorted){if(b.search.isNotEmpty&&!out.contains(b.search))out.add(b.search);}
+  return out;
+}
+
+/// Colour of an operator (dot where a bearing was taken), stable from the
+/// identifier, until the operator colours of the event exist.
+int operatorColor(String id){
+  const palette=[0xFFE53935,0xFFFB8C00,0xFF43A047,0xFF1E88E5,0xFF8E24AA,0xFF00897B,0xFFD81B60,0xFF6D4C41,0xFF3949AB,0xFF7CB342];
+  var h=0; for(final c in id.codeUnits){h=(h*31+c)&0x7FFFFFFF;}
+  return palette[h%palette.length];
+}
+
+/// Initials shown in the dot: callsign or terminal, two characters.
+String operatorInitials(String id){
+  final t=id.trim().toUpperCase().replaceAll(RegExp(r'[^A-Z0-9]'),'');
+  return t.length<=2?t:t.substring(0,2);
 }

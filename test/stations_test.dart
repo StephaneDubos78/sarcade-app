@@ -48,4 +48,12 @@ void main() {
     expect(serverLink(syncOk: null, realtime: false), ServerLink.slowed);
     expect(serverLink(syncOk: false, realtime: true), ServerLink.cut);
   });
+  test('sections by freshness: active, without news, old', () {
+    final now = DateTime.utc(2026, 10, 29, 12);
+    expect(sectionOf(now.subtract(const Duration(minutes: 9)), now), Section.active);
+    expect(sectionOf(now.subtract(const Duration(minutes: 10)), now), Section.silent);
+    expect(sectionOf(now.subtract(const Duration(minutes: 119)), now), Section.silent);
+    expect(sectionOf(now.subtract(const Duration(hours: 2)), now), Section.old);
+    expect(sectionOf(now.subtract(const Duration(hours: 1)), now, oldMin: 30), Section.old);
+  });
 }
