@@ -24,6 +24,9 @@ import '../../ui/save_bar.dart';
 /// Operator settings: server address, event and terminal identifier,
 /// language, radio callsign. Lets one APK serve every field operator
 /// instead of one build per terminal.
+/// Temporary diagnostic of the end-to-end test.
+String? debugLastSaveTrace;
+
 class SettingsPage extends StatefulWidget {
   final AppConfig initial;
   final Future<void> Function(AppConfig) onSave;
@@ -497,7 +500,7 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _trySave() async {
-    debugPrint('SARCADE diag: settings save requested\n${StackTrace.current}');
+    debugLastSaveTrace='${StackTrace.current}';
     // A refused field may sit in a hidden tab: show the first one.
     final general=_url(_server.text)!=null||_required(_event.text)!=null||_required(_device.text)!=null;
     if(general&&_tab!=0){
