@@ -72,6 +72,7 @@ import '../routes/routes_controller.dart';
 import '../routes/routes_layers.dart';
 import '../routes/routes_panel.dart';
 import '../tv/tv_view.dart';
+import '../orders/move_orders.dart';
 
 class OperationalMapPage extends StatefulWidget {
   final SarcadeApi api; final String eventId,deviceId,tileUrl,tileAttribution; final LocalStore store; final VoidCallback? onSettings;
@@ -158,7 +159,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       _deskId=id;_deskPage=build();
     });
   }
-  @override void initState(){super.initState();_initNotificationActions();unawaited(requestPersistentStorage());_sync=OfflineSyncService(api:widget.api,store:widget.store,eventId:widget.eventId,onRemoteChange:_onRemoteChange);_initDrawing();_initBearings();_loadLocal();_initRoutes();_initMeasure();_sync.start();_initOperations();_loadBasemaps();_initWebUpdate();unawaited(_loadMyPreferences());_syncUiTimer=Timer.periodic(const Duration(seconds:2),(t){if(t.tick%3==0)_drainAnswers();if(mounted)setState((){});});AccessManager.instance.addListener(_onAccessChanged);_start();unawaited(_loadRoles());}
+  @override void initState(){super.initState();_initNotificationActions();unawaited(requestPersistentStorage());_sync=OfflineSyncService(api:widget.api,store:widget.store,eventId:widget.eventId,onRemoteChange:_onRemoteChange);_initDrawing();_initBearings();_loadLocal();_initRoutes();_initMeasure();_sync.start();_initOperations();_loadBasemaps();_initWebUpdate();unawaited(_loadMyPreferences());_syncUiTimer=Timer.periodic(const Duration(seconds:2),(t){if(t.tick%8==0)_checkOrderArrival();if(t.tick%3==0)_drainAnswers();if(mounted)setState((){});});AccessManager.instance.addListener(_onAccessChanged);_start();unawaited(_loadRoles());}
 
   /// Rights given by the server for the checked email (PCO, administrator).
   Future<void> _loadRoles() async {
@@ -355,13 +356,63 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       ListTile(leading:const Icon(Icons.open_in_new),title:Text(S.t('ext.open')),onTap:()=>Navigator.pop(c,'ext')),
       ListTile(leading:const Icon(Icons.cloud_outlined),title:Text(S.t('weather.here')),onTap:()=>Navigator.pop(c,'weather')),
       ListTile(leading:const Icon(Icons.track_changes),title:Text(S.t('bearings.fromHere')),onTap:()=>Navigator.pop(c,'bearing')),
+      if(isPco(widget.deviceId))ListTile(leading:const Icon(Icons.flag_outlined),title:Text(S.t('order.send')),onTap:()=>Navigator.pop(c,'order')),
     ])));
+    if(choice=='order'){await _sendOperatorHere(point);return;}
     if(choice=='bearing'){await _bearings.startTaking(from:point);return;}
     if(choice=='measure')await _measureTo(point,label);
     if(choice=='ext'&&mounted)await _openElsewhere(point,label);
     if(choice=='nav')await _navigateTo(point,label);
     if(choice=='route')await _routeToHere(point);
     if(choice=='weather')_openWeather(point:(lat:point.latitude,lon:point.longitude,label:label));
+  }
+
+  // --- Move orders (PCO → operator, 29 Oct 2026) ------------------------------
+
+  List<MoveOrder> get _moveOrders=>_routes.moveOrders.map(MoveOrder.new).toList();
+  /// The open order addressed to this device, the most recent first.
+  MoveOrder? get _myOrder{
+    final mine=_moveOrders.where((o)=>o.targetId==widget.deviceId&&o.open).toList()
+      ..sort((a,b)=>'${b.json['updated_at']}'.compareTo('${a.json['updated_at']}'));
+    return mine.isEmpty?null:mine.first;
+  }
+  LatLng? _positionOf(String id){final p=_positions[id];return p==null?null:LatLng(p.lat,p.lon);}
+
+  Future<void> _sendOperatorHere(LatLng point) async {
+    final now=DateTime.now().toUtc();
+    final ops=[for(final p in _positions.values)
+      if(p.source!='aprs'&&p.deviceId!=widget.deviceId)(id:p.deviceId,label:p.label,age:ageLabel(p.time.toUtc(),now))]
+      ..sort((a,b)=>a.label.toLowerCase().compareTo(b.label.toLowerCase()));
+    final d=await showMoveOrderDialog(context,ops);
+    if(d==null||!mounted)return;
+    final label=d.label.isEmpty?S.t('order.point'):d.label;
+    for(final t in d.targets){await _routes.sendMoveOrder(targetId:t,destination:point,label:label,note:d.note);}
+    if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(S.t('order.sent',{'n':d.targets.length}))));
+  }
+
+  void _showMoveOrder(MoveOrder o){
+    showModalBottomSheet<void>(context:context,showDragHandle:true,builder:(c)=>SafeArea(child:Column(mainAxisSize:MainAxisSize.min,children:[
+      ListTile(leading:Icon(Icons.flag,color:moveOrderColor(o.status)),title:Text('${S.t('order.title')} · ${o.targetId}'),
+        subtitle:Text('« ${o.label} » · ${S.t('order.status.${o.status}')}${o.note.isEmpty?'':'\n${o.note}'}')),
+      if(o.open&&(isPco(widget.deviceId)||o.createdBy==widget.deviceId))ListTile(leading:const Icon(Icons.cancel_outlined),
+        title:Text(S.t('order.cancel')),onTap:(){Navigator.pop(c);unawaited(_routes.setMoveOrderStatus(o.json,'cancelled'));}),
+    ])));
+  }
+
+  /// « Arrivé » on its own within 50 m of the destination of an accepted order.
+  void _checkOrderArrival(){
+    final o=_myOrder; final me=_me??_positionOf(widget.deviceId);
+    if(o!=null&&me!=null&&moveOrderReached(o,me))unawaited(_routes.setMoveOrderStatus(o.json,'arrived'));
+  }
+
+  Widget? _orderBanner(){
+    final o=_myOrder;
+    if(o==null)return null;
+    return ConstrainedBox(constraints:const BoxConstraints(maxWidth:460),child:MoveOrderBanner(order:o,
+      onAccept:() async {await _routes.setMoveOrderStatus(o.json,'accepted');if(mounted)await _navigateTo(o.destination,o.label);},
+      onRefuse:()=>unawaited(_routes.setMoveOrderStatus(o.json,'refused')),
+      onNavigate:()=>unawaited(_navigateTo(o.destination,o.label)),
+      onArrived:()=>unawaited(_routes.setMoveOrderStatus(o.json,'arrived'))));
   }
 
   /// « Itinéraire jusqu'ici » in one gesture: a route from my position to
@@ -1129,22 +1180,45 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   bool get _showDrawings=>widget.store.preference('show_draw:${widget.eventId}')!='0';
   Future<void> _setShown(String key,bool v) async {await widget.store.setPreference('$key:${widget.eventId}',v?null:'0');if(mounted)setState((){});}
   /// Sections of the layers panel: Terrain, Opération, Référentiel ADRASEC.
+  /// Transparency of a map layer (Couches panel), kept on this device:
+  /// ops (operators and points), draw (drawings), brg (bearings), ref (reference).
+  double _layerOpacity(String k)=>double.tryParse(widget.store.preference('opacity:$k')??'')?.clamp(0.1,1.0)??1.0;
+  Future<void> _setLayerOpacity(String k,double v) async {
+    await widget.store.setPreference('opacity:$k',v>=0.99?null:v.toStringAsFixed(2));
+    if(mounted)setState((){});
+  }
+  Widget _faded(String k,Widget layer){final o=_layerOpacity(k);return o>=1?layer:Opacity(opacity:o,child:layer);}
+  List<Widget> _fadedAll(String k,List<Widget> layers)=>[for(final l in layers)_faded(k,l)];
+
   List<Widget> _layerSections(BuildContext c,StateSetter refresh){
     Widget head(String t)=>Padding(padding:const EdgeInsets.fromLTRB(16,16,16,4),child:Text(t,style:Theme.of(c).textTheme.titleSmall));
     Widget toggle(String label,bool on,Future<void> Function(bool) set)=>SwitchListTile(dense:true,title:Text(label),value:on,
       onChanged:(v) async {await set(v);refresh((){});});
+    Widget opacity(String k){
+      final o=_layerOpacity(k);
+      return Padding(padding:const EdgeInsets.only(left:16,right:16,bottom:4),child:Row(children:[
+        Icon(Icons.opacity,size:18,color:Theme.of(c).colorScheme.onSurfaceVariant),const SizedBox(width:8),
+        Text(S.t('layers.opacity'),style:Theme.of(c).textTheme.bodySmall),
+        Expanded(child:Slider(value:o,min:0.1,max:1,divisions:9,onChanged:(v) async {await _setLayerOpacity(k,v);refresh((){});})),
+        SizedBox(width:44,child:Text('${(o*100).round()} %',textAlign:TextAlign.end,style:Theme.of(c).textTheme.bodySmall)),
+      ]));
+    }
     return [
       head(S.t('layers.terrain')),
       toggle(S.t('chips.operators'),_showOperators,(v)=>_setShown('show_ops',v)),
       toggle('APRS',_showAprs,(v) async =>setState(()=>_showAprs=v)),
       toggle(S.t('chips.withoutInternet'),_withoutInternetOnly,(v) async =>setState(()=>_withoutInternetOnly=v)),
+      opacity('ops'),
       head(S.t('layers.operation')),
       toggle(S.t('chips.drawings'),_showDrawings,(v)=>_setShown('show_draw',v)),
+      opacity('draw'),
       toggle(S.t('chips.bearings'),_showBearings,(v)=>_setShown('show_brg',v)),
+      opacity('brg'),
       _bearingColorBy(refresh),
       head(S.t('layers.reference')),
       toggle(S.t('refs.highPoints'),_showHighPoints,(v) async =>setState(()=>_showHighPoints=v)),
       toggle(S.t('refs.relays'),_showRelays,(v) async =>setState(()=>_showRelays=v)),
+      opacity('ref'),
       const SizedBox(height:12),
     ];
   }
@@ -1909,15 +1983,16 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
             tileBuilder:_darkTiles(context)?darkModeTileBuilder:null),
           if(_trace.length>1)PolylineLayer(polylines:_traceSegments().map((segment)=>Polyline(points:segment.map((p)=>LatLng(p.lat,p.lon)).toList(),strokeWidth:4,color:Theme.of(context).colorScheme.secondary)).toList()),
           // Reference sites below the drawn objects, grouped when zoomed out.
-          ReferenceClusterLayer(sites:_references.values.where((r)=>(r.isHighPoint&&_showHighPoints)||(r.isRelay&&_showRelays)).toList(),onSelect:_selectReference),
-          if(_showDrawings)...buildDrawingLayers(_drawing),
-          if(_showBearings||_bearings.taking||_adjusting!=null)...buildBearingLayers(bearings:_showBearings?_bearings.all.where((b)=>b.id!=_adjusting?.id):const <Bearing>[],draft:_bearingDraft()??_adjusting,byOperator:_brgByOperator,hits:_bearingHits,
-            onTapBearing:_showBearingSheet,onTapZone:(c,_)=>_onLongPress(c)),
+          _faded('ref',ReferenceClusterLayer(sites:_references.values.where((r)=>(r.isHighPoint&&_showHighPoints)||(r.isRelay&&_showRelays)).toList(),onSelect:_selectReference)),
+          if(_showDrawings)..._fadedAll('draw',buildDrawingLayers(_drawing)),
+          if(_showBearings||_bearings.taking||_adjusting!=null)..._fadedAll('brg',buildBearingLayers(bearings:_showBearings?_bearings.all.where((b)=>b.id!=_adjusting?.id):const <Bearing>[],draft:_bearingDraft()??_adjusting,byOperator:_brgByOperator,hits:_bearingHits,
+            onTapBearing:_showBearingSheet,onTapZone:(c,_)=>_onLongPress(c))),
           ..._variantLayers(),
           ...buildRouteLayers(_routes,selectedRouteId:_selectedRouteId,itinerary:_nav.itinerary?.geometry??const [],draftClosure:_closureDraft,
             onWaypointTap:(w)=>setState((){_showRoutesPanel=true;_showPanel=false;_showReferencePanel=false;_selectedRouteId=w.routeId;})),
+          ...buildMoveOrderLayers(isPco(widget.deviceId)?_moveOrders:[?_myOrder],_positionOf,_showMoveOrder),
           ...buildMeasureLayers(_measure,_coordFormat),
-          MarkerLayer(markers:markers),
+          _faded('ops',MarkerLayer(markers:markers)),
           if(_me!=null)MarkerLayer(markers:[Marker(point:_me!,width:22,height:22,child:Container(decoration:BoxDecoration(color:Colors.blue,shape:BoxShape.circle,border:Border.all(color:Colors.white,width:3),boxShadow:const [BoxShadow(blurRadius:4,color:Colors.black26)])))]),
           if(_trace.isNotEmpty)MarkerLayer(markers:[for(final t in _trace)Marker(point:LatLng(t.lat,t.lon),width:8,height:8,
             child:Container(decoration:BoxDecoration(color:Theme.of(context).colorScheme.secondary,shape:BoxShape.circle)))]),
@@ -1959,7 +2034,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
             ],
           ]),
           // Phone: filters in one button; computer: chips visible.
-          if(!_drawingTools)Padding(padding:const EdgeInsets.only(top:8),child:Wrap(spacing:8,runSpacing:8,children:[if(!compact)_trackingBadge(),?_weatherPill(),?_staleBanner()])),
+          if(!_drawingTools)Padding(padding:const EdgeInsets.only(top:8),child:Wrap(spacing:8,runSpacing:8,children:[if(!compact)_trackingBadge(),?_weatherPill(),?_staleBanner(),?_orderBanner()])),
           if(_drawing.isDrawing)Padding(padding:const EdgeInsets.only(top:8),child:DraftBar(controller:_drawing)),
           if(_drawing.selected!=null)Padding(padding:const EdgeInsets.only(top:8),child:SelectionBar(controller:_drawing,onEditLabel:_editSelectedLabel,canFence:isPco(widget.deviceId))),
           if(_drawingClosure)Padding(padding:const EdgeInsets.only(top:8),child:Card(child:Padding(padding:const EdgeInsets.symmetric(horizontal:12,vertical:6),child:Row(mainAxisSize:MainAxisSize.min,children:[

@@ -57,13 +57,15 @@ class MapFeature {
   /// Géorepérage (ATAK 5): the PCO is warned when a team enters or leaves
   /// this zone, rectangle or circle (checked by the server).
   final bool geofence;
+  /// Transparency of the object (0.1 to 1, seen by everyone), 1 by default.
+  final double opacity;
 
-  const MapFeature({required this.id,required this.eventId,required this.kind,required this.points,this.radiusM,required this.color,required this.strokeWidth,this.label='',this.createdBy,this.updatedBy,required this.updatedAt,this.geofence=false});
+  const MapFeature({required this.id,required this.eventId,required this.kind,required this.points,this.radiusM,required this.color,required this.strokeWidth,this.label='',this.createdBy,this.updatedBy,required this.updatedAt,this.geofence=false,this.opacity=1});
 
-  MapFeature copyWith({List<LatLng>? points,double? radiusM,int? color,double? strokeWidth,String? label,String? id,String? updatedBy,DateTime? updatedAt,bool? geofence})=>MapFeature(
+  MapFeature copyWith({List<LatLng>? points,double? radiusM,int? color,double? strokeWidth,String? label,String? id,String? updatedBy,DateTime? updatedAt,bool? geofence,double? opacity})=>MapFeature(
     id:id??this.id,eventId:eventId,kind:kind,points:points??this.points,radiusM:radiusM??this.radiusM,
     color:color??this.color,strokeWidth:strokeWidth??this.strokeWidth,label:label??this.label,createdBy:createdBy,
-    updatedBy:updatedBy??this.updatedBy,updatedAt:updatedAt??DateTime.now().toUtc(),geofence:geofence??this.geofence,
+    updatedBy:updatedBy??this.updatedBy,updatedAt:updatedAt??DateTime.now().toUtc(),geofence:geofence??this.geofence,opacity:opacity??this.opacity,
   );
 
   /// Vertices of the polygon outline for closed shapes.
@@ -101,6 +103,7 @@ class MapFeature {
     'radius_m':radiusM,'color':color,'stroke_width':strokeWidth,'label':label,
     'created_by':createdBy,'updated_by':updatedBy??createdBy,'updated_at':updatedAt.toUtc().toIso8601String(),
     if(geofence)'geofence':true,
+    if(opacity<1)'opacity':opacity,
   };
 
   factory MapFeature.fromJson(Map<String,dynamic> j)=>MapFeature(
@@ -111,6 +114,7 @@ class MapFeature {
     color:(j['color'] as num).toInt(),strokeWidth:(j['stroke_width'] as num).toDouble(),
     label:(j['label'] as String?)??'',createdBy:j['created_by'] as String?,updatedBy:j['updated_by'] as String?,
     updatedAt:DateTime.parse(j['updated_at'] as String),geofence:j['geofence']==true,
+    opacity:((j['opacity'] as num?)?.toDouble()??1.0).clamp(0.1,1.0),
   );
 
   /// GeoJSON Feature. Coordinates are [longitude, latitude] as the spec requires.
@@ -127,6 +131,7 @@ class MapFeature {
       'properties':{
         'sarcade:kind':kind.name,'event_id':eventId,
         if(label.isNotEmpty)'name':label,
+        if(opacity<1)'stroke-opacity':opacity,if(opacity<1)'fill-opacity':opacity,
         'stroke':'#${(color&0xFFFFFF).toRadixString(16).padLeft(6,'0')}','stroke-width':strokeWidth,
         if(kind==FeatureKind.circle)'radius_m':radiusM,
         if(kind.isLinear)'length_m':double.parse(lengthM.toStringAsFixed(1)),

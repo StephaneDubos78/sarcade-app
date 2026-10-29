@@ -24,6 +24,7 @@ class RoutesController extends ChangeNotifier {
   List<Waypoint> get waypoints=>_ofKind('route_waypoint').map(Waypoint.new).toList();
   List<Map<String,dynamic>> get passages=>_ofKind('route_passage').toList();
   List<RoadClosure> get closures=>_ofKind('road_closure').map(RoadClosure.new).toList();
+  List<Map<String,dynamic>> get moveOrders=>_ofKind('move_order').toList();
   RoutePlan? route(String id){final j=_objects[id];return j==null||j['kind']!='route'||j['deleted']==true?null:RoutePlan(j);}
   List<Waypoint> ordered(RoutePlan r)=>orderedWaypoints(r,waypoints);
 
@@ -38,6 +39,7 @@ class RoutesController extends ChangeNotifier {
         for(final p in (r['passages'] as List?)??const []){await _remote('route_passage',Map<String,dynamic>.from(p as Map));}
       }
       for(final c in await api.roadClosures(eventId)){await _remote('road_closure',c);}
+      try{for(final o in await api.moveOrders(eventId)){await _remote('move_order',o);}}catch(_){/* older server */}
       notifyListeners();
     }catch(_){/* offline: objects known on the device */}
   }
@@ -166,6 +168,15 @@ class RoutesController extends ChangeNotifier {
     _save('road_closure',{'id':_uuid.v4(),'label':label,'points':lineJson(points),'active':true},isNew:true);
 
   Future<void> setClosureActive(RoadClosure c,bool active)=>_save('road_closure',{...c.json,'active':active},isNew:false);
+
+  // --- Move orders (PCO → operator, 29 Oct 2026) ------------------------------
+
+  Future<void> sendMoveOrder({required String targetId,required LatLng destination,required String label,String note=''})=>
+    _save('move_order',{'id':_uuid.v4(),'target_id':targetId,'status':'sent',
+      'destination':{'lat':destination.latitude,'lon':destination.longitude,'label':label},'note':note},isNew:true);
+
+  /// Answer of the operator (accepted, refused, arrived) or cancellation.
+  Future<void> setMoveOrderStatus(Map<String,dynamic> order,String status)=>_save('move_order',{...order,'status':status},isNew:false);
 
   // --- Shared itinerary ---------------------------------------------------------
 

@@ -259,6 +259,12 @@ class SarcadeApi {
     if(r.statusCode!=200) throw SarcadeHttpException('routes',r.statusCode);
     return (jsonDecode(r.body) as List).map((e)=>Map<String,dynamic>.from(e as Map)).toList();
   }
+  /// Move orders of the PCO to the operators (404 on an older server).
+  Future<List<Map<String,dynamic>>> moveOrders(String eventId) async {
+    final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/events/$eventId/move-orders'));
+    if(r.statusCode!=200) throw SarcadeHttpException('move_orders',r.statusCode);
+    return (jsonDecode(r.body) as List).map((e)=>Map<String,dynamic>.from(e as Map)).toList();
+  }
   Future<List<Map<String,dynamic>>> roadClosures(String eventId) async {
     final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/events/$eventId/road-closures'));
     if(r.statusCode!=200) throw SarcadeHttpException('road_closures',r.statusCode);
