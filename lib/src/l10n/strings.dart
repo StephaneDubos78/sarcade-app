@@ -28,6 +28,7 @@ class S {
 }
 
 const Texts _fr={
+  'messages.attach':'Joindre une photo ou un message prédéfini',
   'messages.search':'Rechercher une conversation','messages.filterAll':'Toutes','messages.filterUnread':'Non lues','messages.filterFav':'Favoris','messages.fav':'Ajouter aux favoris','messages.unfav':'Retirer des favoris','messages.emoji':'Émojis','messages.today':'Aujourd’hui','messages.yesterday':'Hier',
   'settings.serverRow':'Serveur SARCADE','settings.eventRow':'Événement suivi','settings.eventHelp':'L’événement dont ce terminal partage la carte, les messages et la main courante','settings.deviceRow':'Terminal','settings.callsignRow':'Indicatif','settings.languageRow':'Langue de l’application','servers.add':'Ajouter un serveur','servers.new':'Nouveau : {url}',
   'device.lastContact':'dernier contact il y a {age}',
@@ -287,6 +288,7 @@ const Texts _fr={
 };
 
 const Texts _en={
+  'messages.attach':'Attach a photo or a predefined message',
   'messages.search':'Search a conversation','messages.filterAll':'All','messages.filterUnread':'Unread','messages.filterFav':'Favourites','messages.fav':'Add to favourites','messages.unfav':'Remove from favourites','messages.emoji':'Emojis','messages.today':'Today','messages.yesterday':'Yesterday',
   'settings.serverRow':'SARCADE server','settings.eventRow':'Event followed','settings.eventHelp':'The event whose map, messages and logbook this terminal shares','settings.deviceRow':'Terminal','settings.callsignRow':'Callsign','settings.languageRow':'Application language','servers.add':'Add a server','servers.new':'New: {url}',
   'device.lastContact':'last contact {age} ago',

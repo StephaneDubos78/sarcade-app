@@ -321,9 +321,11 @@ class _SettingsPageState extends State<SettingsPage> {
       if(help!=null)Padding(padding:const EdgeInsets.only(top:2),child:Text(help,style:t.textTheme.bodySmall?.copyWith(color:t.colorScheme.onSurfaceVariant))),
     ]);
     return Column(children:[
-      Padding(padding:const EdgeInsets.symmetric(vertical:14),child:LayoutBuilder(builder:(context,c)=>c.maxWidth>=600
+      // Width of the screen, not a LayoutBuilder: a field keeps its focus
+      // while the keyboard opens.
+      Padding(padding:const EdgeInsets.symmetric(vertical:14),child:MediaQuery.sizeOf(context).width>=640
         ? Row(crossAxisAlignment:CrossAxisAlignment.start,children:[Expanded(flex:2,child:head),const SizedBox(width:24),Expanded(flex:3,child:child)])
-        : Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[head,const SizedBox(height:8),child]))),
+        : Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[head,const SizedBox(height:8),child])),
       const Divider(height:1),
     ]);
   }
