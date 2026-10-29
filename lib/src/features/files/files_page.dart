@@ -266,8 +266,10 @@ class _FilesPageState extends State<FilesPage> with SingleTickerProviderStateMix
 
   Widget _eventTab(){
     if(_loading)return const Center(child:CircularProgressIndicator());
-    if(_error!=null)return Center(child:Padding(padding:const EdgeInsets.all(24),child:Column(mainAxisSize:MainAxisSize.min,children:[
-      Text(S.t('event.offline')),TextButton(onPressed:_load,child:Text(S.t('common.retry')))])));
+    if(_error!=null){
+      return Center(child:Padding(padding:const EdgeInsets.all(24),child:Column(mainAxisSize:MainAxisSize.min,children:[
+        Text(S.t('event.offline')),TextButton(onPressed:_load,child:Text(S.t('common.retry')))])));
+    }
     final photos=_photoIds; final q=_search.text.trim();
     final searching=q.isNotEmpty||_messagePhotos;
     var flat=filterFiles(_files,query:q);

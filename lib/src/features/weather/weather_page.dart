@@ -145,11 +145,13 @@ class _WeatherPageState extends State<WeatherPage> {
           _windArrow(h.windDirectionDeg,size:14,color:now?s.onPrimary:s.onSurfaceVariant),
         ])));
       final ev=loc==null?null:sunEventIn(h.time,loc.lat,loc.lon);
-      if(ev!=null)cells.add(SizedBox(width:40,child:Column(mainAxisAlignment:MainAxisAlignment.center,children:[
-        Icon(ev.kind=='rise'?Icons.wb_twilight:Icons.nights_stay_outlined,size:18,color:const Color(0xFFE8710A)),
-        Container(width:2,height:30,color:const Color(0xFFE8710A).withValues(alpha:0.5)),
-        Text(_hm(ev.at),style:const TextStyle(fontSize:11,fontWeight:FontWeight.w700,color:Color(0xFFE8710A))),
-      ])));
+      if(ev!=null){
+        cells.add(SizedBox(width:40,child:Column(mainAxisAlignment:MainAxisAlignment.center,children:[
+          Icon(ev.kind=='rise'?Icons.wb_twilight:Icons.nights_stay_outlined,size:18,color:const Color(0xFFE8710A)),
+          Container(width:2,height:30,color:const Color(0xFFE8710A).withValues(alpha:0.5)),
+          Text(_hm(ev.at),style:const TextStyle(fontSize:11,fontWeight:FontWeight.w700,color:Color(0xFFE8710A))),
+        ])));
+      }
     }
     return SizedBox(height:132,child:ListView(scrollDirection:Axis.horizontal,padding:const EdgeInsets.symmetric(horizontal:12),children:cells));
   }
