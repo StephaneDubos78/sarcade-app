@@ -40,8 +40,10 @@ List<Widget> buildMoveOrderLayers(List<MoveOrder> orders,LatLng? Function(String
   final lines=<Polyline>[];
   for(final o in shown.where((o)=>o.open)){
     final from=positionOf(o.targetId);
-    if(from!=null)lines.add(Polyline(points:[from,o.destination],color:moveOrderColor(o.status),strokeWidth:3,
-      pattern:StrokePattern.dashed(segments:const [10,8])));
+    if(from!=null){
+      lines.add(Polyline(points:[from,o.destination],color:moveOrderColor(o.status),strokeWidth:3,
+        pattern:StrokePattern.dashed(segments:const [10,8])));
+    }
   }
   return [
     if(lines.isNotEmpty)PolylineLayer(polylines:lines),
