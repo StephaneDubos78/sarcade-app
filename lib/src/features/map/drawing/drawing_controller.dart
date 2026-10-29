@@ -10,10 +10,24 @@ import 'map_feature.dart';
 /// Fixed palette, readable on the OSM, IGN and satellite maps: red, orange,
 /// yellow, green, blue, purple, black, white (note « Couleur de dessin par
 /// défaut »).
-const drawingPalette=<int>[0xFFE53935,0xFFFB8C00,0xFFFDD835,0xFF43A047,0xFF1E88E5,0xFF8E24AA,0xFF212121,0xFFFFFFFF];
+/// 16 well distinct colours (« Couleurs des opérateurs », 28 Oct 2026: the
+/// ADRASEC has 20 members), two rows of 8 in the profile.
+const drawingPalette=<int>[0xFFE53935,0xFFFB8C00,0xFFFDD835,0xFFC0CA33,0xFF43A047,0xFF00897B,0xFF00ACC1,0xFF039BE5,
+  0xFF1E88E5,0xFF3949AB,0xFF8E24AA,0xFFD81B60,0xFF6D4C41,0xFF757575,0xFF212121,0xFFFFFFFF];
 
-/// Colour of new drawings chosen in the profile; red when none or unknown.
-int defaultDrawColor(int? chosen)=>chosen!=null&&drawingPalette.contains(chosen)?chosen:drawingPalette.first;
+/// Colour of new drawings chosen in the profile (any colour, « Autre
+/// couleur »); red when none.
+int defaultDrawColor(int? chosen)=>chosen??drawingPalette.first;
+
+/// Colour given to an operator without a chosen one: the palette colour
+/// the least used by the others in the event (white and black left out).
+int autoColor(Iterable<int> usedByOthers){
+  final candidates=drawingPalette.where((c)=>c!=0xFFFFFFFF&&c!=0xFF212121).toList();
+  final count={for(final c in candidates)c:0};
+  for(final c in usedByOthers){if(count.containsKey(c))count[c]=count[c]!+1;}
+  final least=count.values.reduce((a,b)=>a<b?a:b);
+  return candidates.firstWhere((c)=>count[c]==least);
+}
 const drawingWidths=<double>[2,4,7];
 
 /// One undoable action: the state of each touched object before and after.

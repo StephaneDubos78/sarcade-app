@@ -199,7 +199,36 @@ def main() -> int:
     print(f"patched {MANIFEST}")
     if not patch_gradle():
         return 1
+    patch_icons()
     return patch_signing()
+
+
+ADAPTIVE = """<?xml version="1.0" encoding="utf-8"?>
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/ic_launcher_background"/>
+    <foreground android:drawable="@mipmap/ic_launcher_foreground"/>
+</adaptive-icon>
+"""
+
+
+def patch_icons() -> None:
+    """SARCADE icon (motif of the official logo on white), adaptive from
+    Android 8 (the system cuts it in a circle or a drop): replaces the
+    Flutter icon of the template."""
+    import shutil
+    res = Path("android/app/src/main/res")
+    for d in Path("assets/icon/generated/android").iterdir():
+        (res / d.name).mkdir(parents=True, exist_ok=True)
+        for f in d.iterdir():
+            shutil.copyfile(f, res / d.name / f.name)
+    (res / "mipmap-anydpi-v26").mkdir(parents=True, exist_ok=True)
+    (res / "mipmap-anydpi-v26" / "ic_launcher.xml").write_text(ADAPTIVE, encoding="utf-8")
+    (res / "mipmap-anydpi-v26" / "ic_launcher_round.xml").write_text(ADAPTIVE, encoding="utf-8")
+    (res / "values").mkdir(parents=True, exist_ok=True)
+    (res / "values" / "ic_launcher_background.xml").write_text(
+        '<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <color name="ic_launcher_background">#FFFFFF</color>\n</resources>\n',
+        encoding="utf-8")
+    print("patched Android icons")
 
 
 if __name__ == "__main__":
