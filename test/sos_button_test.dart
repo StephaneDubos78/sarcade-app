@@ -10,6 +10,7 @@ void main() {
     await t.pumpWidget(MaterialApp(home: Scaffold(body: Center(
         child: SosButton(inDistress: false, onTriggered: () => sent++, onEnd: () {})))));
     final g = await t.startGesture(t.getCenter(find.byType(SosButton)));
+    await t.pump(); // the ticker starts on this frame
     await t.pump(d);
     await g.up();
     await t.pump(const Duration(milliseconds: 100));
