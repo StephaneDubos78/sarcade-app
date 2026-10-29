@@ -29,6 +29,7 @@ class LocalStore {
 
   Future<void> cachePosition(Map<String,dynamic> v)=>_positionBox.put(v['id'],v);
   Future<void> cachePoi(Map<String,dynamic> v)=>_poiBox.put(v['id'],v);
+  Future<void> deletePoi(String id)=>_poiBox.delete(id);
   Future<void> cacheMessage(Map<String,dynamic> v)=>_messageBox.put(v['id'],v);
   Future<void> cacheAck(Map<String,dynamic> v)=>_ackBox.put(v['id'],v);
   Future<void> cacheReference(Map<String,dynamic> v)=>_referenceBox.put(v['id'],v);

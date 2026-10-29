@@ -14,6 +14,7 @@ import '../../models/message_unread.dart';
 import '../../models/web_update.dart';
 import '../../config/version.dart';
 import '../../models/poi.dart';
+import '../poi/poi_sheet.dart';
 import '../../models/message.dart';
 import '../../models/position.dart';
 import '../../models/reference_site.dart';
@@ -187,13 +188,16 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     final t=p.time.toUtc(), now=DateTime.now().toUtc();
     return t.isAfter(DateTime.utc(2020)) && t.isBefore(now.add(const Duration(days:1)));
   }
-  void _loadLocal(){for(final j in widget.store.positions()){final p=SarcadePosition.fromJson(j);if(p.eventId==widget.eventId&&_validPosition(p))_positions[p.deviceId]=p;}for(final j in widget.store.pois()){final p=SarcadePoi.fromJson(j);if(p.eventId==widget.eventId)_pois[p.id]=p;}for(final j in widget.store.references()){final p=ReferenceSite.fromJson(j);if(p.status=='active')_references[p.id]=p;}}
+  void _loadLocal(){for(final j in widget.store.positions()){final p=SarcadePosition.fromJson(j);if(p.eventId==widget.eventId&&_validPosition(p))_positions[p.deviceId]=p;}for(final j in widget.store.pois()){final p=SarcadePoi.fromJson(j);if(p.eventId==widget.eventId&&!p.deleted)_pois[p.id]=p;}for(final j in widget.store.references()){final p=ReferenceSite.fromJson(j);if(p.status=='active')_references[p.id]=p;}}
   Future<void> _start() async {
     if(_starting)return; _starting=true;
     try {
       final data=await Future.wait([widget.api.latestPositions(widget.eventId),widget.api.pois(widget.eventId)]);
       _mergePositions(data[0] as List<SarcadePosition>);
-      for(final p in data[1] as List<SarcadePoi>){_pois[p.id]=p;}
+      final serverPois=data[1] as List<SarcadePoi>;
+      // Points deleted elsewhere while closed leave the map (pending ones stay).
+      _pois.removeWhere((id,_)=>!_sync.isPending(id)&&!serverPois.any((p)=>p.id==id));
+      for(final p in serverPois){_pois[p.id]=p;}
       // Safety net: positions only come by the realtime channel; read the
       // latest ones again every minute in case some were missed.
       _positionsTimer?.cancel();
@@ -300,7 +304,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     if(e.type=='device.updated'){final id='${e.data['device_id']??''}';if(id.isNotEmpty&&mounted)setState(()=>_devices[id]=Map<String,dynamic>.from(e.data));}
     if(e.type==RealtimeService.reconnectedType){unawaited(_reloadPositions());return;}
     if(e.type=='position.updated'){final p=SarcadePosition.fromJson(e.data);if(_validPosition(p)){widget.store.cachePosition(p.toJson());if(mounted)setState((){_positions[p.deviceId]=p;if(_selectedDevice==p.deviceId)_trace.add(p);});}}
-    if(e.type=='poi.created'){final p=SarcadePoi.fromJson(e.data);widget.store.cachePoi(e.data);setState(()=>_pois[p.id]=p);}
+    if(e.type=='poi.created'||e.type=='poi.updated'||e.type=='poi.deleted'){unawaited(applyRemotePoi(_pois,widget.store,Map<String,dynamic>.from(e.data),widget.eventId).then((c){if(c&&mounted)setState((){});}));}
     if(e.type=='message.created'){_receiveMessage(e.data);}
     if(e.type=='map_feature.upserted'||e.type=='map_feature.deleted'){_applyRemoteFeature(e.data,persist:true);}
     if(e.type=='ack.created'){widget.store.cacheAck(e.data);if(mounted)setState((){});}
@@ -526,9 +530,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   Future<void> _savePoi() async {
     final t=_measure.target;
     if(t==null)return;
-    final now=DateTime.now().toUtc();
-    final poi={'id':_uuid.v4(),'event_id':widget.eventId,'kind':'designated','label':_measure.targetLabel,
-      'lat':t.latitude,'lon':t.longitude,'created_at':now.toIso8601String()};
+    final poi=newPoiJson(id:_uuid.v4(),eventId:widget.eventId,at:t,label:_measure.targetLabel,actor:widget.deviceId,drawColor:_profileDrawColor);
     await widget.store.cachePoi(poi);
     setState(()=>_pois[poi['id'] as String]=SarcadePoi.fromJson(poi));
     await _sync.queue(objectId:poi['id'] as String,objectType:'poi',payload:poi);
@@ -606,11 +608,24 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     });
   }
 
+  /// Sheet of a point of interest (touch on the pin or in the layers list).
+  Future<void> _openPoi(SarcadePoi p) async {
+    final can=canEditPoi(p,widget.deviceId);
+    final a=await showPoiSheet(context,p,format:_coordFormat,mgrsDigits:_mgrsDigits,canEdit:can);
+    if(a==null||!mounted)return;
+    if(a=='route'){await _routeToHere(LatLng(p.lat,p.lon));return;}
+    if(a=='send'){await Navigator.push(context,MaterialPageRoute(builder:(_)=>MessagesPage(api:widget.api,eventId:widget.eventId,
+      actorId:widget.deviceId,sync:_sync,store:widget.store,initialText:poiMessage(p,_coordFormat,mgrsDigits:_mgrsDigits))));return;}
+    if(a=='rename'){final n=await askPoiName(context,p);if(n!=null&&mounted){await renamePoi(_pois,widget.store,_sync,p,n,widget.deviceId);if(mounted)setState((){});}return;}
+    if(a=='delete'&&await confirmPoiDelete(context,p)){
+      await deletePoi(_pois,widget.store,_sync,p,widget.deviceId);
+      if(mounted){setState((){});ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(S.t('poi.deleted'))));}
+    }
+  }
+
   /// A designated point of the event (same as « Enregistrer le point »).
   Future<void> _saveDesignated(LatLng t,String label) async {
-    final now=DateTime.now().toUtc();
-    final poi={'id':_uuid.v4(),'event_id':widget.eventId,'kind':'designated','label':label,
-      'lat':t.latitude,'lon':t.longitude,'created_at':now.toIso8601String()};
+    final poi=newPoiJson(id:_uuid.v4(),eventId:widget.eventId,at:t,label:label,actor:widget.deviceId,drawColor:_profileDrawColor);
     await widget.store.cachePoi(poi);
     setState(()=>_pois[poi['id'] as String]=SarcadePoi.fromJson(poi));
     await _sync.queue(objectId:poi['id'] as String,objectType:'poi',payload:poi);
@@ -1040,9 +1055,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         setState((){_positions[p.deviceId]=p;if(_selectedDevice==p.deviceId)_trace.add(p);});
       }
     }
-    if(objectType=='poi'){
-      final p=SarcadePoi.fromJson(payload);
-      if(p.eventId==widget.eventId&&mounted)setState(()=>_pois[p.id]=p);
+    if(objectType=='poi'&&!_sync.isPending('${payload['id']}')){
+      unawaited(applyRemotePoi(_pois,widget.store,payload,widget.eventId).then((c){if(c&&mounted)setState((){});}));
     }
   }
 
@@ -1295,6 +1309,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   /// Filter chips under the search (Google Maps), kept per event.
   bool get _showOperators=>widget.store.preference('show_ops:${widget.eventId}')!='0';
   bool get _showDrawings=>widget.store.preference('show_draw:${widget.eventId}')!='0';
+  bool get _showPois=>widget.store.preference('show_poi:${widget.eventId}')!='0';
   Future<void> _setShown(String key,bool v) async {await widget.store.setPreference('$key:${widget.eventId}',v?null:'0');if(mounted)setState((){});}
   /// Sections of the layers panel: Terrain, Opération, Référentiel ADRASEC.
   /// Transparency of a map layer (Couches panel), kept on this device:
@@ -1335,6 +1350,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       toggle(S.t('chips.drawings'),_showDrawings,(v)=>_setShown('show_draw',v),op:'draw'),
       toggle(S.t('chips.bearings'),_showBearings,(v)=>_setShown('show_brg',v),op:'brg'),
       _bearingColorBy(refresh),
+      ...poiLayerSection(c,pois:_pois.values.toList(),shown:_showPois,onShown:(v) async {await _setShown('show_poi',v);refresh((){});},
+        onOpen:(p){Navigator.pop(c);_fitPoints([LatLng(p.lat,p.lon)]);unawaited(_openPoi(p));}),
       head(S.t('layers.reference')),
       toggle(S.t('refs.highPoints'),_showHighPoints,(v) async =>setState(()=>_showHighPoints=v),op:'ref',opShown:_showHighPoints||_showRelays),
       toggle(S.t('refs.relays'),_showRelays,(v) async =>setState(()=>_showRelays=v)),
@@ -2067,7 +2084,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     final markers=<Marker>[
       // Old stations stay in the list and the search, not on the map.
       ..._stationMarkers(sorted.where((p)=>p.deviceId==widget.deviceId||sectionOf(p.time.toUtc(),DateTime.now().toUtc(),oldMin:_oldMin)!=Section.old).toList()),
-      ..._pois.values.map((p)=>Marker(point:LatLng(p.lat,p.lon),width:40,height:40,child:Tooltip(message:p.label??p.kind,child:const Icon(Icons.location_on,size:38,color:Colors.red)))),
+      if(_showPois)..._pois.values.map((p)=>poiMarker(p,()=>unawaited(_openPoi(p)))),
     ];
     final selected=_selectedDevice==null?null:_positions[_selectedDevice];
     final screenWidth=MediaQuery.sizeOf(context).width;
