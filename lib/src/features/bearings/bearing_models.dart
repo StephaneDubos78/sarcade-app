@@ -21,10 +21,13 @@ class Bearing {
   final double? magneticDeg, declinationDeg, accuracyM;
   /// Colour of the operator who took it (dot where it was taken).
   final int? operatorColor;
+  /// Signal of an exercise beacon (badge « EXERCICE »), and its frequency.
+  final bool exercise;
+  final double? frequencyMhz;
   final DateTime takenAt, updatedAt;
   const Bearing({required this.id,required this.eventId,required this.origin,required this.azimuthDeg,
     this.lengthM=10000,this.coneDeg=5,this.strength=0,this.target='',this.comment='',this.search='',this.method='manual',
-    this.magneticDeg,this.declinationDeg,this.accuracyM,this.operatorColor,required this.takenAt,required this.createdBy,required this.updatedBy,required this.updatedAt});
+    this.magneticDeg,this.declinationDeg,this.accuracyM,this.operatorColor,this.exercise=false,this.frequencyMhz,required this.takenAt,required this.createdBy,required this.updatedBy,required this.updatedAt});
 
   static bool isBearing(Map<String,dynamic> j)=>j['kind']=='bearing';
 
@@ -37,6 +40,7 @@ class Bearing {
       azimuthDeg:n(b['azimuth_deg'])!,lengthM:n(b['length_m'])??10000,coneDeg:n(b['cone_deg'])??5,strength:(b['strength'] as num?)?.toInt()??0,
       target:'',comment:legacyComment((b['target'] as String?)??'',(b['comment'] as String?)??''),search:(b['search'] as String?)??'',method:(b['method'] as String?)??'manual',
       magneticDeg:n(b['magnetic_deg']),declinationDeg:n(b['declination_deg']),accuracyM:n(b['accuracy_m']),operatorColor:(b['operator_color'] as num?)?.toInt(),
+      exercise:b['exercise']==true,frequencyMhz:n(b['frequency_mhz']),
       takenAt:DateTime.tryParse('${b['taken_at']??''}')??updated,
       createdBy:(j['created_by'] as String?)??(j['updated_by'] as String),updatedBy:j['updated_by'] as String,updatedAt:updated);
   }
@@ -47,14 +51,15 @@ class Bearing {
     'updated_at':updatedAt.toUtc().toIso8601String(),
     'bearing':{'azimuth_deg':azimuthDeg,'length_m':lengthM,'cone_deg':coneDeg,'strength':strength,'target':target,'comment':comment,
       'search':search,'method':method,'taken_at':takenAt.toUtc().toIso8601String(),
-      if(magneticDeg!=null)'magnetic_deg':magneticDeg,if(declinationDeg!=null)'declination_deg':declinationDeg,if(accuracyM!=null)'accuracy_m':accuracyM,if(operatorColor!=null)'operator_color':operatorColor}};
+      if(magneticDeg!=null)'magnetic_deg':magneticDeg,if(declinationDeg!=null)'declination_deg':declinationDeg,if(accuracyM!=null)'accuracy_m':accuracyM,if(operatorColor!=null)'operator_color':operatorColor,
+      if(exercise)'exercise':true,if(frequencyMhz!=null)'frequency_mhz':frequencyMhz}};
 
   Bearing copyWith({double? azimuthDeg,double? coneDeg,double? lengthM,int? strength,String? target,String? comment,String? search,
-      LatLng? origin,String? method,DateTime? takenAt,
+      LatLng? origin,String? method,DateTime? takenAt,bool? exercise,double? frequencyMhz,
       required String updatedBy,required DateTime updatedAt})=>Bearing(id:id,eventId:eventId,origin:origin??this.origin,
     azimuthDeg:azimuthDeg??this.azimuthDeg,lengthM:lengthM??this.lengthM,coneDeg:coneDeg??this.coneDeg,strength:strength??this.strength,
     target:target??this.target,comment:comment??this.comment,search:search??this.search,method:method??this.method,magneticDeg:magneticDeg,
-    declinationDeg:declinationDeg,accuracyM:accuracyM,operatorColor:operatorColor,takenAt:takenAt??this.takenAt,createdBy:createdBy,updatedBy:updatedBy,updatedAt:updatedAt);
+    declinationDeg:declinationDeg,accuracyM:accuracyM,operatorColor:operatorColor,exercise:exercise??this.exercise,frequencyMhz:frequencyMhz??this.frequencyMhz,takenAt:takenAt??this.takenAt,createdBy:createdBy,updatedBy:updatedBy,updatedAt:updatedAt);
 
   LatLng get end=>geo.destination(origin,lengthM,azimuthDeg);
   /// The two edges of the uncertainty cone.

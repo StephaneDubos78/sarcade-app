@@ -12,10 +12,13 @@ import '../../l10n/strings.dart';
 import '../../offline/outbox_policy.dart' show normalServer;
 import '../../operations/event_settings.dart';
 import '../../services/notification_service.dart';
-import '../../models/comm_group.dart' show isPco;
+import '../../models/comm_group.dart' show isPco, myRoles;
 import '../../services/sarcade_api.dart' show SarcadeApi, SarcadeHttpException;
 import 'event_settings_section.dart';
 import '../tv/tv_screens_page.dart';
+import '../tv/tv_code.dart' show canScanTvQr;
+import '../bearings/signal_defaults_page.dart';
+import '../../offline/local_store.dart';
 
 /// Operator settings: server address, event and terminal identifier,
 /// language, radio callsign. Lets one APK serve every field operator
@@ -42,8 +45,10 @@ class SettingsPage extends StatefulWidget {
   final void Function(ThemeMode)? onThemeChanged;
   /// Active session, for Paramètres › Événement (PCO only).
   final SarcadeApi? api;
+  /// Device store: caches what the administrator saves (default frequencies).
+  final LocalStore? store;
   const SettingsPage({super.key,required this.initial,required this.onSave,this.firstRun=false,
-    this.loadEvents,this.cachedEvents,this.waitingFor,this.sendFirst,this.readServers,this.saveServers,this.onOpenLogbook,this.onThemeChanged,this.api});
+    this.loadEvents,this.cachedEvents,this.waitingFor,this.sendFirst,this.readServers,this.saveServers,this.onOpenLogbook,this.onThemeChanged,this.api,this.store});
   @override State<SettingsPage> createState()=>_SettingsPageState();
 }
 
@@ -392,9 +397,16 @@ class _SettingsPageState extends State<SettingsPage> {
       onChanged:(v)=>setState(()=>_language=v??'system'),
     )),
     // Smart TV screens (any operator, decision of 29 Oct 2026): Paramètres › Affichage › Écrans.
-    if(widget.api!=null)_row(S.t('tv.title'),help:S.t('tv.help'),child:Align(alignment:Alignment.centerLeft,child:FilledButton.tonal(
-      onPressed:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>TvScreensPage(api:widget.api!,eventId:widget.initial.eventId))),
-      child:Text(S.t('tv.manage'))))),
+    // « Scanner le QR code » beside « Gérer les écrans » (Android, iPhone):
+    // one touch less (decision of 29 Oct 2026, 12 h 19).
+    if(widget.api!=null)_row(S.t('tv.title'),help:S.t('tv.help'),child:Align(alignment:Alignment.centerLeft,child:Wrap(spacing:8,runSpacing:8,children:[
+      if(canScanTvQr)FilledButton.icon(icon:const Icon(Icons.qr_code_scanner),
+        onPressed:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>TvScreensPage(api:widget.api!,eventId:widget.initial.eventId,scanOnOpen:true))),
+        label:Text(S.t('tv.scan'))),
+      FilledButton.tonal(
+        onPressed:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>TvScreensPage(api:widget.api!,eventId:widget.initial.eventId))),
+        child:Text(S.t('tv.manage'))),
+    ]))),
   ]);
 
   Widget _notificationsTab()=>Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
@@ -424,7 +436,13 @@ class _SettingsPageState extends State<SettingsPage> {
   Widget _tabBody(String id)=>switch(id){
     'general'=>_generalTab(),'profile'=>_profileTab(),'display'=>_displayTab(),
     'notifications'=>_notificationsTab(),'diagnostics'=>_diagnosticsTab(),
-    'event'=>EventSettingsSection(api:widget.api!,eventId:widget.initial.eventId,actorId:widget.initial.deviceId),
+    'event'=>Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+      EventSettingsSection(api:widget.api!,eventId:widget.initial.eventId,actorId:widget.initial.deviceId),
+      // Default frequencies of the bearing tool: administrator only.
+      if(myRoles.contains('admin'))_row(S.t('signals.title'),help:S.t('signals.rowHelp'),child:Align(alignment:Alignment.centerLeft,child:FilledButton.tonal(
+        onPressed:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>SignalDefaultsPage(api:widget.api!,store:widget.store))),
+        child:Text(S.t('signals.manage'))))),
+    ]),
     _=>const Padding(padding:EdgeInsets.only(top:16),child:SarcadeAboutContent()),
   };
 
