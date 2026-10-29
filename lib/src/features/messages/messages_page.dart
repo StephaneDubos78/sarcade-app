@@ -53,6 +53,7 @@ class _MessagesPageState extends State<MessagesPage>{
  @override void initState(){
    super.initState();
    if(widget.initialText!=null)_text.text=widget.initialText!;
+   _text.addListener(_onTextChanged);
    _refreshGroups();
    _unreadAtOpen=unreadMessages(messages:_eventMessages,seen:widget.store.seenMessages(widget.eventId)??{},
      deviceId:widget.actorId,groups:{for(final g in _groups)g.id:g}).map((m)=>m.id).toSet();
@@ -259,7 +260,11 @@ class _MessagesPageState extends State<MessagesPage>{
  }
 
 
- @override void dispose(){for(final w in _watch){w.cancel();}_text.dispose();_scroll.dispose();super.dispose();}
+ /// The round button switches between the microphone and « Envoyer ».
+ bool _wasEmpty=true;
+ void _onTextChanged(){final e=_text.text.trim().isEmpty;if(e!=_wasEmpty&&mounted)setState(()=>_wasEmpty=e);}
+
+ @override void dispose(){for(final w in _watch){w.cancel();}_text.removeListener(_onTextChanged);_text.dispose();_scroll.dispose();super.dispose();}
 
  Future<void> _addTemplate() async {
    try{
@@ -493,32 +498,55 @@ class _MessagesPageState extends State<MessagesPage>{
    if(pick!=null)await _post(pick);
  }
 
+ /// Input bar laid out like WhatsApp on a phone (29 Oct 2026): « + » for
+ /// the predefined messages and the priority, a wide rounded field with the
+ /// emoji at its end, the camera, then one round button that dictates while
+ /// the field is empty and sends once there is text.
  Widget _composer(){
    final s=Theme.of(context).colorScheme;
-   return Material(color:_night?const Color(0xFF202C33):const Color(0xFFF0F2F5),child:SafeArea(child:Padding(padding:const EdgeInsets.fromLTRB(6,6,6,6),child:Row(crossAxisAlignment:CrossAxisAlignment.end,children:[
-     // « + »: photo or predefined message (one button: room for the field
-     // on a phone).
-     _picking?const Padding(padding:EdgeInsets.all(12),child:SizedBox(width:20,height:20,child:CircularProgressIndicator(strokeWidth:2)))
-       :PopupMenuButton<String>(tooltip:S.t('messages.attach'),icon:const Icon(Icons.add),
-         onSelected:(v){if(v=='photo'){_photo();}else{_sendQuickMessage();}},
-         itemBuilder:(_)=>[
-           PopupMenuItem(value:'photo',child:ListTile(leading:const Icon(Icons.photo_camera_outlined),title:Text(S.t('messages.photo')))),
-           PopupMenuItem(value:'quick',child:ListTile(leading:const Icon(Icons.bolt),title:Text(S.t('quick.title')))),
-         ]),
-     Expanded(child:Container(padding:const EdgeInsets.only(left:4,right:4),decoration:BoxDecoration(color:_night?const Color(0xFF2A3942):Colors.white,borderRadius:BorderRadius.circular(24)),
+   final empty=_text.text.trim().isEmpty;
+   final fieldColor=_night?const Color(0xFF2A3942):Colors.white;
+   final iconColor=_night?const Color(0xFF8696A0):const Color(0xFF54656F);
+   final prioColor=_priority=='immediate'?s.error:_priority=='urgent'?const Color(0xFFE8710A):null;
+   return Material(color:_night?const Color(0xFF202C33):const Color(0xFFF0F2F5),child:SafeArea(child:Padding(padding:const EdgeInsets.fromLTRB(4,6,6,6),child:Row(crossAxisAlignment:CrossAxisAlignment.end,children:[
+     SizedBox(height:48,child:PopupMenuButton<String>(tooltip:S.t('messages.attach'),icon:Icon(Icons.add,size:28,color:iconColor),
+       onSelected:(v){
+         if(v=='quick'){_sendQuickMessage();}
+         else if(v=='photo'){_photo();}
+         else{setState(()=>_priority=v.substring(9));}
+       },
+       itemBuilder:(_)=>[
+         PopupMenuItem(value:'quick',child:ListTile(leading:const Icon(Icons.bolt),title:Text(S.t('quick.title')))),
+         PopupMenuItem(value:'photo',child:ListTile(leading:const Icon(Icons.photo_library_outlined),title:Text(S.t('messages.photo')))),
+         const PopupMenuDivider(),
+         for(final p in const ['routine','urgent','immediate'])PopupMenuItem(value:'priority.$p',child:ListTile(
+           leading:Icon(_priority==p?Icons.radio_button_checked:Icons.radio_button_unchecked,
+             color:p=='immediate'?s.error:p=='urgent'?const Color(0xFFE8710A):null),
+           title:Text(S.t('priority.$p')))),
+       ])),
+     Expanded(child:Container(constraints:const BoxConstraints(minHeight:48),padding:const EdgeInsets.only(left:14,right:2),
+       decoration:BoxDecoration(color:fieldColor,borderRadius:BorderRadius.circular(24)),
        child:Row(crossAxisAlignment:CrossAxisAlignment.end,children:[
-         IconButton(tooltip:S.t('messages.emoji'),visualDensity:VisualDensity.compact,onPressed:_pickEmoji,icon:const Icon(Icons.emoji_emotions_outlined)),
-         Expanded(child:Focus(onKeyEvent:_onKey,child:TextField(controller:_text,maxLength:2048,minLines:1,maxLines:widget.initialText==null?5:7,
-           decoration:InputDecoration(hintText:S.t('messages.hint'),counterText:'',border:InputBorder.none,
+         // Urgent or immediate: a coloured chip in the field, one touch back to routine.
+         if(prioColor!=null)Padding(padding:const EdgeInsets.only(right:6,bottom:12),child:InkWell(borderRadius:BorderRadius.circular(10),
+           onTap:()=>setState(()=>_priority='routine'),
+           child:Container(padding:const EdgeInsets.symmetric(horizontal:8,vertical:3),
+             decoration:BoxDecoration(color:prioColor.withValues(alpha:0.15),borderRadius:BorderRadius.circular(10)),
+             child:Text(S.t('priority.$_priority'),style:TextStyle(fontSize:12,fontWeight:FontWeight.w600,color:prioColor))))),
+         Expanded(child:Focus(onKeyEvent:_onKey,child:TextField(controller:_text,maxLength:2048,minLines:1,maxLines:widget.initialText==null?6:8,
+           textCapitalization:TextCapitalization.sentences,style:const TextStyle(fontSize:17),
+           decoration:InputDecoration(hintText:S.t('messages.hint'),counterText:'',border:InputBorder.none,isDense:true,
+             contentPadding:const EdgeInsets.symmetric(vertical:13),
              helperText:_enterSends?S.t('messages.enterHint'):null)))),
-         DictationButton(controller:_text),
+         IconButton(tooltip:S.t('messages.emoji'),onPressed:_pickEmoji,icon:Icon(Icons.emoji_emotions_outlined,color:iconColor)),
        ]))),
+     if(empty)SizedBox(height:48,child:_picking
+       ?const Padding(padding:EdgeInsets.all(14),child:SizedBox(width:20,height:20,child:CircularProgressIndicator(strokeWidth:2)))
+       :IconButton(tooltip:S.t('messages.photo'),onPressed:_photo,icon:Icon(Icons.photo_camera_outlined,size:26,color:iconColor))),
      const SizedBox(width:4),
-     DropdownButtonHideUnderline(child:DropdownButton<String>(value:_priority,borderRadius:BorderRadius.circular(12),
-       items:[for(final p in const ['routine','urgent','immediate'])DropdownMenuItem(value:p,child:Text(S.t('priority.$p'),
-         style:TextStyle(fontSize:13,color:p=='immediate'?s.error:p=='urgent'?const Color(0xFFE8710A):null)))],
-       onChanged:(v)=>setState(()=>_priority=v!))),
-     IconButton.filled(tooltip:S.t('messages.send'),onPressed:_send,icon:const Icon(Icons.send)),
+     SizedBox(width:48,height:48,child:empty
+       ? DictationButton(controller:_text,filled:true)
+       : IconButton.filled(tooltip:S.t('messages.send'),onPressed:_send,icon:const Icon(Icons.send))),
    ]))));
  }
 
