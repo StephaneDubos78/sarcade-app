@@ -3,6 +3,7 @@ import '../../l10n/strings.dart';
 import '../../services/sarcade_api.dart';
 import 'tv_code.dart';
 import 'tv_qr_scan_page.dart';
+import 'tv_view.dart';
 
 /// « Afficher sur une TV » (any operator, decision of the porteur of
 /// 29 October 2026): pair the screen opened on tv.sarcade.org by scanning
@@ -78,6 +79,21 @@ class _TvScreensPageState extends State<TvScreensPage> {
     }
   }
 
+  /// « Envoyer ma vue » (view of the map of this device) or back to the
+  /// automatic framing (null).
+  Future<void> _view(Map<String,dynamic> d,{required bool mine}) async {
+    final v=mine?currentMapView?.call():null;
+    if(mine&&v==null){_say('tv.noMap');return;}
+    try{
+      await widget.api.sendDisplayView(widget.eventId,'${d['id']}',v==null?null:tvViewJson(v));
+      _say(mine?'tv.viewSent':'tv.autoSent');
+    }on SarcadeHttpException catch(e){
+      _say(e.statusCode==401||e.statusCode==403?'tv.signIn':'event.offline');
+    }catch(_){
+      _say('event.offline');
+    }
+  }
+
   String _when(Object? s)=>s is num?DateTime.fromMillisecondsSinceEpoch((s*1000).toInt()).toLocal().toString().substring(0,16):'';
 
   @override
@@ -104,7 +120,13 @@ class _TvScreensPageState extends State<TvScreensPage> {
         else for(final d in list)ListTile(
           leading:Icon(d['active']==true?Icons.tv:Icons.tv_off,color:d['active']==true?Colors.green:null),
           title:Text('${S.t('tv.code')} ${d['code']??''}'),subtitle:Text(S.t('tv.until',{'t':_when(d['expires'])})),
-          trailing:d['active']==true?TextButton(onPressed:()=>_revoke(d),child:Text(S.t('tv.revoke'))):null),
+          trailing:d['active']==true?PopupMenuButton<String>(
+            onSelected:(a){if(a=='view')_view(d,mine:true);if(a=='auto')_view(d,mine:false);if(a=='revoke')_revoke(d);},
+            itemBuilder:(_)=>[
+              PopupMenuItem(value:'view',child:ListTile(leading:const Icon(Icons.cast),title:Text(S.t('tv.sendView')),subtitle:Text(S.t('tv.sendViewHelp')))),
+              PopupMenuItem(value:'auto',child:ListTile(leading:const Icon(Icons.fit_screen),title:Text(S.t('tv.auto')))),
+              PopupMenuItem(value:'revoke',child:ListTile(leading:const Icon(Icons.tv_off),title:Text(S.t('tv.revoke')))),
+            ]):null),
       ])));
   }
 }
