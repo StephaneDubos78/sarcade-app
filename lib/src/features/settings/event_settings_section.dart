@@ -1,0 +1,147 @@
+import 'package:flutter/material.dart';
+import '../../l10n/strings.dart';
+import '../../services/sarcade_api.dart';
+import '../aprs/aprs_page.dart';
+
+/// Paramètres › Événement (PCO): settings of the active event kept by the
+/// server, applied at once and written in the logbook by the server —
+/// local radio transmission and its callsign (chosen by the PCO, the
+/// ADRASEC has none), « old » stations threshold, APRS followed.
+class EventSettingsSection extends StatefulWidget {
+  final SarcadeApi api; final String eventId, actorId;
+  const EventSettingsSection({super.key,required this.api,required this.eventId,required this.actorId});
+  @override State<EventSettingsSection> createState()=>_EventSettingsSectionState();
+}
+
+class _EventSettingsSectionState extends State<EventSettingsSection> {
+  Map<String,dynamic>? _s; String? _error; bool _busy=false;
+  final _call=TextEditingController();
+  static const oldChoices=[30,60,120,240,480,1440];
+
+  @override void initState(){super.initState();_load();}
+  @override void dispose(){_call.dispose();super.dispose();}
+
+  Future<void> _load() async {
+    try{
+      final e=await widget.api.event(widget.eventId);
+      final s=Map<String,dynamic>.from(e['settings'] as Map? ?? {});
+      if(!mounted)return;
+      setState((){_s=s;_error=null;_call.text='${s['aprs_tx_callsign']??''}';});
+    }catch(e){
+      if(mounted)setState(()=>_error='$e');
+    }
+  }
+
+  Future<void> _patch(Map<String,dynamic> p) async {
+    setState(()=>_busy=true);
+    try{
+      final e=await widget.api.patchEventSettings(widget.eventId,widget.actorId,p);
+      final s=Map<String,dynamic>.from(e['settings'] as Map? ?? {});
+      if(mounted)setState(()=>_s=s);
+    }on SarcadeHttpException catch(e){
+      if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(S.t(e.statusCode==403?'event.forbidden':'event.refused',{'error':'${e.statusCode}'}))));
+    }catch(_){
+      if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(S.t('event.offline'))));
+    }finally{
+      if(mounted)setState(()=>_busy=false);
+    }
+  }
+
+  /// Smart TV: the code shown on tv.sarcade.org shows this event there.
+  Future<void> _pairScreen() async {
+    final ctrl=TextEditingController();
+    final code=await showDialog<String>(context:context,builder:(c)=>AlertDialog(title:Text(S.t('tv.pair')),
+      content:TextField(controller:ctrl,autofocus:true,textCapitalization:TextCapitalization.characters,
+        decoration:InputDecoration(labelText:S.t('tv.code'),helperText:S.t('tv.codeHelp'))),
+      actions:[TextButton(onPressed:()=>Navigator.pop(c),child:Text(S.t('common.cancel'))),
+        FilledButton(onPressed:()=>Navigator.pop(c,ctrl.text.trim()),child:Text(S.t('tv.show')))]));
+    ctrl.dispose();
+    if(code==null||code.isEmpty||!mounted)return;
+    final messenger=ScaffoldMessenger.of(context);
+    try{
+      await widget.api.approveDisplay(code,widget.eventId);
+      messenger.showSnackBar(SnackBar(content:Text(S.t('tv.done'))));
+    }on SarcadeHttpException catch(e){
+      messenger.showSnackBar(SnackBar(content:Text(S.t(e.statusCode==403?'event.forbidden':'tv.unknownCode'))));
+    }catch(_){
+      messenger.showSnackBar(SnackBar(content:Text(S.t('event.offline'))));
+    }
+  }
+
+  Future<void> _screens() async {
+    List<Map<String,dynamic>> list;
+    try{list=await widget.api.displays(widget.eventId);}catch(_){
+      if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(S.t('event.offline'))));return;}
+    if(!mounted)return;
+    String when(Object? s)=>s is num?DateTime.fromMillisecondsSinceEpoch((s*1000).toInt()).toLocal().toString().substring(0,16):'';
+    await showModalBottomSheet<void>(context:context,showDragHandle:true,builder:(c)=>StatefulBuilder(builder:(c,set)=>SafeArea(child:ListView(shrinkWrap:true,children:[
+      ListTile(title:Text(S.t('tv.title'),style:Theme.of(c).textTheme.titleMedium)),
+      if(list.isEmpty)ListTile(title:Text(S.t('tv.none'))),
+      for(final d in list)ListTile(leading:Icon(d['active']==true?Icons.tv:Icons.tv_off,color:d['active']==true?Colors.green:null),
+        title:Text('${S.t('tv.code')} ${d['code']??''}'),subtitle:Text(S.t('tv.until',{'t':when(d['expires'])})),
+        trailing:d['active']==true?TextButton(onPressed:() async {
+          try{await widget.api.revokeDisplay(widget.eventId,'${d['id']}');set(()=>d['active']=false);}catch(_){}
+        },child:Text(S.t('tv.revoke'))):null),
+    ]))));
+  }
+
+  /// Predefined messages of the event (ATAK 6), one per line.
+  Future<void> _editQuick() async {
+    final ctrl=TextEditingController(text:((_s?['quick_messages'] as List?)??const []).join('\n'));
+    final ok=await showDialog<bool>(context:context,builder:(c)=>AlertDialog(title:Text(S.t('event.quick')),
+      content:TextField(controller:ctrl,minLines:5,maxLines:12,decoration:InputDecoration(helperText:S.t('event.quickEdit'),border:const OutlineInputBorder())),
+      actions:[TextButton(onPressed:()=>Navigator.pop(c,false),child:Text(S.t('common.cancel'))),
+        FilledButton(onPressed:()=>Navigator.pop(c,true),child:Text(S.t('common.save')))]));
+    final lines=ctrl.text.split('\n').map((l)=>l.trim()).where((l)=>l.isNotEmpty).take(20).toList();
+    ctrl.dispose();
+    if(ok==true)await _patch({'quick_messages':lines});
+  }
+
+  Widget _row(String label,{String? help,required Widget child}){
+    final t=Theme.of(context);
+    return Column(children:[
+      Padding(padding:const EdgeInsets.symmetric(vertical:12),child:Row(children:[
+        Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+          Text(label,style:t.textTheme.titleSmall?.copyWith(fontWeight:FontWeight.w600)),
+          if(help!=null)Text(help,style:t.textTheme.bodySmall?.copyWith(color:t.colorScheme.onSurfaceVariant)),
+        ])),
+        const SizedBox(width:12),
+        child,
+      ])),
+      const Divider(height:1),
+    ]);
+  }
+
+  @override
+  Widget build(BuildContext context){
+    final s=_s;
+    if(s==null){
+      return Padding(padding:const EdgeInsets.all(16),child:_error==null?const Center(child:CircularProgressIndicator())
+        :Column(children:[Text(S.t('event.offline')),TextButton(onPressed:_load,child:Text(S.t('common.retry')))]));
+    }
+    final old=(s['position_old_min'] as num?)?.toInt()??120;
+    String dur(int m)=>m%60==0?'${m~/60} h':'$m min';
+    return AbsorbPointer(absorbing:_busy,child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+      Padding(padding:const EdgeInsets.only(top:12),child:Text(S.t('event.intro',{'event':widget.eventId}))),
+      _row(S.t('event.radioTx'),help:S.t('event.radioTxHelp'),child:Switch(value:s['aprs_tx_rf']==true,
+        onChanged:(v)=>_patch({'aprs_tx_rf':v}))),
+      _row(S.t('event.radioCallsign'),help:S.t('event.radioCallsignHelp'),child:SizedBox(width:220,child:Row(children:[
+        Expanded(child:TextField(controller:_call,textCapitalization:TextCapitalization.characters,
+          decoration:InputDecoration(isDense:true,hintText:'F4ABC',border:OutlineInputBorder(borderRadius:BorderRadius.circular(8))))),
+        TextButton(onPressed:()=>_patch({'aprs_tx_callsign':_call.text.trim().isEmpty?null:_call.text.trim()}),child:Text(S.t('event.apply'))),
+      ]))),
+      _row(S.t('event.oldThreshold'),help:S.t('event.oldThresholdHelp'),child:DropdownButton<int>(value:oldChoices.contains(old)?old:120,
+        items:[for(final m in oldChoices)DropdownMenuItem(value:m,child:Text(dur(m)))],
+        onChanged:(v){if(v!=null)_patch({'position_old_min':v});})),
+      _row(S.t('event.quick'),help:S.t('event.quickHelp',{'n':(s['quick_messages'] as List?)?.length??0}),
+        child:TextButton(onPressed:_editQuick,child:Text(S.t('event.edit')))),
+      _row(S.t('tv.title'),help:S.t('tv.help'),child:Row(mainAxisSize:MainAxisSize.min,children:[
+        TextButton(onPressed:_screens,child:Text(S.t('tv.list'))),
+        FilledButton.tonal(onPressed:_pairScreen,child:Text(S.t('tv.pair'))),
+      ])),
+      _row(S.t('event.aprsFollowed'),help:S.t('event.aprsFollowedHelp',{'g':(s['aprs_groups'] as List?)?.length??0,'c':(s['aprs_callsigns'] as List?)?.length??0}),
+        child:TextButton(onPressed:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>AprsPage(api:widget.api,eventId:widget.eventId,actorId:widget.actorId))).then((_)=>_load()),
+          child:Text(S.t('diagnostics.open')))),
+    ]));
+  }
+}

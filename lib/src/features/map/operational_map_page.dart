@@ -156,7 +156,19 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       _deskId=id;_deskPage=build();
     });
   }
-  @override void initState(){super.initState();_initNotificationActions();unawaited(requestPersistentStorage());_sync=OfflineSyncService(api:widget.api,store:widget.store,eventId:widget.eventId,onRemoteChange:_onRemoteChange);_initDrawing();_initBearings();_loadLocal();_initRoutes();_initMeasure();_sync.start();_initOperations();_loadBasemaps();_initWebUpdate();unawaited(_loadMyPreferences());_syncUiTimer=Timer.periodic(const Duration(seconds:2),(t){if(t.tick%3==0)_drainAnswers();if(mounted)setState((){});});AccessManager.instance.addListener(_onAccessChanged);_start();}
+  @override void initState(){super.initState();_initNotificationActions();unawaited(requestPersistentStorage());_sync=OfflineSyncService(api:widget.api,store:widget.store,eventId:widget.eventId,onRemoteChange:_onRemoteChange);_initDrawing();_initBearings();_loadLocal();_initRoutes();_initMeasure();_sync.start();_initOperations();_loadBasemaps();_initWebUpdate();unawaited(_loadMyPreferences());_syncUiTimer=Timer.periodic(const Duration(seconds:2),(t){if(t.tick%3==0)_drainAnswers();if(mounted)setState((){});});AccessManager.instance.addListener(_onAccessChanged);_start();unawaited(_loadRoles());}
+
+  /// Rights given by the server for the checked email (PCO, administrator).
+  Future<void> _loadRoles() async {
+    myActorId=widget.deviceId;
+    try{
+      final me=await widget.api.me();
+      myRoles={for(final r in (me?['roles'] as List?)??const [])'$r'};
+      if(mounted)setState((){});
+    }catch(e){
+      debugPrint('SARCADE rights not read: $e');
+    }
+  }
   bool _validPosition(SarcadePosition p){
     final t=p.time.toUtc(), now=DateTime.now().toUtc();
     return t.isAfter(DateTime.utc(2020)) && t.isBefore(now.add(const Duration(days:1)));
@@ -1040,7 +1052,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     final now=DateTime.now().toUtc(); final fav=_favourites;
     final shown=_favouritesOnly?sorted.where((p)=>fav.contains(p.deviceId)):sorted;
     final by={for(final x in Section.values)x:<SarcadePosition>[]};
-    for(final p in shown){by[sectionOf(p.time.toUtc(),now)]!.add(p);}
+    for(final p in shown){by[sectionOf(p.time.toUtc(),now,oldMin:_oldMin)]!.add(p);}
     final t=Theme.of(context);
     Widget head(String label,int n,{VoidCallback? onTap,bool? open})=>InkWell(onTap:onTap,child:Padding(
       padding:const EdgeInsets.fromLTRB(16,12,8,4),child:Row(children:[
@@ -1163,6 +1175,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   bool _withoutInternetOnly=false;
   List<SarcadePosition> _history=[]; int _traceHours=1; SarcadePosition? _scrub;
   int get _ageingMin=>(_ops.settings.raw['position_ageing_min'] as num?)?.toInt()??2;
+  /// « Anciens » after this many minutes (Paramètres › Événement, 2 h by default).
+  int get _oldMin=>(_ops.settings.raw['position_old_min'] as num?)?.toInt()??120;
   int get _staleMin=>(_ops.settings.raw['position_stale_min'] as num?)?.toInt()??10;
   Set<String> get _favourites=>parseFavourites(widget.store.preference('favourites'));
   Future<void> _toggleFavourite(String id) async {
@@ -1639,7 +1653,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     final sorted=_positions.values.where((p)=>(p.isAprs?_showAprs:_showOperators)&&(!_withoutInternetOnly||worksWithoutInternet(p)||p.deviceId==widget.deviceId)).toList()..sort((a,b)=>a.deviceId.compareTo(b.deviceId));
     final markers=<Marker>[
       // Old stations stay in the list and the search, not on the map.
-      ..._stationMarkers(sorted.where((p)=>p.deviceId==widget.deviceId||sectionOf(p.time.toUtc(),DateTime.now().toUtc())!=Section.old).toList()),
+      ..._stationMarkers(sorted.where((p)=>p.deviceId==widget.deviceId||sectionOf(p.time.toUtc(),DateTime.now().toUtc(),oldMin:_oldMin)!=Section.old).toList()),
       ..._pois.values.map((p)=>Marker(point:LatLng(p.lat,p.lon),width:40,height:40,child:Tooltip(message:p.label??p.kind,child:const Icon(Icons.location_on,size:38,color:Colors.red)))),
     ];
     final selected=_selectedDevice==null?null:_positions[_selectedDevice];
