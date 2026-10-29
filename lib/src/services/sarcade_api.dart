@@ -137,6 +137,21 @@ class SarcadeApi {
     final r=await _client.delete(Uri.parse('$baseUrl/api/v0.1/aprs/groups/$id'));
     if(r.statusCode!=204&&r.statusCode!=404) throw SarcadeHttpException('aprs_group_delete',r.statusCode);
   }
+  /// Personal settings kept by the server for the email checked by
+  /// Cloudflare Access; null when the server cannot (no Access, older
+  /// server): the device keeps them.
+  Future<Map<String,dynamic>?> myPreferences() async {
+    final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/me/preferences'));
+    if(r.statusCode!=200)return null;
+    final j=Map<String,dynamic>.from(jsonDecode(r.body) as Map);
+    return j['available']==true?Map<String,dynamic>.from(j['preferences'] as Map? ?? {}):null;
+  }
+  Future<bool> patchMyPreferences(Map<String,dynamic> patch) async {
+    final r=await _client.patch(Uri.parse('$baseUrl/api/v0.1/me/preferences'),
+      headers:{'content-type':'application/json'},body:jsonEncode(patch));
+    return r.statusCode==200;
+  }
+
   /// Wake-up of the devices (note « Réveil des appareils »).
   Future<Map<String,dynamic>> wakeupConfig() async {
     final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/wakeup/config'));
