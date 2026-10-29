@@ -307,7 +307,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   String get _tileUrl=>_basemap.tileUrl(widget.api.baseUrl,preferOffline:_preferOffline)??widget.tileUrl;
 
   void _chooseBasemap()=>showBasemapSheet(context,catalog:_catalog,current:_basemap,eventDefault:_ops.settings.basemap,
-    preferOffline:_preferOffline,
+    preferOffline:_preferOffline,layers:_layerSections,
     onChoose:(id) async {await widget.store.setPreference('basemap:${widget.eventId}',id);if(mounted)setState((){});},
     onPreferOffline:(v) async {await widget.store.setPreference('basemap_offline',v?'1':null);if(mounted)setState((){});});
 
@@ -320,6 +320,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
 
   /// Long press on the map: navigate to the point or see its weather.
   Future<void> _onLongPress(LatLng point) async {
+    if(_adjusting!=null){_adjustOrigin(point);return;}
     final label=S.t('nav.point');
     final choice=await showModalBottomSheet<String>(context:context,showDragHandle:true,builder:(c)=>SafeArea(child:Column(mainAxisSize:MainAxisSize.min,children:[
       ListTile(leading:const Icon(Icons.straighten),title:Text(S.t('measure.here')),onTap:()=>Navigator.pop(c,'measure')),
@@ -405,6 +406,79 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     setState(()=>_pois[poi['id'] as String]=SarcadePoi.fromJson(poi));
     await _sync.queue(objectId:poi['id'] as String,objectType:'poi',payload:poi);
     if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(S.t('measure.poiSaved'))));
+  }
+
+  // --- Distress (ATAK 4) and résection (ATAK 2) ---
+  bool get _inDistress=>widget.store.preference('distress:${widget.eventId}')=='1';
+
+  /// Immediate message to everyone with the position: every device is
+  /// woken; kept until the operator ends it explicitly.
+  Future<void> _sendQuick(String body,{String priority='immediate'}) async {
+    final m=SarcadeMessage(id:const Uuid().v4(),eventId:widget.eventId,senderId:widget.deviceId,recipientIds:const [],
+      priority:priority,body:body,createdAt:DateTime.now().toUtc());
+    await widget.store.cacheMessage(m.toJson());
+    await _sync.queue(objectId:m.id,objectType:'message',payload:m.toJson());
+  }
+
+  String _myPositionText(){
+    final p=_positions[widget.deviceId];
+    return p==null?S.t('distress.noPosition'):'${p.lat.toStringAsFixed(5)}, ${p.lon.toStringAsFixed(5)}';
+  }
+
+  Future<void> _distress() async {
+    if(_inDistress){
+      final end=await showDialog<bool>(context:context,builder:(c)=>AlertDialog(title:Text(S.t('distress.endTitle')),
+        actions:[TextButton(onPressed:()=>Navigator.pop(c,false),child:Text(S.t('common.cancel'))),
+          FilledButton(onPressed:()=>Navigator.pop(c,true),child:Text(S.t('distress.end')))]));
+      if(end!=true)return;
+      await _sendQuick(S.t('distress.endBody',{'who':widget.deviceId}),priority:'urgent');
+      await widget.store.setPreference('distress:${widget.eventId}',null);
+      if(mounted)setState((){});
+      return;
+    }
+    // Held button: no distress sent by a stray touch.
+    final ok=await showDialog<bool>(context:context,builder:(c)=>AlertDialog(
+      title:Text(S.t('distress.title')),content:Text(S.t('distress.help')),
+      actions:[
+        TextButton(onPressed:()=>Navigator.pop(c,false),child:Text(S.t('common.cancel'))),
+        _HoldButton(label:S.t('distress.hold'),onDone:()=>Navigator.pop(c,true)),
+      ]));
+    if(ok!=true)return;
+    await _sendQuick(S.t('distress.body',{'who':widget.deviceId,'pos':_myPositionText()}));
+    await widget.store.setPreference('distress:${widget.eventId}','1');
+    if(mounted){setState((){});ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(S.t('distress.sent'))));}
+  }
+
+  /// Résection: two or three known points of the reference and the azimuth
+  /// measured towards each; the position found opens the point sheet.
+  Future<void> _resection() async {
+    final refs=_references.values.toList()..sort((a,b)=>a.name.compareTo(b.name));
+    if(refs.length<2){ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(S.t('resection.noRefs'))));return;}
+    final chosen=<ReferenceSite?>[null,null,null]; final az=[TextEditingController(),TextEditingController(),TextEditingController()];
+    final ok=await showDialog<bool>(context:context,builder:(c)=>StatefulBuilder(builder:(c,set)=>AlertDialog(title:Text(S.t('resection.title')),
+      content:SingleChildScrollView(child:Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.start,children:[
+        Text(S.t('resection.help')),
+        for(var i=0;i<3;i++)Padding(padding:const EdgeInsets.only(top:8),child:Row(children:[
+          Expanded(flex:3,child:DropdownButton<ReferenceSite>(isExpanded:true,value:chosen[i],hint:Text(S.t(i<2?'resection.point':'resection.pointOptional')),
+            items:[for(final r in refs)DropdownMenuItem(value:r,child:Text(r.name,overflow:TextOverflow.ellipsis))],onChanged:(v)=>set(()=>chosen[i]=v))),
+          const SizedBox(width:8),
+          Expanded(flex:2,child:TextField(controller:az[i],keyboardType:const TextInputType.numberWithOptions(decimal:true),decoration:const InputDecoration(suffixText:'°',hintText:'000'))),
+        ])),
+      ])),
+      actions:[TextButton(onPressed:()=>Navigator.pop(c,false),child:Text(S.t('common.cancel'))),
+        FilledButton(onPressed:()=>Navigator.pop(c,true),child:Text(S.t('resection.compute')))])));
+    final sights=<({LatLng known,double azimuthDeg})>[];
+    for(var i=0;i<3;i++){
+      final r=chosen[i]; final a=double.tryParse(az[i].text.replaceAll(',','.').trim());
+      if(r!=null&&a!=null&&a>=0&&a<=360)sights.add((known:LatLng(r.lat,r.lon),azimuthDeg:a));
+    }
+    for(final t in az){t.dispose();}
+    if(ok!=true||!mounted)return;
+    final res=sights.length<2?null:resection(sights);
+    if(res==null||res.centre==null){ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(S.t('resection.none'))));return;}
+    _map.move(res.centre!,14);
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(S.t('resection.found',{'r':geo.formatDistance(res.radiusM)}))));
+    await _onLongPress(res.centre!);
   }
 
   void _sendMeasure()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>MessagesPage(api:widget.api,eventId:widget.eventId,
@@ -805,7 +879,32 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     return (edge-center).distance;
   }
 
+  /// Graphic adjustment of a bearing (façon R&B, ATAK 1): a touch turns the
+  /// line towards the point, a long press moves where it was taken.
+  Bearing? _adjusting;
+  void _adjustTowards(LatLng p){final b=_adjusting;if(b==null)return;
+    setState(()=>_adjusting=b.copyWith(azimuthDeg:geo.bearingDeg(b.origin,p),method:'map',updatedBy:widget.deviceId,updatedAt:DateTime.now().toUtc()));}
+  void _adjustOrigin(LatLng p){final b=_adjusting;if(b==null)return;
+    setState(()=>_adjusting=b.copyWith(origin:p,method:'map',updatedBy:widget.deviceId,updatedAt:DateTime.now().toUtc()));}
+  Future<void> _finishAdjust(bool keep) async {
+    final b=_adjusting; setState(()=>_adjusting=null);
+    if(keep&&b!=null)await _bearings.update(b);
+  }
+  Widget _adjustBanner(){
+    final b=_adjusting!; final s=Theme.of(context).colorScheme;
+    return Container(padding:const EdgeInsets.fromLTRB(14,8,8,8),decoration:glass(context,border:s.primary.withValues(alpha:0.6)),
+      child:Row(children:[
+        Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,mainAxisSize:MainAxisSize.min,children:[
+          Text('${b.azimuthDeg.toStringAsFixed(0).padLeft(3,'0')}°',style:const TextStyle(fontSize:28,fontWeight:FontWeight.w600)),
+          Text(S.t('bearings.adjustHelp'),style:TextStyle(fontSize:12,color:s.onSurfaceVariant)),
+        ])),
+        TextButton(onPressed:()=>_finishAdjust(false),child:Text(S.t('common.cancel'))),
+        FilledButton(onPressed:()=>_finishAdjust(true),child:Text(S.t('common.save'))),
+      ]));
+  }
+
   Future<void> _onMapTap(TapPosition tap,LatLng point) async {
+    if(_adjusting!=null){_adjustTowards(point);return;}
     if(_pickingOrigin){setState(()=>_pickingOrigin=false);_measure.setOrigin(MeasureOrigin(point:point,label:S.t('measure.originPoint')));return;}
     final drawingRoute=_drawingRouteId==null?null:_routes.route(_drawingRouteId!);
     if(drawingRoute!=null){await _routes.addWaypoint(drawingRoute,point);return;}
@@ -976,29 +1075,26 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   bool get _showOperators=>widget.store.preference('show_ops:${widget.eventId}')!='0';
   bool get _showDrawings=>widget.store.preference('show_draw:${widget.eventId}')!='0';
   Future<void> _setShown(String key,bool v) async {await widget.store.setPreference('$key:${widget.eventId}',v?null:'0');if(mounted)setState((){});}
-  /// Phone: the filters in one « Filtres » button (computer: chips visible).
-  Widget _filtersButton(){
-    final off=[!_showOperators,!_showAprs,!_showHighPoints,!_showRelays,!_showDrawings,!_showBearings,_withoutInternetOnly].where((x)=>x).length;
-    return Material(color:Colors.transparent,child:InkWell(borderRadius:BorderRadius.circular(24),onTap:_openFilters,
-      child:Container(height:48,padding:const EdgeInsets.symmetric(horizontal:16),decoration:glass(context,radius:24),
-        child:Row(mainAxisSize:MainAxisSize.min,children:[const Icon(Icons.tune,size:20),const SizedBox(width:8),
-          Text(off==0?S.t('map.filters'):'${S.t('map.filters')} · $off')]))));
-  }
-
-  void _openFilters()=>showModalBottomSheet<void>(context:context,showDragHandle:true,builder:(c)=>StatefulBuilder(builder:(c,refresh){
-    Widget toggle(String label,bool on,Future<void> Function(bool) set)=>SwitchListTile(title:Text(label),value:on,
+  /// Sections of the layers panel: Terrain, Opération, Référentiel ADRASEC.
+  List<Widget> _layerSections(BuildContext c,StateSetter refresh){
+    Widget head(String t)=>Padding(padding:const EdgeInsets.fromLTRB(16,16,16,4),child:Text(t,style:Theme.of(c).textTheme.titleSmall));
+    Widget toggle(String label,bool on,Future<void> Function(bool) set)=>SwitchListTile(dense:true,title:Text(label),value:on,
       onChanged:(v) async {await set(v);refresh((){});});
-    return SafeArea(child:SingleChildScrollView(child:Column(mainAxisSize:MainAxisSize.min,children:[
+    return [
+      head(S.t('layers.terrain')),
       toggle(S.t('chips.operators'),_showOperators,(v)=>_setShown('show_ops',v)),
       toggle('APRS',_showAprs,(v) async =>setState(()=>_showAprs=v)),
-      toggle(S.t('refs.highPoints'),_showHighPoints,(v) async =>setState(()=>_showHighPoints=v)),
-      toggle(S.t('refs.relays'),_showRelays,(v) async =>setState(()=>_showRelays=v)),
+      toggle(S.t('chips.withoutInternet'),_withoutInternetOnly,(v) async =>setState(()=>_withoutInternetOnly=v)),
+      head(S.t('layers.operation')),
       toggle(S.t('chips.drawings'),_showDrawings,(v)=>_setShown('show_draw',v)),
       toggle(S.t('chips.bearings'),_showBearings,(v)=>_setShown('show_brg',v)),
       _bearingColorBy(refresh),
-      toggle(S.t('chips.withoutInternet'),_withoutInternetOnly,(v) async =>setState(()=>_withoutInternetOnly=v)),
-    ])));
-  }));
+      head(S.t('layers.reference')),
+      toggle(S.t('refs.highPoints'),_showHighPoints,(v) async =>setState(()=>_showHighPoints=v)),
+      toggle(S.t('refs.relays'),_showRelays,(v) async =>setState(()=>_showRelays=v)),
+      const SizedBox(height:12),
+    ];
+  }
 
   /// « Colorer les relevés par : Signal / Opérateur » (Filtres).
   Widget _bearingColorBy(void Function(VoidCallback) refresh)=>ListTile(title:Text(S.t('bearings.colorBy')),
@@ -1064,23 +1160,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         title:Text(a.label,style:const TextStyle(fontSize:17)),trailing:const Icon(Icons.chevron_right),onTap:a.onTap),
     ]));
 
-  Widget _filterChips(){
-    Widget chip(String label,bool on,ValueChanged<bool> set)=>Padding(padding:const EdgeInsets.only(right:6),
-      child:FilterChip(label:Text(label),selected:on,onSelected:set,showCheckmark:false,visualDensity:VisualDensity.compact));
-    return SingleChildScrollView(scrollDirection:Axis.horizontal,child:Row(children:[
-      chip(S.t('chips.operators'),_showOperators,(v)=>_setShown('show_ops',v)),
-      chip('APRS',_showAprs,(v)=>setState(()=>_showAprs=v)),
-      chip(S.t('refs.highPoints'),_showHighPoints,(v)=>setState(()=>_showHighPoints=v)),
-      chip(S.t('refs.relays'),_showRelays,(v)=>setState(()=>_showRelays=v)),
-      chip(S.t('chips.drawings'),_showDrawings,(v)=>_setShown('show_draw',v)),
-      chip(S.t('chips.bearings'),_showBearings,(v)=>_setShown('show_brg',v)),
-      if(_showBearings)Padding(padding:const EdgeInsets.only(right:6),child:ActionChip(visualDensity:VisualDensity.compact,
-        avatar:const Icon(Icons.palette_outlined,size:16),
-        label:Text('${S.t('bearings.colorBy')} : ${S.t(_brgByOperator?'bearings.colorOperator':'bearings.colorSignal')}'),
-        onPressed:() async {await widget.store.setPreference('brg_color:${widget.eventId}',_brgByOperator?null:'op');if(mounted)setState((){});})),
-      chip(S.t('chips.withoutInternet'),_withoutInternetOnly,(v)=>setState(()=>_withoutInternetOnly=v)),
-    ]));
-  }
+
 
   /// One pill for the links (Meshtastic, MeshCore): a dot per link, amber
   /// when one fails; a tap gives the detail and « Synchroniser ».
@@ -1462,6 +1542,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         Text(S.t('bearings.lineCone',{'l':geo.formatDistance(b.lengthM),'c':b.coneDeg.toStringAsFixed(0)}),style:TextStyle(fontSize:12,color:Theme.of(c).colorScheme.onSurfaceVariant)),
         const SizedBox(height:8),
         ListTile(contentPadding:EdgeInsets.zero,leading:const Icon(Icons.place_outlined),title:Text(S.t('bearings.fromOrigin')),onTap:()=>Navigator.pop(c,'origin')),
+        if(can)ListTile(contentPadding:EdgeInsets.zero,leading:const Icon(Icons.open_with),title:Text(S.t('bearings.adjust')),onTap:()=>Navigator.pop(c,'adjust')),
         if(can)ListTile(contentPadding:EdgeInsets.zero,leading:const Icon(Icons.edit_outlined),title:Text(S.t('bearings.edit')),onTap:()=>Navigator.pop(c,'edit')),
         if(can)ListTile(contentPadding:EdgeInsets.zero,leading:Icon(Icons.delete_outline,color:Theme.of(c).colorScheme.error),title:Text(S.t('bearings.delete')),onTap:()=>Navigator.pop(c,'delete')),
       ]))));
@@ -1473,26 +1554,31 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       if(ok==true)await _bearings.delete(b);
     }
     if(choice=='edit')await _editBearing(b);
+    if(choice=='adjust')setState(()=>_adjusting=b);
   }
 
   Future<void> _editBearing(Bearing b) async {
     final az=TextEditingController(text:b.azimuthDeg.toStringAsFixed(1)), cone=TextEditingController(text:b.coneDeg.toStringAsFixed(0)),
-      len=TextEditingController(text:(b.lengthM/1000).toStringAsFixed(1)), target=TextEditingController(text:b.search), comment=TextEditingController(text:b.comment);
+      len=TextEditingController(text:(b.lengthM/1000).toStringAsFixed(1)), target=TextEditingController(text:b.search), comment=TextEditingController(text:b.comment),
+      when=TextEditingController(text:hhmm(b.takenAt));
     final ok=await showDialog<bool>(context:context,builder:(c)=>AlertDialog(title:Text(S.t('bearings.edit')),content:SingleChildScrollView(child:Column(mainAxisSize:MainAxisSize.min,children:[
       TextField(controller:az,keyboardType:const TextInputType.numberWithOptions(decimal:true),decoration:InputDecoration(labelText:S.t('bearings.azimuth'),suffixText:'°')),
       TextField(controller:cone,keyboardType:TextInputType.number,decoration:InputDecoration(labelText:S.t('bearings.cone'),suffixText:'± °')),
       TextField(controller:len,keyboardType:const TextInputType.numberWithOptions(decimal:true),decoration:InputDecoration(labelText:S.t('bearings.length'),suffixText:'km')),
       TextField(controller:target,decoration:InputDecoration(labelText:S.t('bearings.signal'))),
       TextField(controller:comment,decoration:InputDecoration(labelText:S.t('bearings.comment'))),
+      // Real time of the bearing, set afterwards (taken without GPS).
+      TextField(controller:when,keyboardType:TextInputType.datetime,decoration:InputDecoration(labelText:S.t('bearings.time'),hintText:'14:05')),
     ])),actions:[TextButton(onPressed:()=>Navigator.pop(c,false),child:Text(S.t('common.cancel'))),FilledButton(onPressed:()=>Navigator.pop(c,true),child:Text(S.t('common.save')))]));
     double? n(TextEditingController t)=>double.tryParse(t.text.replaceAll(',','.').trim());
     if(ok==true){
       final a=n(az),cn=n(cone),ln=n(len);
       await _bearings.update(b.copyWith(azimuthDeg:a==null||a<0||a>360?null:a%360,coneDeg:cn==null||cn<0||cn>45?null:cn,
         lengthM:ln==null||ln<0.1||ln>200?null:ln*1000,target:'',search:target.text.trim(),comment:comment.text.trim(),
+        takenAt:withHhmm(b.takenAt,when.text),
         updatedBy:widget.deviceId,updatedAt:DateTime.now().toUtc()));
     }
-    for(final t in [az,cone,len,target,comment]){t.dispose();}
+    for(final t in [az,cone,len,target,comment,when]){t.dispose();}
   }
 
   // The dialog owns its text controller: disposing it when the Future
@@ -1632,6 +1718,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         _RailAction(Icons.cloud_outlined,S.t('weather.menu'),()=>_openWeather()),
         _RailAction(Icons.folder_copy_outlined,S.t('map.files'),openFiles),
       ],
+      _RailAction(Icons.my_location_outlined,S.t('resection.title'),()=>onMap(_resection)),
+      _RailAction(Icons.sos,_inDistress?S.t('distress.end'):S.t('distress.title'),_distress),
       if(isPco(widget.deviceId))_RailAction(Icons.settings_input_antenna,S.t('aprs.title'),openAprs),
       if(widget.onSettings!=null)_RailAction(Icons.settings_outlined,S.t('map.settings'),widget.onSettings!),
     ];
@@ -1723,7 +1811,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           // Reference sites below the drawn objects, grouped when zoomed out.
           ReferenceClusterLayer(sites:_references.values.where((r)=>(r.isHighPoint&&_showHighPoints)||(r.isRelay&&_showRelays)).toList(),onSelect:_selectReference),
           if(_showDrawings)...buildDrawingLayers(_drawing),
-          if(_showBearings||_bearings.taking)...buildBearingLayers(bearings:_showBearings?_bearings.all:const <Bearing>[],draft:_bearingDraft(),byOperator:_brgByOperator,hits:_bearingHits,
+          if(_showBearings||_bearings.taking||_adjusting!=null)...buildBearingLayers(bearings:_showBearings?_bearings.all.where((b)=>b.id!=_adjusting?.id):const <Bearing>[],draft:_bearingDraft()??_adjusting,byOperator:_brgByOperator,hits:_bearingHits,
             onTapBearing:_showBearingSheet,onTapZone:(c,_)=>_onLongPress(c)),
           ..._variantLayers(),
           ...buildRouteLayers(_routes,selectedRouteId:_selectedRouteId,itinerary:_nav.itinerary?.geometry??const [],draftClosure:_closureDraft,
@@ -1745,7 +1833,12 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           onPanStart:_onFreehandStart,onPanUpdate:_onFreehandUpdate,onPanEnd:_onFreehandEnd,
           child:CustomPaint(painter:_StrokePainter(_stroke,Color(_drawing.color),_drawing.strokeWidth)),
         )),
-        if(_bearings.taking)Positioned(top:8,left:8,right:8,child:Align(alignment:Alignment.topCenter,child:ConstrainedBox(constraints:const BoxConstraints(maxWidth:520),child:_bearingHud())))
+        if(_inDistress)Positioned(top:8,left:8,right:8,child:Align(alignment:Alignment.topCenter,child:Material(color:Theme.of(context).colorScheme.error,
+          borderRadius:BorderRadius.circular(16),child:InkWell(borderRadius:BorderRadius.circular(16),onTap:_distress,child:Padding(padding:const EdgeInsets.symmetric(horizontal:14,vertical:10),
+            child:Row(mainAxisSize:MainAxisSize.min,children:[Icon(Icons.sos,color:Theme.of(context).colorScheme.onError),const SizedBox(width:8),
+              Text(S.t('distress.active'),style:TextStyle(color:Theme.of(context).colorScheme.onError,fontWeight:FontWeight.w700))]))))))
+        else if(_adjusting!=null)Positioned(top:8,left:8,right:8,child:Align(alignment:Alignment.topCenter,child:ConstrainedBox(constraints:const BoxConstraints(maxWidth:520),child:_adjustBanner())))
+        else if(_bearings.taking)Positioned(top:8,left:8,right:8,child:Align(alignment:Alignment.topCenter,child:ConstrainedBox(constraints:const BoxConstraints(maxWidth:520),child:_bearingHud())))
         else Positioned(top:8,left:8,right:8,child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
           // The drawing button stays in place and toggles the toolbar
           // (request of 23 October 2026: closing it after a tap by mistake
@@ -1766,7 +1859,6 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
             ],
           ]),
           // Phone: filters in one button; computer: chips visible.
-          if(!_drawingTools)Padding(padding:const EdgeInsets.only(top:8),child:compact?_filtersButton():_filterChips()),
           if(!_drawingTools)Padding(padding:const EdgeInsets.only(top:8),child:Wrap(spacing:8,runSpacing:8,children:[if(!compact)_trackingBadge(),?_staleBanner()])),
           if(_drawing.isDrawing)Padding(padding:const EdgeInsets.only(top:8),child:DraftBar(controller:_drawing)),
           if(_drawing.selected!=null)Padding(padding:const EdgeInsets.only(top:8),child:SelectionBar(controller:_drawing,onEditLabel:_editSelectedLabel)),
@@ -1905,4 +1997,24 @@ class _TextPromptDialogState extends State<_TextPromptDialog> {
       FilledButton(onPressed:()=>Navigator.pop(context,_controller.text),child:Text(S.t('common.ok'))),
     ],
   );
+}
+
+/// Button kept pressed 2 s before acting (distress: no stray touch).
+class _HoldButton extends StatefulWidget {
+  final String label; final VoidCallback onDone;
+  const _HoldButton({required this.label,required this.onDone});
+  @override State<_HoldButton> createState()=>_HoldButtonState();
+}
+class _HoldButtonState extends State<_HoldButton> with SingleTickerProviderStateMixin {
+  late final AnimationController _c=AnimationController(vsync:this,duration:const Duration(seconds:2))
+    ..addStatusListener((s){if(s==AnimationStatus.completed)widget.onDone();});
+  @override void dispose(){_c.dispose();super.dispose();}
+  @override Widget build(BuildContext context){
+    final s=Theme.of(context).colorScheme;
+    return GestureDetector(onTapDown:(_)=>_c.forward(from:0),onTapUp:(_)=>_c.reset(),onTapCancel:()=>_c.reset(),
+      child:AnimatedBuilder(animation:_c,builder:(_,_)=>Container(padding:const EdgeInsets.symmetric(horizontal:16,vertical:10),
+        decoration:BoxDecoration(borderRadius:BorderRadius.circular(20),gradient:LinearGradient(colors:[s.error,s.error,s.errorContainer,s.errorContainer],
+          stops:[0,_c.value,_c.value,1])),
+        child:Text(widget.label,style:TextStyle(color:s.onError,fontWeight:FontWeight.w700)))));
+  }
 }
