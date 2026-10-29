@@ -28,6 +28,7 @@ class S {
 }
 
 const Texts _fr={
+  'order.send':'Envoyer un opérateur ici','order.sendButton':'Envoyer l’ordre','order.label':'Nom du lieu','order.point':'Point désigné','order.note':'Consigne (facultatif)','order.who':'Opérateurs','order.sent':'Ordre envoyé à {n} opérateur(s)','order.banner':'Ordre de {who} : rejoindre « {label} »','order.accept':'Accepter','order.refuse':'Refuser','order.arrived':'Je suis arrivé','order.cancel':'Annuler l’ordre','order.title':'Ordre de déplacement','order.status.sent':'envoyé','order.status.accepted':'accepté, en route','order.status.refused':'refusé','order.status.arrived':'arrivé','order.status.cancelled':'annulé',
   'tv.menu':'Afficher sur une TV','tv.manage':'Gérer les écrans','tv.scan':'Scanner le QR code','tv.type':'Saisir le code','tv.scanHelp':'Visez le QR code affiché sur la TV','tv.signIn':'Connectez-vous à SARCADE, puis réessayez',
   'draw.geofence':'Géorepérage','draw.geofenceOn':'Géorepérage : prévenir le PCO à l’entrée ou à la sortie','draw.geofenceOff':'Arrêter le géorepérage',
   'routes.send':'Envoyer','routes.sendText':'Itinéraire « {name} » : {km}, {n} points, de {from} à {to}. Ouvrez Itinéraires pour le suivre.','routes.toHere':'Itinéraire jusqu’ici','routes.toHereName':'Itinéraire {time}',
@@ -282,6 +283,7 @@ const Texts _fr={
 };
 
 const Texts _en={
+  'order.send':'Send an operator here','order.sendButton':'Send the order','order.label':'Place name','order.point':'Designated point','order.note':'Instruction (optional)','order.who':'Operators','order.sent':'Order sent to {n} operator(s)','order.banner':'Order from {who}: go to « {label} »','order.accept':'Accept','order.refuse':'Refuse','order.arrived':'I have arrived','order.cancel':'Cancel the order','order.title':'Move order','order.status.sent':'sent','order.status.accepted':'accepted, on the way','order.status.refused':'refused','order.status.arrived':'arrived','order.status.cancelled':'cancelled',
   'tv.menu':'Show on a TV','tv.manage':'Manage the screens','tv.scan':'Scan the QR code','tv.type':'Type the code','tv.scanHelp':'Aim at the QR code shown on the TV','tv.signIn':'Sign in to SARCADE, then try again',
   'draw.geofence':'Geofence','draw.geofenceOn':'Geofence: warn the PCO when a team enters or leaves','draw.geofenceOff':'Stop the geofence',
   'routes.send':'Send','routes.sendText':'Route « {name} »: {km}, {n} points, from {from} to {to}. Open Routes to follow it.','routes.toHere':'Route to here','routes.toHereName':'Route {time}',

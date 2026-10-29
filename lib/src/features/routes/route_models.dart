@@ -8,7 +8,7 @@ import 'package:latlong2/latlong.dart';
 import '../../models/comm_group.dart' show isPco;
 import '../map/drawing/geometry.dart';
 
-const routeObjectTypes={'route','route_waypoint','route_passage','road_closure','itinerary'};
+const routeObjectTypes={'route','route_waypoint','route_passage','road_closure','itinerary','move_order'};
 const waypointTypes=['start','pass','checkpoint','supply','finish'];
 const defaultRadiusM=50.0;
 

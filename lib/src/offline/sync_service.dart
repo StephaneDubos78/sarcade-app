@@ -8,7 +8,7 @@ import 'outbox_policy.dart';
 import 'sync_operation.dart';
 
 /// Object types of routes and navigation, cached in one box.
-const routeObjectKinds={'route','route_waypoint','route_passage','road_closure','itinerary'};
+const routeObjectKinds={'route','route_waypoint','route_passage','road_closure','itinerary','move_order'};
 
 class OfflineSyncService {
   final SarcadeApi api; final LocalStore store; final String eventId;
