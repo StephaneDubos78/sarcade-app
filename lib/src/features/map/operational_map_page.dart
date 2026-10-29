@@ -80,6 +80,7 @@ import '../bearings/signals.dart';
 import '../tools/tools_page.dart';
 import 'sos_button.dart';
 import '../tools/coordinate_converter_page.dart';
+import '../places/readable_place.dart';
 import '../tools/resection.dart';
 import '../tools/resection_panel.dart';
 import '../tv/tv_screens_page.dart';
@@ -389,6 +390,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     if(_adjusting!=null){_adjustOrigin(point);return;}
     final label=S.t('nav.point');
     final choice=await showModalBottomSheet<String>(context:context,showDragHandle:true,builder:(c)=>SafeArea(child:Column(mainAxisSize:MainAxisSize.min,children:[
+      Padding(padding:const EdgeInsets.symmetric(horizontal:20),child:PlaceLine(describer:_places,point:point)),
       // « Envoyer un opérateur ici » first (29 Oct 2026).
       if(isPco(widget.deviceId))ListTile(leading:const Icon(Icons.flag_outlined),title:Text(S.t('order.send')),onTap:()=>Navigator.pop(c,'order')),
       ListTile(leading:const Icon(Icons.straighten),title:Text(S.t('measure.here')),onTap:()=>Navigator.pop(c,'measure')),
@@ -568,8 +570,11 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     return p==null?S.t('distress.noPosition'):'${p.lat.toStringAsFixed(5)}, ${p.lon.toStringAsFixed(5)}';
   }
 
+  late final PlaceDescriber _places=PlaceDescriber(widget.api);
   Future<void> _sendDistress() async {
-    await _sendQuick(S.t('distress.body',{'who':widget.deviceId,'pos':_myPositionText()}));
+    final p=_positions[widget.deviceId];
+    final where=await _places.distressSuffix(p==null?null:LatLng(p.lat,p.lon)); // empty after 1.5 s without answer
+    await _sendQuick(S.t('distress.body',{'who':widget.deviceId,'pos':_myPositionText()})+where);
     await widget.store.setPreference('distress:${widget.eventId}','1');
     if(mounted){setState((){});ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(S.t('distress.sent'))));}
   }
@@ -1917,6 +1922,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           S.t('bearings.method.${b.method}')].join(' · ')),
         if(b.comment.isNotEmpty)Padding(padding:const EdgeInsets.only(top:6),child:Text(b.comment)),
         Text(S.t('bearings.lineCone',{'l':geo.formatDistance(b.lengthM),'c':b.coneDeg.toStringAsFixed(0)}),style:TextStyle(fontSize:12,color:Theme.of(c).colorScheme.onSurfaceVariant)),
+        PlaceLine(describer:_places,point:b.origin),
         const SizedBox(height:8),
         ListTile(contentPadding:EdgeInsets.zero,leading:const Icon(Icons.place_outlined),title:Text(S.t('bearings.fromOrigin')),onTap:()=>Navigator.pop(c,'origin')),
         if(can)ListTile(contentPadding:EdgeInsets.zero,leading:const Icon(Icons.open_with),title:Text(S.t('bearings.adjust')),onTap:()=>Navigator.pop(c,'adjust')),
