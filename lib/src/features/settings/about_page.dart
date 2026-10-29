@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../config/version.dart';
 import '../../l10n/strings.dart';
+import 'notifications_panel.dart' show VersionStatus;
 
 class SarcadeAboutPage extends StatelessWidget {
   const SarcadeAboutPage({super.key});
@@ -68,6 +69,7 @@ class SarcadeAboutContent extends StatelessWidget {
             },
           ),
         ]),
+        if (VersionStatus.shown) const Padding(padding: EdgeInsets.only(top: 12), child: VersionStatus()),
         const Divider(height: 32),
         _link(context, Icons.language, 'about.website', 'https://sarcade.org'),
         _link(context, Icons.code, 'about.source', 'https://github.com/sdubos-consulting/sarcade-app'),

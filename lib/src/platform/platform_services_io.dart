@@ -85,6 +85,8 @@ void reloadApp(){}
 Future<String?> fetchServedBuild() async=>null;
 Future<void> reloadFresh() async {}
 Future<String?> webPushSubscription(String publicKey) async=>null;
+/// Installed apps: the wake-up signals come by Firebase (wakeup_fcm.dart).
+Stream<Map<String,dynamic>> webWakeSignals()=>const Stream<Map<String,dynamic>>.empty();
 bool get browserOnline=>false;
 
 /// Installed apps keep their data in their own folder.

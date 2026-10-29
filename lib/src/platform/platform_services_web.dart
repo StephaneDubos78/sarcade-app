@@ -108,6 +108,22 @@ Future<String?> webPushSubscription(String publicKey) async {
   }
 }
 
+/// Wake-up signals passed on by the SARCADE service worker to the open
+/// windows ({sarcade: 'wake', data}), for « Tester le réveil ».
+Stream<Map<String,dynamic>> webWakeSignals(){
+  late final StreamController<Map<String,dynamic>> c;
+  final listener=((web.MessageEvent e){
+    final d=e.data.dartify();
+    if(d is Map&&d['sarcade']=='wake'&&!c.isClosed){
+      c.add(d['data'] is Map?Map<String,dynamic>.from(d['data'] as Map):<String,dynamic>{});
+    }
+  }).toJS;
+  c=StreamController<Map<String,dynamic>>(
+    onListen:(){try{web.window.navigator.serviceWorker.addEventListener('message',listener);}catch(_){}},
+    onCancel:(){try{web.window.navigator.serviceWorker.removeEventListener('message',listener);}catch(_){}});
+  return c.stream;
+}
+
 /// Asks the browser to keep the offline data (IndexedDB) instead of evicting
 /// it when space runs low: an installed PCO may hold unsent messages.
 /// Granted silently for installed apps in Chrome and Edge.

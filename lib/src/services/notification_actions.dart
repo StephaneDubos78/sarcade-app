@@ -18,6 +18,24 @@ const reminderCount=3;
 
 bool isUrgentPriority(String priority)=>priority=='urgent'||priority=='immediate';
 
+/// Sound by priority, local preference of the device (Paramètres ›
+/// Notifications, 29 Oct 2026): routine silent / discreet (vibration only)
+/// / normal; urgent and immediate normal or alarm; SOS always the alarm.
+const soundSilent='silent', soundDiscreet='discreet', soundNormal='normal', soundAlarm='alarm';
+const soundChoices={'routine':[soundSilent,soundDiscreet,soundNormal],'urgent':[soundNormal,soundAlarm],'immediate':[soundNormal,soundAlarm]};
+const soundDefaults={'routine':soundNormal,'urgent':soundNormal,'immediate':soundAlarm};
+
+/// A distress message (« 🆘 DÉTRESSE … », « 🆘 DISTRESS … »).
+bool isSosBody(String body)=>body.trimLeft().startsWith('🆘');
+
+/// Sound applied to a notification; an unknown preference keeps the default.
+String soundFor(String priority,Map<String,String> prefs,{bool sos=false}){
+  if(sos)return soundAlarm;
+  final p=soundChoices.containsKey(priority)?priority:'routine';
+  final v=prefs[p];
+  return v!=null&&soundChoices[p]!.contains(v)?v:soundDefaults[p]!;
+}
+
 /// Buttons shown on the notification of a message, in order.
 List<String> actionsFor(String priority)=>isUrgentPriority(priority)
   ?const [actionAccept,actionRefuse,actionOpen]:const [actionRead,actionOpen];
