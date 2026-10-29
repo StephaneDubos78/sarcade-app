@@ -382,13 +382,14 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     if(_adjusting!=null){_adjustOrigin(point);return;}
     final label=S.t('nav.point');
     final choice=await showModalBottomSheet<String>(context:context,showDragHandle:true,builder:(c)=>SafeArea(child:Column(mainAxisSize:MainAxisSize.min,children:[
+      // « Envoyer un opérateur ici » first (29 Oct 2026).
+      if(isPco(widget.deviceId))ListTile(leading:const Icon(Icons.flag_outlined),title:Text(S.t('order.send')),onTap:()=>Navigator.pop(c,'order')),
       ListTile(leading:const Icon(Icons.straighten),title:Text(S.t('measure.here')),onTap:()=>Navigator.pop(c,'measure')),
       ListTile(leading:const Icon(Icons.directions),title:Text(S.t('nav.goHere')),onTap:()=>Navigator.pop(c,'nav')),
       ListTile(leading:const Icon(Icons.add_road),title:Text(S.t('routes.toHere')),onTap:()=>Navigator.pop(c,'route')),
       ListTile(leading:const Icon(Icons.open_in_new),title:Text(S.t('ext.open')),onTap:()=>Navigator.pop(c,'ext')),
       ListTile(leading:const Icon(Icons.cloud_outlined),title:Text(S.t('weather.here')),onTap:()=>Navigator.pop(c,'weather')),
       ListTile(leading:const Icon(Icons.track_changes),title:Text(S.t('bearings.fromHere')),onTap:()=>Navigator.pop(c,'bearing')),
-      if(isPco(widget.deviceId))ListTile(leading:const Icon(Icons.flag_outlined),title:Text(S.t('order.send')),onTap:()=>Navigator.pop(c,'order')),
     ])));
     if(choice=='order'){await _sendOperatorHere(point);return;}
     if(choice=='bearing'){if(!mounted)return;final wide=MediaQuery.sizeOf(context).width>=_compactWidth;await _bearings.startTaking(from:point);if(wide&&mounted)setState(()=>_aim=BearingAim(point));return;}
@@ -636,7 +637,11 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   }
 
   /// Menu « Outils »: tiles of the tools used less often.
+  /// Itinéraires panel beside the map (from « Outils » on a computer, 29 Oct 2026).
+  void _openRoutesPanel()=>setState((){_tab=0;_deskPage=null;_deskId=null;_showRoutesPanel=true;_showPanel=false;_showReferencePanel=false;_showResection=false;});
+
   void _openTools()=>_openDesk('tools',()=>ToolsPage(key:const ValueKey('desk-tools'),items:[
+    ToolItem(icon:Icons.route,title:S.t('routes.menu'),subtitle:S.t('tools.routesHelp'),color:Colors.green,onTap:_openRoutesPanel),
     ToolItem(icon:Icons.my_location,title:S.t('resection.title'),subtitle:S.t('tools.resectionHelp'),color:Colors.indigo,onTap:_openResection),
     ToolItem(icon:Icons.straighten,title:S.t('tools.measure'),subtitle:S.t('tools.measureHelp'),color:Colors.teal,
       onTap:()=>_startPick(S.t('tools.measureHint'),(p,site)=>_measureTo(p,site?.name??S.t('nav.point')))),
@@ -1291,33 +1296,35 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
 
   List<Widget> _layerSections(BuildContext c,StateSetter refresh){
     Widget head(String t)=>Padding(padding:const EdgeInsets.fromLTRB(16,16,16,4),child:Text(t,style:Theme.of(c).textTheme.titleSmall));
-    Widget toggle(String label,bool on,Future<void> Function(bool) set)=>SwitchListTile(dense:true,title:Text(label),value:on,
-      onChanged:(v) async {await set(v);refresh((){});});
-    Widget opacity(String k){
-      final o=_layerOpacity(k);
-      return Padding(padding:const EdgeInsets.only(left:16,right:16,bottom:4),child:Row(children:[
-        Icon(Icons.opacity,size:18,color:Theme.of(c).colorScheme.onSurfaceVariant),const SizedBox(width:8),
-        Text(S.t('layers.opacity'),style:Theme.of(c).textTheme.bodySmall),
-        Expanded(child:Slider(value:o,min:0.1,max:1,divisions:9,onChanged:(v) async {await _setLayerOpacity(k,v);refresh((){});})),
-        SizedBox(width:44,child:Text('${(o*100).round()} %',textAlign:TextAlign.end,style:Theme.of(c).textTheme.bodySmall)),
+    // One line per layer (29 Oct 2026): name, compact opacity slider (only
+    // while the layer is shown), then the switch: the panel stays short.
+    Widget toggle(String label,bool on,Future<void> Function(bool) set,{String? op,bool? opShown}){
+      final showOp=op!=null&&(opShown??on);
+      final o=op==null?1.0:_layerOpacity(op);
+      return Padding(padding:const EdgeInsets.only(left:16,right:8),child:Row(children:[
+        Expanded(child:Text(label,overflow:TextOverflow.ellipsis)),
+        if(showOp)...[
+          Tooltip(message:S.t('layers.opacity'),child:Icon(Icons.opacity,size:16,color:Theme.of(c).colorScheme.onSurfaceVariant)),
+          SizedBox(width:110,child:Slider(value:o,min:0.1,max:1,divisions:9,label:'${(o*100).round()} %',
+            onChanged:(v) async {await _setLayerOpacity(op,v);refresh((){});})),
+          SizedBox(width:40,child:Text('${(o*100).round()} %',textAlign:TextAlign.end,style:Theme.of(c).textTheme.bodySmall)),
+          const SizedBox(width:4),
+        ],
+        Switch(value:on,onChanged:(v) async {await set(v);refresh((){});}),
       ]));
     }
     return [
       head(S.t('layers.terrain')),
-      toggle(S.t('chips.operators'),_showOperators,(v)=>_setShown('show_ops',v)),
+      toggle(S.t('chips.operators'),_showOperators,(v)=>_setShown('show_ops',v),op:'ops'),
       toggle('APRS',_showAprs,(v) async =>setState(()=>_showAprs=v)),
       toggle(S.t('chips.withoutInternet'),_withoutInternetOnly,(v) async =>setState(()=>_withoutInternetOnly=v)),
-      opacity('ops'),
       head(S.t('layers.operation')),
-      toggle(S.t('chips.drawings'),_showDrawings,(v)=>_setShown('show_draw',v)),
-      opacity('draw'),
-      toggle(S.t('chips.bearings'),_showBearings,(v)=>_setShown('show_brg',v)),
-      opacity('brg'),
+      toggle(S.t('chips.drawings'),_showDrawings,(v)=>_setShown('show_draw',v),op:'draw'),
+      toggle(S.t('chips.bearings'),_showBearings,(v)=>_setShown('show_brg',v),op:'brg'),
       _bearingColorBy(refresh),
       head(S.t('layers.reference')),
-      toggle(S.t('refs.highPoints'),_showHighPoints,(v) async =>setState(()=>_showHighPoints=v)),
+      toggle(S.t('refs.highPoints'),_showHighPoints,(v) async =>setState(()=>_showHighPoints=v),op:'ref',opShown:_showHighPoints||_showRelays),
       toggle(S.t('refs.relays'),_showRelays,(v) async =>setState(()=>_showRelays=v)),
-      opacity('ref'),
       const SizedBox(height:12),
     ];
   }
@@ -1409,13 +1416,13 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
 
 
   /// Links pill (« Pastille des liaisons simplifiée », 28 Oct 2026): one
-  /// « Liaison avec le serveur », Directe / Ralentie / Coupée, blue, orange
-  /// or red; details only when useful.
+  /// « Liaison avec le serveur », Connecté / Ralentie / Coupée, green, orange
+  /// or red (green and « Connecté »: 29 Oct 2026); details only when useful.
   Widget _linksPill(){
     final access=AccessManager.instance.requiredFor(widget.api.baseUrl);
     final state=_started?serverLink(syncOk:_sync.lastSyncOk,realtime:_realtime.connected):null;
     final scheme=Theme.of(context).colorScheme;
-    final colour=switch(state){ServerLink.direct=>scheme.primary,ServerLink.slowed=>Colors.orange,ServerLink.cut=>scheme.error,null=>scheme.outline};
+    final colour=switch(state){ServerLink.direct=>const Color(0xFF2E9D4B),ServerLink.slowed=>Colors.orange,ServerLink.cut=>scheme.error,null=>scheme.outline};
     final label=state==null?S.t('links.starting'):S.t('links.${state.name}');
     Widget dot()=>Container(width:10,height:10,decoration:BoxDecoration(color:colour,shape:BoxShape.circle));
     final unsent=_sync.unsent;
@@ -2073,7 +2080,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     final more=<_RailAction>[
       _RailAction(Icons.route,S.t('routes.menu'),openRoutes),
       _RailAction(Icons.folder_copy_outlined,S.t('map.files'),openFiles),
-      _RailAction(Icons.handyman_outlined,S.t('tools.title'),_openTools),
+      _RailAction(Icons.build_outlined,S.t('tools.title'),_openTools),
       _RailAction(Icons.sos,_inDistress?S.t('distress.end'):S.t('distress.title'),_distress),
       if(widget.onSettings!=null)_RailAction(Icons.settings_outlined,S.t('map.settings'),widget.onSettings!),
     ];
@@ -2082,10 +2089,11 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     // at the bottom.
     final rail=<_RailAction>[
       _RailAction(Icons.groups_outlined,S.t('tabs.teams'),toggleOperators,selected:_showPanel),
-      _RailAction(Icons.route,S.t('routes.menu'),toggleRoutes,selected:_showRoutesPanel),
       _RailAction(Icons.folder_copy_outlined,S.t('map.files'),openFiles,selected:_deskId=='files'),
-      _RailAction(Icons.handyman_outlined,S.t('tools.title'),_openTools,
-        selected:_showResection||const {'tools','converter','tv','aprs','weather'}.contains(_deskId)),
+      // « Itinéraires » moved into « Outils » (29 Oct 2026); wrench icon, the
+      // handyman glyph did not show on the web.
+      _RailAction(Icons.build_outlined,S.t('tools.title'),_openTools,
+        selected:_showResection||_showRoutesPanel||const {'tools','converter','tv','aprs','weather'}.contains(_deskId)),
     ];
     final railBottom=(widget.onSettings!=null||widget.settingsBuilder!=null)
       ?_RailAction(Icons.settings_outlined,S.t('map.settings'),openSettings,selected:_deskId=='settings'):null;
@@ -2224,11 +2232,18 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
               const SizedBox(width:8),
               Flexible(child:MapSearchBar(items:_searchables,addresses:_searchAddresses,near:_mapCentre,onPick:_onSearchPick)),
               const SizedBox(width:8),
+              // Computer (29 Oct 2026): « Suivi de position » right after the
+              // search, weather and « Connecté » at the top right.
+              if(!compact)...[
+                Padding(padding:const EdgeInsets.only(top:8),child:_trackingBadge()),
+                const Spacer(),
+                if(_weatherPill() case final w?)...[Padding(padding:const EdgeInsets.only(top:8),child:w),const SizedBox(width:8)],
+              ],
               _linksPill(),
             ],
           ]),
           // Phone: filters in one button; computer: chips visible.
-          if(!_drawingTools)Padding(padding:const EdgeInsets.only(top:8),child:Wrap(spacing:8,runSpacing:8,children:[if(!compact)_trackingBadge(),?_weatherPill(),?_staleBanner(),?_orderBanner()])),
+          if(!_drawingTools)Padding(padding:const EdgeInsets.only(top:8),child:Wrap(spacing:8,runSpacing:8,children:[if(compact)?_weatherPill(),?_staleBanner(),?_orderBanner()])),
           if(_drawing.isDrawing)Padding(padding:const EdgeInsets.only(top:8),child:DraftBar(controller:_drawing)),
           if(_drawing.selected!=null)Padding(padding:const EdgeInsets.only(top:8),child:SelectionBar(controller:_drawing,onEditLabel:_editSelectedLabel,canFence:isPco(widget.deviceId))),
           if(_drawingClosure)Padding(padding:const EdgeInsets.only(top:8),child:Card(child:Padding(padding:const EdgeInsets.symmetric(horizontal:12,vertical:6),child:Row(mainAxisSize:MainAxisSize.min,children:[

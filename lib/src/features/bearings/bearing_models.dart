@@ -69,9 +69,28 @@ class Bearing {
   bool canEdit(String actor,bool isPco)=>actor==createdBy||isPco;
 }
 
-/// One colour per search (« Balise 406 – 23/10 »), stable from its name.
+/// Fixed colours of the beacons (decision of 29 Oct 2026, 17 h 05):
+/// 406 MHz violet, 121,5 MHz red, exercise 121,375 MHz blue.
+const beacon406Color=0xFF9B4DFF, beacon1215Color=0xFFE53935, beaconExerciseColor=0xFF1E88E5;
+
+/// Beacon colour read from the search name (« 121,500 MHz · … », « Balise 406 – 23/10 »), else null.
+int? beaconColor(String search){
+  final m=RegExp(r'(\d{3})(?:[.,](\d+))?').allMatches(search);
+  for(final x in m){
+    final f=double.tryParse('${x.group(1)}.${x.group(2)??'0'}');
+    if(f==null)continue;
+    if(f>=406&&f<407)return beacon406Color;
+    if((f-121.375).abs()<0.001)return beaconExerciseColor;
+    if((f-121.5).abs()<0.001)return beacon1215Color;
+  }
+  return null;
+}
+
+/// One colour per search, stable from its name; the beacons have their own
+/// colours, which the palette avoids (no violet, red or plain blue).
 int searchColor(String search){
-  const palette=[0xFF3DD6F5,0xFFFFB020,0xFFB48CFF,0xFF4ADE80,0xFFFF7AB6,0xFFFFE066];
+  final b=beaconColor(search); if(b!=null)return b;
+  const palette=[0xFF3DD6F5,0xFFFFB020,0xFF4ADE80,0xFFFF7AB6,0xFFFFE066];
   var h=0; for(final c in search.codeUnits){h=(h*31+c)&0x7FFFFFFF;}
   return palette[search.isEmpty?0:h%palette.length];
 }

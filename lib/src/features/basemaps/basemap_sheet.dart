@@ -9,18 +9,20 @@ Future<void> showBasemapSheet(BuildContext context,{required List<Basemap> catal
     required void Function(String id) onChoose,required ValueChanged<bool> onPreferOffline,
     List<Widget> Function(BuildContext context,StateSetter refresh)? layers}) {
   var offline=preferOffline;
+  // The radio follows the choice while the panel stays open (29 Oct 2026).
+  var selected=current.id;
   return showModalBottomSheet<void>(context:context,showDragHandle:true,isScrollControlled:true,builder:(c)=>StatefulBuilder(builder:(c,set){
     return SafeArea(child:ConstrainedBox(constraints:BoxConstraints(maxHeight:MediaQuery.sizeOf(c).height*0.8),child:ListView(shrinkWrap:true,children:[
       Padding(padding:const EdgeInsets.fromLTRB(16,0,16,8),child:Text(S.t('basemap.title'),style:Theme.of(c).textTheme.titleLarge)),
       for(final b in catalog)ListTile(
-        leading:Icon(b.id==current.id?Icons.radio_button_checked:Icons.radio_button_off),
+        leading:Icon(b.id==selected?Icons.radio_button_checked:Icons.radio_button_off),
         title:Text(b.name),
         subtitle:Text([
           if(b.id==eventDefault)S.t('basemap.eventDefault'),
           if(b.hasOfflinePackage)S.t('basemap.offlineAvailable'),
           b.attribution,
         ].join(' · ')),
-        onTap:(){onChoose(b.id);if(layers==null){Navigator.pop(c);}else{set((){});}},
+        onTap:(){onChoose(b.id);if(layers==null){Navigator.pop(c);}else{set(()=>selected=b.id);}},
       ),
       if(catalog.any((b)=>b.hasOfflinePackage))SwitchListTile(
         value:offline,
