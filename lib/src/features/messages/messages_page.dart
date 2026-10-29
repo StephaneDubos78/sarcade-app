@@ -276,7 +276,13 @@ class _MessagesPageState extends State<MessagesPage>{
    }
  }
 
+ /// Phone (29 Oct 2026, like WhatsApp): the list of the conversations first,
+ /// a touch opens one full screen; the arrow comes back to the list. Opened
+ /// for a purpose (a chat with an operator, a text to send): the chat at once.
+ late bool _chatOpen=widget.initialPeer!=null||widget.initialText!=null;
+
  void _open(String key){
+   if(!_chatOpen)setState(()=>_chatOpen=true);
    if(key==_conv)return;
    setState((){_conv=key;_maxBuilt=-1;});
    WidgetsBinding.instance.addPostFrameCallback((_)=>_toBottom());
@@ -374,12 +380,6 @@ class _MessagesPageState extends State<MessagesPage>{
      })])),
    ]);
  }
-
- /// Phone: the conversations as chips above the chat.
- Widget _convChips(Map<String,CommGroup> by,Map<String,List<SarcadeAck>> acks)=>SizedBox(height:52,child:ListView(scrollDirection:Axis.horizontal,
-   padding:const EdgeInsets.symmetric(horizontal:8,vertical:6),children:[for(final k in _conversations(by))Padding(padding:const EdgeInsets.only(right:6),
-     child:Badge(isLabelVisible:k!=_conv&&_unreadIn(k,by,acks)>0,label:Text('${_unreadIn(k,by,acks)}'),child:ChoiceChip(
-       avatar:_convIcon(k,by,r:9),label:Text(_convName(k,by)),selected:k==_conv,showCheckmark:false,onSelected:(_)=>_open(k))))]));
 
  static String _hm(DateTime t){final l=t.toLocal();String two(int v)=>v.toString().padLeft(2,'0');return '${two(l.hour)}:${two(l.minute)}';}
 
@@ -597,17 +597,28 @@ class _MessagesPageState extends State<MessagesPage>{
    final group=_group;
    return LayoutBuilder(builder:(context,c){
      final wide=c.maxWidth>=900;
+     final listOnly=!wide&&!_chatOpen;
+     final newGroup=IconButton(tooltip:S.t('groups.new'),onPressed:()=>_editGroup(null),icon:const Icon(Icons.group_add_outlined));
+     // PCO: channels of the ADRASEC model added in one touch (28 Oct 2026).
+     final adrasec=isPco(widget.actorId)?PopupMenuButton<String>(onSelected:(_)=>_addTemplate(),itemBuilder:(_)=>[
+       PopupMenuItem(value:'adrasec',child:Text(S.t('groups.addAdrasec')))]):null;
+     final editGroup=group!=null&&group.canManage(widget.actorId)
+       ?IconButton(tooltip:S.t('groups.edit'),onPressed:()=>_editGroup(group),icon:const Icon(Icons.edit_outlined)):null;
+     if(listOnly){
+       return Scaffold(
+         appBar:AppBar(title:Text(S.t('messages.title',{'n':widget.store.pendingCount()})),actions:[newGroup,?adrasec]),
+         body:_convList(by,acks));
+     }
+     final back=!wide&&widget.initialPeer==null&&widget.initialText==null;
      return Scaffold(
-       appBar:AppBar(title:Row(children:[
-         if(!wide)...[_convIcon(_conv,by,r:14),const SizedBox(width:10)],
-         Expanded(child:Text(wide?S.t('messages.title',{'n':widget.store.pendingCount()}):_convName(_conv,by),overflow:TextOverflow.ellipsis)),
-       ]),actions:[
-         if(group!=null&&group.canManage(widget.actorId))IconButton(tooltip:S.t('groups.edit'),onPressed:()=>_editGroup(group),icon:const Icon(Icons.edit_outlined)),
-         IconButton(tooltip:S.t('groups.new'),onPressed:()=>_editGroup(null),icon:const Icon(Icons.group_add_outlined)),
-         // PCO: channels of the ADRASEC model added in one touch (28 Oct 2026).
-         if(isPco(widget.actorId))PopupMenuButton<String>(onSelected:(_)=>_addTemplate(),itemBuilder:(_)=>[
-           PopupMenuItem(value:'adrasec',child:Text(S.t('groups.addAdrasec')))]),
-       ]),
+       appBar:AppBar(
+         leading:back?BackButton(onPressed:()=>setState(()=>_chatOpen=false)):null,
+         titleSpacing:back?0:null,
+         title:Row(children:[
+           if(!wide)...[_convIcon(_conv,by,r:18),const SizedBox(width:10)],
+           Expanded(child:Text(wide?S.t('messages.title',{'n':widget.store.pendingCount()}):_convName(_conv,by),overflow:TextOverflow.ellipsis)),
+         ]),
+         actions:wide?[?editGroup,newGroup,?adrasec]:[?editGroup]),
        body:wide
          ? Row(children:[
              SizedBox(width:360,child:_convList(by,acks)),
@@ -618,7 +629,7 @@ class _MessagesPageState extends State<MessagesPage>{
                Expanded(child:_chat(by,acks)),
              ])),
            ])
-         : Column(children:[_convChips(by,acks),const Divider(height:1),Expanded(child:_chat(by,acks))]),
+         : _chat(by,acks),
      );
    });
  }
