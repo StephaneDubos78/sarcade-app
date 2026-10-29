@@ -30,6 +30,13 @@ class LocationService {
         foregroundNotificationConfig:ForegroundNotificationConfig(notificationTitle:title??'SARCADE',
           notificationText:text??'Suivi de position actif',enableWakeLock:true,setOngoing:true)));
     }
+    // iPhone: the Beacon goes on with SARCADE in the background (blue
+    // indicator in the status bar), with the « While in use » permission.
+    if(background&&!kIsWeb&&defaultTargetPlatform==TargetPlatform.iOS){
+      return Geolocator.getPositionStream(locationSettings:AppleSettings(accuracy:LocationAccuracy.high,distanceFilter:5,
+        activityType:ActivityType.otherNavigation,pauseLocationUpdatesAutomatically:false,
+        showBackgroundLocationIndicator:true,allowBackgroundLocationUpdates:true));
+    }
     return Geolocator.getPositionStream(locationSettings:const LocationSettings(accuracy:LocationAccuracy.high,distanceFilter:5));
   }
 }

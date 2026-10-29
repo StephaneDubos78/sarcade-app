@@ -207,6 +207,7 @@ class DrawingController extends ChangeNotifier {
   void setColor(int c){color=c;_changeSelected((f)=>f.copyWith(color:c));}
   void setStrokeWidth(double w){strokeWidth=w;_changeSelected((f)=>f.copyWith(strokeWidth:w));}
   void setLabel(String label){_changeSelected((f)=>f.copyWith(label:label.trim()));}
+  void toggleGeofence(){_changeSelected((f)=>f.copyWith(geofence:!f.geofence));}
 
   void deleteSelected(){
     final f=selected;

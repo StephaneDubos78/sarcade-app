@@ -37,7 +37,7 @@ ENTITLEMENTS_XML = """<?xml version="1.0" encoding="UTF-8"?>
 
 USAGE = {
     "NSLocationWhenInUseUsageDescription":
-        "SARCADE partage votre position avec le poste de commandement pendant l’événement.",
+        "SARCADE partage votre position avec le poste de commandement pendant l’événement, y compris quand la balise tourne en arrière-plan.",
     "NSLocalNetworkUsageDescription":
         "SARCADE se connecte au serveur de l’événement sur le réseau local, même sans Internet.",
     "NSPhotoLibraryUsageDescription":
@@ -64,8 +64,9 @@ def main() -> int:
     info["CFBundleDisplayName"] = "SARCADE"
     info["ITSAppUsesNonExemptEncryption"] = False
     modes = info.setdefault("UIBackgroundModes", [])
-    if "remote-notification" not in modes:
-        modes.append("remote-notification")
+    for mode in ("remote-notification", "location"):
+        if mode not in modes:
+            modes.append(mode)
     ats = info.setdefault("NSAppTransportSecurity", {})
     ats["NSAllowsArbitraryLoads"] = True
     ats["NSAllowsLocalNetworking"] = True

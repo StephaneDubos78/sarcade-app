@@ -28,6 +28,7 @@ class S {
 }
 
 const Texts _fr={
+  'draw.geofence':'Géorepérage','draw.geofenceOn':'Géorepérage : prévenir le PCO à l’entrée ou à la sortie','draw.geofenceOff':'Arrêter le géorepérage',
   'routes.send':'Envoyer','routes.sendText':'Itinéraire « {name} » : {km}, {n} points, de {from} à {to}. Ouvrez Itinéraires pour le suivre.','routes.toHere':'Itinéraire jusqu’ici','routes.toHereName':'Itinéraire {time}',
   'files.tabEvent':'Événement','files.tabPersonal':'Personnel','files.search':'Rechercher un fichier','files.recent':'Récents','files.folder.consignes':'Consignes','files.folder.cartes':'Cartes et plans','files.folder.photos':'Photos terrain','files.folder.fiches':'Fiches réflexes','files.folder.divers':'Divers','files.messagePhotos':'Photos des messages','files.chooseFolder':'Dans quel dossier ?','files.open':'Ouvrir','files.delete':'Supprimer','files.deleteConfirm':'Supprimer « {name} » de votre dossier personnel ?','files.personalHelp':'Vos procédures, plans de radio… gardés par le serveur, visibles de vous seul, retrouvés sur tous vos appareils. Ce n’est pas un coffre-fort : n’y mettez pas de pièces d’identité.','files.usage':'{used} utilisés sur {quota}','files.personalUnavailable':'Dossier personnel indisponible : il faut une connexion par Cloudflare (adresse e-mail vérifiée) à un serveur à jour.','files.quotaFull':'Espace personnel plein : supprimez des fichiers ou demandez plus d’espace au responsable du serveur',
   'bearings.adjust':'Ajuster sur la carte','bearings.adjustHelp':'Touchez la carte pour orienter la ligne · appui long pour déplacer le point de prise','bearings.time':'Heure du relevé',
@@ -280,6 +281,7 @@ const Texts _fr={
 };
 
 const Texts _en={
+  'draw.geofence':'Geofence','draw.geofenceOn':'Geofence: warn the PCO when a team enters or leaves','draw.geofenceOff':'Stop the geofence',
   'routes.send':'Send','routes.sendText':'Route « {name} »: {km}, {n} points, from {from} to {to}. Open Routes to follow it.','routes.toHere':'Route to here','routes.toHereName':'Route {time}',
   'files.tabEvent':'Event','files.tabPersonal':'Personal','files.search':'Search a file','files.recent':'Recent','files.folder.consignes':'Instructions','files.folder.cartes':'Maps and plans','files.folder.photos':'Field photos','files.folder.fiches':'Reflex sheets','files.folder.divers':'Other','files.messagePhotos':'Photos of the messages','files.chooseFolder':'In which folder?','files.open':'Open','files.delete':'Delete','files.deleteConfirm':'Delete « {name} » from your personal folder?','files.personalHelp':'Your procedures, radio plans… kept by the server, seen by you only, on all your devices. Not a safe: do not put identity papers.','files.usage':'{used} used of {quota}','files.personalUnavailable':'Personal folder unavailable: it needs a Cloudflare sign-in (checked email) on an up-to-date server.','files.quotaFull':'Personal space full: delete files or ask the server manager for more space',
   'bearings.adjust':'Adjust on the map','bearings.adjustHelp':'Tap the map to turn the line · long press to move where it was taken','bearings.time':'Time of the bearing',
