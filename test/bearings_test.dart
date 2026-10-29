@@ -35,4 +35,24 @@ void main() {
     expect(x.canEdit('B', false), isFalse);
     expect(x.canEdit('B', true), isTrue);
   });
+  test('« Signal recherché »: old target moved into the comment', () {
+    final j = b('1', o1, 38.5, search: 'Balise 406').toJson();
+    (j['bearing'] as Map)['target'] = '121,500 MHz';
+    (j['bearing'] as Map)['comment'] = 'faible';
+    final y = Bearing.fromJson(j);
+    expect(y.search, 'Balise 406');
+    expect(y.comment, '121,500 MHz · faible');
+    expect(legacyComment('', 'x'), 'x');
+    expect(legacyComment('A', 'A déjà'), 'A déjà');
+  });
+  test('signals of the event, most recent first, without duplicates', () {
+    Bearing at(String id, String s, int min) => Bearing.fromJson({...b(id, o1, 10, search: s).toJson(),
+      'bearing': {...(b(id, o1, 10, search: s).toJson()['bearing'] as Map), 'taken_at': DateTime.utc(2026, 10, 29, 10, min).toIso8601String()}});
+    expect(signalsByRecency([at('1', 'A', 1), at('2', 'B', 5), at('3', 'A', 9), at('4', '', 12)]), ['A', 'B']);
+  });
+  test('operator colour and initials are stable', () {
+    expect(operatorColor('F4JPO'), operatorColor('F4JPO'));
+    expect(operatorInitials('f4jpo-7'), 'F4');
+    expect(operatorInitials('PC'), 'PC');
+  });
 }
