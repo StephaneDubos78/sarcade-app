@@ -61,6 +61,7 @@ class _SarcadeAppState extends State<SarcadeApp> {
     _saveServers(rememberServer(_readServers(),url,eventId:eventId,deviceId:deviceId,now:DateTime.now().toUtc()));
 
   Future<void> _save(AppConfig c) async {
+    debugPrint('SARCADE diag: app save ${c.serverUrl} ${c.eventId} ${c.deviceId}\n${StackTrace.current}');
     final colourChanged=c.drawColor!=null&&c.drawColor!=_config.drawColor;
     await widget.store.saveConfig(c.toStored());
     // Preferred colour kept by the server for the email (every device and

@@ -497,6 +497,7 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _trySave() async {
+    debugPrint('SARCADE diag: settings save requested\n${StackTrace.current}');
     // A refused field may sit in a hidden tab: show the first one.
     final general=_url(_server.text)!=null||_required(_event.text)!=null||_required(_device.text)!=null;
     if(general&&_tab!=0){
