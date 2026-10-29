@@ -11,14 +11,14 @@ import 'bearing_models.dart';
 /// Line and cone take the colour of the signal (crossings readable), or of
 /// the operator when [byOperator]; the dot where it was taken always the
 /// operator's, with initials.
-List<Widget> buildBearingLayers({required Iterable<Bearing> bearings,Bearing? draft,bool byOperator=false,
+List<Widget> buildBearingLayers({required Iterable<Bearing> bearings,Bearing? draft,bool byOperator=false,LayerHitNotifier<Bearing>? hits,
     required void Function(Bearing) onTapBearing,required void Function(LatLng centre,String search) onTapZone}){
   final groups=bySearch(bearings);
-  final cones=<Polygon>[], lines=<Polyline>[], markers=<Marker>[], circles=<CircleMarker>[];
+  final cones=<Polygon>[], lines=<Polyline<Bearing>>[], markers=<Marker>[], circles=<CircleMarker>[];
   void add(Bearing b,{bool live=false}){
     final c=Color(byOperator?operatorColor(b.createdBy):searchColor(b.search)); final (l,r)=b.cone;
     cones.add(Polygon(points:[b.origin,l,r],color:c.withValues(alpha:live?0.16:0.10),borderColor:c.withValues(alpha:0.35),borderStrokeWidth:1));
-    lines.add(Polyline(points:[b.origin,b.end],color:c,strokeWidth:live?3.5:2.2));
+    lines.add(Polyline<Bearing>(points:[b.origin,b.end],color:c,strokeWidth:live?3.5:2.2,hitValue:live?null:b));
   }
   for(final b in bearings){add(b);}
   if(draft!=null)add(draft,live:true);
@@ -42,7 +42,12 @@ List<Widget> buildBearingLayers({required Iterable<Bearing> bearings,Bearing? dr
   }
   return [
     if(cones.isNotEmpty)PolygonLayer(polygons:cones),
-    if(lines.isNotEmpty)PolylineLayer(polylines:lines),
+    // The whole line selects the bearing (« Relevés, sélection »), not only
+    // the dot often hidden under an operator; wide touch area around it.
+    if(lines.isNotEmpty)hits==null?PolylineLayer<Bearing>(polylines:lines):MouseRegion(hitTestBehavior:HitTestBehavior.deferToChild,
+      cursor:SystemMouseCursors.click,child:GestureDetector(
+        onTap:(){final h=hits.value;if(h!=null&&h.hitValues.isNotEmpty)onTapBearing(h.hitValues.first);},
+        child:PolylineLayer<Bearing>(hitNotifier:hits,minimumHitbox:24,polylines:lines))),
     if(circles.isNotEmpty)CircleLayer(circles:circles),
     if(markers.isNotEmpty)MarkerLayer(markers:markers),
   ];

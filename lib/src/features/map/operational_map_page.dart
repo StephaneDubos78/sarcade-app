@@ -376,6 +376,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   }
 
   Future<void> _measureTo(LatLng point,String label) async {
+    if(!_showBearings)unawaited(_setShown('show_brg',true));
     await _measure.start(point,label);
     _measure.startCompass();
   }
@@ -428,6 +429,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   // --- Follow mode and variants of the navigation (decisions of 10 Oct 2026) ---
   bool _follow=false, _followPending=false; LatLng? _navStart, _lastFollowCenter; double? _lastFollowRotation;
   final LayerHitNotifier<int> _variantHits=ValueNotifier(null);
+  final LayerHitNotifier<Bearing> _bearingHits=ValueNotifier(null);
 
   static bool get _phoneOrTablet=>!kIsWeb&&(defaultTargetPlatform==TargetPlatform.android||defaultTargetPlatform==TargetPlatform.iOS);
   /// Phones and tablets turn the map; computers keep north up unless chosen.
@@ -1299,7 +1301,11 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       if(!Bearing.isBearing(j)||j['deleted']==true)continue;
       try{_bearings.applyRemote(Bearing.fromJson(j));}catch(_){}
     }
-    _bearings.addListener((){if(mounted)setState((){});});
+    _bearings.addListener((){
+      // Taking a bearing shows the « Relevés » filter again if it was off.
+      if(_bearings.taking&&!_showBearings)unawaited(_setShown('show_brg',true));
+      if(mounted)setState((){});
+    });
   }
 
   Bearing? _bearingDraft()=>_bearings.taking?_bearings.draft(strength:_brgStrength,search:_brgSearch):null;
@@ -1547,7 +1553,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     child:child,
   );
 
-  @override void dispose(){_headingSub?.cancel();_webUpdateTimer?.cancel();_saveViewTimer?.cancel();_bearings.dispose();_positionsTimer?.cancel();_meSub?.cancel();_mapEvents?.cancel();AccessManager.instance.removeListener(_onAccessChanged);_fcmRefresh?.cancel();_fcmForeground?.cancel();_opensSub?.cancel();_answersSub?.cancel();_rtSub?.cancel();_tracking.removeListener(_onOperationsChanged);_ops.removeListener(_onOperationsChanged);_tracking.dispose();_ops.dispose();_routes.removeListener(_onRoutesChanged);_nav.removeListener(_onNavigationChanged);_variantHits.dispose();_routes.dispose();_nav.dispose();_graphs.removeListener(_onRoutesChanged);_graphs.dispose();_measure.removeListener(_onRoutesChanged);_measure.dispose();_syncUiTimer?.cancel();_sync.dispose();_realtime.dispose();_drawing.dispose();widget.api.close();super.dispose();}
+  @override void dispose(){_headingSub?.cancel();_webUpdateTimer?.cancel();_saveViewTimer?.cancel();_bearings.dispose();_positionsTimer?.cancel();_meSub?.cancel();_mapEvents?.cancel();AccessManager.instance.removeListener(_onAccessChanged);_fcmRefresh?.cancel();_fcmForeground?.cancel();_opensSub?.cancel();_answersSub?.cancel();_rtSub?.cancel();_tracking.removeListener(_onOperationsChanged);_ops.removeListener(_onOperationsChanged);_tracking.dispose();_ops.dispose();_routes.removeListener(_onRoutesChanged);_nav.removeListener(_onNavigationChanged);_variantHits.dispose();_bearingHits.dispose();_routes.dispose();_nav.dispose();_graphs.removeListener(_onRoutesChanged);_graphs.dispose();_measure.removeListener(_onRoutesChanged);_measure.dispose();_syncUiTimer?.cancel();_sync.dispose();_realtime.dispose();_drawing.dispose();widget.api.close();super.dispose();}
 
   @override Widget build(BuildContext context){
     final sorted=_positions.values.where((p)=>(p.isAprs?_showAprs:_showOperators)&&(!_withoutInternetOnly||worksWithoutInternet(p)||p.deviceId==widget.deviceId)).toList()..sort((a,b)=>a.deviceId.compareTo(b.deviceId));
@@ -1670,7 +1676,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           // Reference sites below the drawn objects, grouped when zoomed out.
           ReferenceClusterLayer(sites:_references.values.where((r)=>(r.isHighPoint&&_showHighPoints)||(r.isRelay&&_showRelays)).toList(),onSelect:_selectReference),
           if(_showDrawings)...buildDrawingLayers(_drawing),
-          if(_showBearings||_bearings.taking)...buildBearingLayers(bearings:_showBearings?_bearings.all:const <Bearing>[],draft:_bearingDraft(),byOperator:_brgByOperator,
+          if(_showBearings||_bearings.taking)...buildBearingLayers(bearings:_showBearings?_bearings.all:const <Bearing>[],draft:_bearingDraft(),byOperator:_brgByOperator,hits:_bearingHits,
             onTapBearing:_showBearingSheet,onTapZone:(c,_)=>_onLongPress(c)),
           ..._variantLayers(),
           ...buildRouteLayers(_routes,selectedRouteId:_selectedRouteId,itinerary:_nav.itinerary?.geometry??const [],draftClosure:_closureDraft,
