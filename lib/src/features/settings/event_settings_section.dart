@@ -47,6 +47,18 @@ class _EventSettingsSectionState extends State<EventSettingsSection> {
     }
   }
 
+  /// Predefined messages of the event (ATAK 6), one per line.
+  Future<void> _editQuick() async {
+    final ctrl=TextEditingController(text:((_s?['quick_messages'] as List?)??const []).join('\n'));
+    final ok=await showDialog<bool>(context:context,builder:(c)=>AlertDialog(title:Text(S.t('event.quick')),
+      content:TextField(controller:ctrl,minLines:5,maxLines:12,decoration:InputDecoration(helperText:S.t('event.quickEdit'),border:const OutlineInputBorder())),
+      actions:[TextButton(onPressed:()=>Navigator.pop(c,false),child:Text(S.t('common.cancel'))),
+        FilledButton(onPressed:()=>Navigator.pop(c,true),child:Text(S.t('common.save')))]));
+    final lines=ctrl.text.split('\n').map((l)=>l.trim()).where((l)=>l.isNotEmpty).take(20).toList();
+    ctrl.dispose();
+    if(ok==true)await _patch({'quick_messages':lines});
+  }
+
   Widget _row(String label,{String? help,required Widget child}){
     final t=Theme.of(context);
     return Column(children:[
@@ -83,6 +95,8 @@ class _EventSettingsSectionState extends State<EventSettingsSection> {
       _row(S.t('event.oldThreshold'),help:S.t('event.oldThresholdHelp'),child:DropdownButton<int>(value:oldChoices.contains(old)?old:120,
         items:[for(final m in oldChoices)DropdownMenuItem(value:m,child:Text(dur(m)))],
         onChanged:(v){if(v!=null)_patch({'position_old_min':v});})),
+      _row(S.t('event.quick'),help:S.t('event.quickHelp',{'n':(s['quick_messages'] as List?)?.length??0}),
+        child:TextButton(onPressed:_editQuick,child:Text(S.t('event.edit')))),
       _row(S.t('event.aprsFollowed'),help:S.t('event.aprsFollowedHelp',{'g':(s['aprs_groups'] as List?)?.length??0,'c':(s['aprs_callsigns'] as List?)?.length??0}),
         child:TextButton(onPressed:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>AprsPage(api:widget.api,eventId:widget.eventId,actorId:widget.actorId))).then((_)=>_load()),
           child:Text(S.t('diagnostics.open')))),
