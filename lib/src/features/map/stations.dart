@@ -97,6 +97,18 @@ List<List<T>> clusterOnScreen<T>(List<T> items,Offset Function(T) screen,{double
 List<SarcadePosition> traceWithin(List<SarcadePosition> history,DateTime now,int hours)=>
   history.where((p)=>now.difference(p.time).inMinutes<=hours*60).toList()..sort((a,b)=>a.time.compareTo(b.time));
 
+/// Sections of the list (« Liste des opérateurs triée par fraîcheur »,
+/// 28 Oct 2026): active under 10 min, without news up to the « old »
+/// threshold (2 h by default, PCO setting later), then old (folded, and
+/// hidden on the map).
+enum Section{active,silent,old}
+Section sectionOf(DateTime time,DateTime now,{int activeMin=10,int oldMin=120}){
+  final age=now.difference(time);
+  if(age<Duration(minutes:activeMin))return Section.active;
+  if(age<Duration(minutes:oldMin))return Section.silent;
+  return Section.old;
+}
+
 /// Favourites kept on the device, « a|b|c ».
 Set<String> parseFavourites(String? v)=>v==null||v.isEmpty?<String>{}:v.split('|').where((s)=>s.isNotEmpty).toSet();
 String encodeFavourites(Set<String> f)=>(f.toList()..sort()).join('|');
