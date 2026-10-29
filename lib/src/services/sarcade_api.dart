@@ -91,16 +91,48 @@ class SarcadeApi {
   }
   /// « Personnel » folder of the person (email checked by Cloudflare
   /// Access): files, space used and quota; null when not available.
-  Future<({List<SarcadeSharedFile> files,int used,int quota})?> personalFiles() async {
+  Future<({List<SarcadeSharedFile> files,int used,int quota,List<String> folders})?> personalFiles() async {
     final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/me/files'));
     if(r.statusCode!=200)return null;
     final j=jsonDecode(r.body) as Map;
     return (files:[for(final f in (j['files'] as List))SarcadeSharedFile.fromJson(Map<String,dynamic>.from(f as Map))],
-      used:(j['used_bytes'] as num).toInt(),quota:(j['quota_bytes'] as num).toInt());
+      used:(j['used_bytes'] as num).toInt(),quota:(j['quota_bytes'] as num).toInt(),
+      folders:[for(final f in (j['folders'] as List?)??const [])'$f']);
   }
-  Future<void> uploadPersonalFile(String name,List<int> bytes) async {
+  /// Event files and folders (« Fichiers : sous-dossiers »); an older server
+  /// answers the bare list, folders then come from the files.
+  Future<({List<SarcadeSharedFile> files,List<String> folders})> filesWithFolders(String eventId) async {
+    final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/events/$eventId/files?with_folders=true'));
+    if(r.statusCode!=200) throw SarcadeHttpException('files',r.statusCode,r.body);
+    final j=jsonDecode(r.body);
+    if(j is List)return (files:[for(final e in j)SarcadeSharedFile.fromJson(Map<String,dynamic>.from(e as Map))],folders:const <String>[]);
+    final m=j as Map;
+    return (files:[for(final e in (m['files'] as List))SarcadeSharedFile.fromJson(Map<String,dynamic>.from(e as Map))],
+      folders:[for(final f in (m['folders'] as List?)??const [])'$f']);
+  }
+  /// Folders: [personal] for « Personnel », else the event.
+  String _filesBase(String? eventId)=>eventId==null?'$baseUrl/api/v0.1/me/files':'$baseUrl/api/v0.1/events/$eventId/files';
+  Future<void> createFolder(String? eventId,String path,{String? actorId}) async {
+    final r=await _client.post(Uri.parse('${_filesBase(eventId)}/folders'),headers:_json,body:jsonEncode({'path':path,'actor_id':?actorId}));
+    if(r.statusCode!=201) throw SarcadeHttpException('folder_create',r.statusCode,r.body);
+  }
+  Future<void> moveFolder(String? eventId,String from,String to,{String? actorId}) async {
+    final r=await _client.patch(Uri.parse('${_filesBase(eventId)}/folders'),headers:_json,body:jsonEncode({'from':from,'to':to,'actor_id':?actorId}));
+    if(r.statusCode!=200) throw SarcadeHttpException('folder_move',r.statusCode,r.body);
+  }
+  Future<void> deleteFolder(String? eventId,String path,{String? actorId}) async {
+    final r=await _client.delete(Uri.parse('${_filesBase(eventId)}/folders').replace(queryParameters:{'path':path,'actor_id':?actorId}));
+    if(r.statusCode!=204) throw SarcadeHttpException('folder_delete',r.statusCode,r.body);
+  }
+  Future<void> moveFile(String? eventId,String fileId,{String? folder,String? name,String? actorId}) async {
+    final r=await _client.patch(Uri.parse('${_filesBase(eventId)}/$fileId'),headers:_json,
+      body:jsonEncode({'folder':?folder,'name':?name,'actor_id':?actorId}));
+    if(r.statusCode!=200) throw SarcadeHttpException('file_move',r.statusCode,r.body);
+  }
+  Future<void> uploadPersonalFile(String name,List<int> bytes,{String? folder}) async {
     final req=http.MultipartRequest('POST',Uri.parse('$baseUrl/api/v0.1/me/files'))
       ..files.add(http.MultipartFile.fromBytes('file',bytes,filename:name));
+    if(folder!=null&&folder.isNotEmpty)req.fields['folder']=folder;
     final streamed=await _client.send(req); final body=await streamed.stream.bytesToString();
     if(streamed.statusCode!=201) throw SarcadeHttpException('personal_upload',streamed.statusCode,body);
   }

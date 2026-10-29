@@ -6,10 +6,26 @@ import '../../offline/local_store.dart';
 import '../../services/sarcade_api.dart';
 import 'weather_models.dart';
 
-IconData weatherIcon(String key)=>switch(key){
-  'clear'=>Icons.wb_sunny,'partly'=>Icons.wb_cloudy_outlined,'overcast'=>Icons.cloud,'fog'=>Icons.foggy,
+IconData weatherIcon(String key,{bool night=false})=>switch(key){
+  'clear'=>night?Icons.nightlight_round:Icons.wb_sunny,'partly'=>night?Icons.nights_stay:Icons.wb_cloudy,'overcast'=>Icons.cloud,'fog'=>Icons.foggy,
   'drizzle'=>Icons.grain,'rain'=>Icons.water_drop,'showers'=>Icons.umbrella,'snow'=>Icons.ac_unit,
   'storm'=>Icons.thunderstorm,_=>Icons.help_outline};
+
+/// Icons in colour (« page plus gaie », 29 Oct 2026): yellow sun, grey-blue
+/// clouds, blue rain, violet storm, light blue snow; the moon in indigo.
+Color weatherColor(String key,{bool night=false})=>switch(key){
+  'clear'=>night?const Color(0xFF5C6BC0):const Color(0xFFF9AB00),
+  'partly'=>night?const Color(0xFF7986CB):const Color(0xFFF2A600),
+  'overcast'||'fog'=>const Color(0xFF78909C),
+  'drizzle'||'rain'||'showers'=>const Color(0xFF1A73E8),
+  'storm'=>const Color(0xFF8E24AA),'snow'=>const Color(0xFF4FC3F7),_=>const Color(0xFF9AA0A6)};
+
+/// Temperature colour, blue when cold to orange when hot.
+Color temperatureColor(double? c){
+  if(c==null)return const Color(0xFF9AA0A6);
+  final t=((c+5)/35).clamp(0.0,1.0);
+  return Color.lerp(const Color(0xFF1A73E8),const Color(0xFFE8710A),t)!;
+}
 
 Color vigilanceColor(int id)=>switch(id){2=>Colors.yellow.shade600,3=>Colors.orange,4=>Colors.red,_=>Colors.green};
 
@@ -71,6 +87,75 @@ class _WeatherPageState extends State<WeatherPage> {
   String _hm(DateTime? t){if(t==null)return '-';final l=t.toLocal();return '${l.hour.toString().padLeft(2,'0')}:${l.minute.toString().padLeft(2,'0')}';}
   String _num(double? v,String unit)=>v==null?'-':'${v.round()} $unit';
 
+  /// Arrow pointing where the wind goes (it comes from [deg]).
+  Widget _windArrow(int? deg,{double size=16,Color? color})=>deg==null?SizedBox(width:size):Transform.rotate(
+    angle:((deg+180)%360)*3.141592653589793/180,child:Icon(Icons.navigation,size:size,color:color));
+
+  bool _night(DateTime t,({double lat,double lon})? loc)=>loc!=null&&isNightAt(t,loc.lat,loc.lon);
+
+  /// « Maintenant »: big icon and temperature, feels like, wind with its
+  /// arrow and gusts, rain; sky gradient by day, night blue at night.
+  Widget _nowCard(WeatherHour h,({double lat,double lon})? loc){
+    final night=_night(DateTime.now(),loc); final key=weatherKey(h.weatherCode);
+    final fg=Colors.white;
+    return Container(margin:const EdgeInsets.fromLTRB(16,12,16,8),padding:const EdgeInsets.all(18),
+      decoration:BoxDecoration(borderRadius:BorderRadius.circular(24),gradient:LinearGradient(begin:Alignment.topLeft,end:Alignment.bottomRight,
+        colors:night?const [Color(0xFF1A237E),Color(0xFF0D1B2A)]:const [Color(0xFF4FC3F7),Color(0xFF1A73E8)])),
+      child:Row(children:[
+        Container(width:76,height:76,decoration:const BoxDecoration(color:Color(0x33FFFFFF),shape:BoxShape.circle),
+          child:Icon(weatherIcon(key,night:night),size:48,color:night?const Color(0xFFFFF59D):(key=='clear'||key=='partly'?const Color(0xFFFFEB3B):Colors.white))),
+        const SizedBox(width:16),
+        Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+          Text(S.t('weather.now'),style:TextStyle(color:fg.withValues(alpha:0.85),fontSize:13,fontWeight:FontWeight.w600)),
+          Text(_num(h.temperatureC,'°').replaceAll(' ',''),style:TextStyle(color:fg,fontSize:44,fontWeight:FontWeight.w300,height:1.05)),
+          Text(S.t('weather.code.$key'),style:TextStyle(color:fg,fontSize:15,fontWeight:FontWeight.w500)),
+          if(h.apparentC!=null)Text(S.t('weather.feels',{'t':_num(h.apparentC,'°').replaceAll(' ','')}),style:TextStyle(color:fg.withValues(alpha:0.85),fontSize:13)),
+        ])),
+        Column(crossAxisAlignment:CrossAxisAlignment.end,children:[
+          Row(mainAxisSize:MainAxisSize.min,children:[_windArrow(h.windDirectionDeg,size:18,color:fg),const SizedBox(width:4),
+            Text('${windDirection(h.windDirectionDeg)} ${_num(h.windKmh,'km/h')}',style:TextStyle(color:fg,fontWeight:FontWeight.w600))]),
+          if(h.gustKmh!=null)Text(S.t('weather.gusts',{'v':_num(h.gustKmh,'km/h')}),style:TextStyle(color:(h.gustKmh??0)>=70?const Color(0xFFFFCC80):fg.withValues(alpha:0.85),fontSize:12)),
+          const SizedBox(height:6),
+          Row(mainAxisSize:MainAxisSize.min,children:[Icon(Icons.water_drop,size:14,color:fg),const SizedBox(width:3),
+            Text([if(h.precipitationProbability!=null)'${h.precipitationProbability} %',if(h.precipitationMm!=null)'${h.precipitationMm!.toStringAsFixed(1)} mm'].join(' · '),
+              style:TextStyle(color:fg,fontSize:12))]),
+        ]),
+      ]));
+  }
+
+  /// 24 h at a glance: « Maintenant » first in a blue pill, coloured
+  /// temperature, small rain bar, wind arrow; sunrise and sunset as small
+  /// marks between two hours, with their time.
+  Widget _strip(List<WeatherHour> hours,({double lat,double lon})? loc){
+    final s=Theme.of(context).colorScheme;
+    final cells=<Widget>[];
+    for(var i=0;i<hours.length&&i<24;i++){
+      final h=hours[i]; final night=_night(h.time,loc); final key=weatherKey(h.weatherCode); final now=i==0;
+      final rain=(h.precipitationProbability??0)/100;
+      cells.add(Container(width:62,margin:const EdgeInsets.symmetric(horizontal:2,vertical:6),padding:const EdgeInsets.symmetric(vertical:6),
+        decoration:BoxDecoration(borderRadius:BorderRadius.circular(16),
+          color:now?s.primary:(h.gustKmh??0)>=70?Colors.orange.withValues(alpha:0.15):s.surfaceContainer),
+        child:Column(mainAxisAlignment:MainAxisAlignment.spaceBetween,children:[
+          Text(now?S.t('weather.now'):_hm(h.time),style:TextStyle(fontSize:11,fontWeight:now?FontWeight.w700:FontWeight.w500,color:now?s.onPrimary:s.onSurfaceVariant)),
+          Icon(weatherIcon(key,night:night),size:24,color:now?s.onPrimary:weatherColor(key,night:night)),
+          Text(_num(h.temperatureC,'°').replaceAll(' ',''),style:TextStyle(fontWeight:FontWeight.w700,fontSize:15,color:now?s.onPrimary:temperatureColor(h.temperatureC))),
+          Container(width:36,height:4,decoration:BoxDecoration(color:(now?s.onPrimary:const Color(0xFF1A73E8)).withValues(alpha:0.15),borderRadius:BorderRadius.circular(2)),
+            alignment:Alignment.centerLeft,child:FractionallySizedBox(widthFactor:rain.clamp(0.0,1.0),child:Container(decoration:BoxDecoration(
+              color:now?s.onPrimary:const Color(0xFF1A73E8),borderRadius:BorderRadius.circular(2))))),
+          _windArrow(h.windDirectionDeg,size:14,color:now?s.onPrimary:s.onSurfaceVariant),
+        ])));
+      final ev=loc==null?null:sunEventIn(h.time,loc.lat,loc.lon);
+      if(ev!=null){
+        cells.add(SizedBox(width:40,child:Column(mainAxisAlignment:MainAxisAlignment.center,children:[
+          Icon(ev.kind=='rise'?Icons.wb_twilight:Icons.nights_stay_outlined,size:18,color:const Color(0xFFE8710A)),
+          Container(width:2,height:30,color:const Color(0xFFE8710A).withValues(alpha:0.5)),
+          Text(_hm(ev.at),style:const TextStyle(fontSize:11,fontWeight:FontWeight.w700,color:Color(0xFFE8710A))),
+        ])));
+      }
+    }
+    return SizedBox(height:132,child:ListView(scrollDirection:Axis.horizontal,padding:const EdgeInsets.symmetric(horizontal:12),children:cells));
+  }
+
   @override Widget build(BuildContext context){
     final r=_report; final now=DateTime.now();
     final hours=r?.upcoming(now)??const <WeatherHour>[];
@@ -78,53 +163,82 @@ class _WeatherPageState extends State<WeatherPage> {
     final today=r?.days.isNotEmpty==true?r!.days.first:null;
     final sun=loc==null?null:sunTimes(now.toUtc(),loc.lat,loc.lon);
     final title=widget.point==null?S.t('weather.title'):S.t('weather.pointTitle',{'label':widget.point!.label});
+    final t=Theme.of(context); final s=t.colorScheme;
     return Scaffold(
       appBar:AppBar(title:Text(title),actions:[
         if(widget.point==null&&isPco(widget.actorId))IconButton(tooltip:S.t('weather.bulletin'),onPressed:_bulletin,icon:const Icon(Icons.campaign_outlined)),
         IconButton(tooltip:S.t('weather.refresh'),onPressed:widget.point==null?_refresh:_load,icon:const Icon(Icons.refresh)),
       ]),
-      body:RefreshIndicator(onRefresh:_load,child:ListView(children:[
+      body:RefreshIndicator(onRefresh:_load,child:ListView(padding:const EdgeInsets.only(bottom:24),children:[
         if(_loading)const LinearProgressIndicator(),
-        if(r?.vigilance!=null)Material(color:vigilanceColor(r!.vigilance!.colorId),child:ListTile(
-          leading:const Icon(Icons.warning_amber),
-          title:Text(S.t('weather.vigilance.${r.vigilance!.colorId.clamp(1,4)}',{'dep':r.vigilance!.department})),
-          subtitle:r.vigilance!.phenomena.isEmpty?null:Text(r.vigilance!.phenomena.join(', ')),
-        )),
+        // Vigilance first, as a coloured band.
+        if(r?.vigilance!=null)Container(margin:const EdgeInsets.fromLTRB(16,12,16,0),padding:const EdgeInsets.all(12),
+          decoration:BoxDecoration(color:vigilanceColor(r!.vigilance!.colorId).withValues(alpha:0.18),borderRadius:BorderRadius.circular(14),
+            border:Border(left:BorderSide(color:vigilanceColor(r.vigilance!.colorId),width:6))),
+          child:Row(children:[Icon(Icons.warning_amber,color:vigilanceColor(r.vigilance!.colorId)),const SizedBox(width:10),
+            Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+              Text(S.t('weather.vigilance.${r.vigilance!.colorId.clamp(1,4)}',{'dep':r.vigilance!.department}),style:const TextStyle(fontWeight:FontWeight.w600)),
+              if(r.vigilance!.phenomena.isNotEmpty)Text(r.vigilance!.phenomena.join(', '),style:t.textTheme.bodySmall),
+            ]))])),
         if(r!=null&&(r.stale||_offline))ListTile(leading:const Icon(Icons.history),title:Text(S.t('weather.stale',{'time':_hm(r.fetchedAt)}))),
         if(r==null||r.isEmpty)Padding(padding:const EdgeInsets.all(20),child:Text(_loading?S.t('weather.loading'):S.t('weather.none'))),
-        ListTile(leading:const Icon(Icons.wb_twilight),
-          title:Text(S.t('weather.sun',{'rise':_hm(today?.sunrise??sun?.sunrise),'set':_hm(today?.sunset??sun?.sunset)}))),
-        // 24 h at a glance (« Météo enrichie », 28 Oct 2026), the sunset marked.
-        if(hours.isNotEmpty)SizedBox(height:112,child:ListView(scrollDirection:Axis.horizontal,padding:const EdgeInsets.symmetric(horizontal:12),children:[
-          for(final h in hours.take(24))Builder(builder:(c){
-            final set=today?.sunset??sun?.sunset;
-            final sunsetHere=set!=null&&!h.time.isAfter(set)&&h.time.add(const Duration(hours:1)).isAfter(set);
-            final windy=(h.gustKmh??0)>=70;
-            return Container(width:58,margin:const EdgeInsets.symmetric(horizontal:2,vertical:6),
-              decoration:BoxDecoration(borderRadius:BorderRadius.circular(12),
-                color:windy?Colors.orange.withValues(alpha:0.15):Theme.of(c).colorScheme.surfaceContainerHigh,
-                border:sunsetHere?Border.all(color:Colors.deepOrange,width:2):null),
-              child:Column(mainAxisAlignment:MainAxisAlignment.center,children:[
-                Text(_hm(h.time),style:const TextStyle(fontSize:11)),
-                Icon(sunsetHere?Icons.wb_twilight:weatherIcon(weatherKey(h.weatherCode)),size:22),
-                Text(_num(h.temperatureC,'°'),style:const TextStyle(fontWeight:FontWeight.w600)),
-                Text(h.precipitationProbability==null?'':'${h.precipitationProbability} %',style:const TextStyle(fontSize:10,color:Colors.blue)),
-              ]));
-          }),
+        if(hours.isNotEmpty)_nowCard(hours.first,loc),
+        Padding(padding:const EdgeInsets.symmetric(horizontal:20,vertical:4),child:Row(children:[
+          const Icon(Icons.wb_twilight,size:18,color:Color(0xFFE8710A)),const SizedBox(width:8),
+          Text(S.t('weather.sun',{'rise':_hm(today?.sunrise??sun?.sunrise),'set':_hm(today?.sunset??sun?.sunset)}),style:t.textTheme.bodyMedium),
         ])),
-        for(final h in hours)ListTile(
-          dense:true,
-          leading:Icon(weatherIcon(weatherKey(h.weatherCode))),
-          title:Text('${_hm(h.time)} · ${S.t('weather.code.${weatherKey(h.weatherCode)}')} · ${_num(h.temperatureC,'°C')}'),
-          subtitle:Text([
-            S.t('weather.wind',{'dir':windDirection(h.windDirectionDeg),'speed':_num(h.windKmh,'km/h'),'gust':_num(h.gustKmh,'km/h')}),
-            if(h.precipitationMm!=null)S.t('weather.rain',{'mm':h.precipitationMm!.toStringAsFixed(1)}),
-            if(h.precipitationProbability!=null)'${h.precipitationProbability} %',
-          ].join(' · ')),
-          tileColor:(h.gustKmh??0)>=70?Colors.orange.withValues(alpha:0.12):null,
-        ),
-        if(r?.provider!=null)Padding(padding:const EdgeInsets.all(16),child:Text(S.t('weather.source',{'provider':r!.provider}),style:Theme.of(context).textTheme.bodySmall)),
+        if(hours.isNotEmpty)_strip(hours,loc),
+        // Temperatures over 24 h.
+        if(hours.where((h)=>h.temperatureC!=null).length>=2)Padding(padding:const EdgeInsets.fromLTRB(16,8,16,8),child:Card(elevation:0,child:Padding(
+          padding:const EdgeInsets.fromLTRB(12,10,12,8),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+            Text(S.t('weather.curve'),style:t.textTheme.titleSmall),
+            const SizedBox(height:6),
+            SizedBox(height:90,child:CustomPaint(size:Size.infinite,painter:_TempCurve([for(final h in hours.take(24))h.temperatureC],s.onSurfaceVariant))),
+          ])))),
+        Padding(padding:const EdgeInsets.fromLTRB(20,8,20,4),child:Text(S.t('weather.detail'),style:t.textTheme.titleSmall)),
+        for(final h in hours)Builder(builder:(c){
+          final night=_night(h.time,loc); final key=weatherKey(h.weatherCode); final windy=(h.gustKmh??0)>=70;
+          return Card(elevation:0,margin:const EdgeInsets.fromLTRB(16,4,16,4),color:windy?Colors.orange.withValues(alpha:0.12):null,child:Padding(
+            padding:const EdgeInsets.symmetric(horizontal:12,vertical:10),child:Row(children:[
+              SizedBox(width:46,child:Text(_hm(h.time),style:const TextStyle(fontWeight:FontWeight.w600))),
+              Icon(weatherIcon(key,night:night),color:weatherColor(key,night:night)),
+              const SizedBox(width:10),
+              Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+                Text(S.t('weather.code.$key'),style:const TextStyle(fontWeight:FontWeight.w500)),
+                Row(children:[_windArrow(h.windDirectionDeg,size:13,color:s.onSurfaceVariant),const SizedBox(width:3),
+                  Flexible(child:Text([
+                    S.t('weather.wind',{'dir':windDirection(h.windDirectionDeg),'speed':_num(h.windKmh,'km/h'),'gust':_num(h.gustKmh,'km/h')}),
+                    if(h.precipitationMm!=null)S.t('weather.rain',{'mm':h.precipitationMm!.toStringAsFixed(1)}),
+                    if(h.precipitationProbability!=null)'${h.precipitationProbability} %',
+                  ].join(' · '),style:t.textTheme.bodySmall))]),
+              ])),
+              Text(_num(h.temperatureC,'°').replaceAll(' ',''),style:TextStyle(fontSize:18,fontWeight:FontWeight.w700,color:temperatureColor(h.temperatureC))),
+            ])));
+        }),
+        if(r?.provider!=null)Padding(padding:const EdgeInsets.all(16),child:Text(S.t('weather.source',{'provider':r!.provider}),style:t.textTheme.bodySmall)),
       ])),
     );
   }
+}
+
+/// Temperature curve, each point in its colour.
+class _TempCurve extends CustomPainter {
+  final List<double?> values; final Color label;
+  _TempCurve(this.values,this.label);
+  @override void paint(Canvas canvas,Size size){
+    final pts=[for(var i=0;i<values.length;i++)if(values[i]!=null)(i,values[i]!)];
+    if(pts.length<2)return;
+    final lo=pts.map((p)=>p.$2).reduce((a,b)=>a<b?a:b), hi=pts.map((p)=>p.$2).reduce((a,b)=>a>b?a:b);
+    final span=(hi-lo).abs()<1?1.0:hi-lo;
+    Offset at((int,double) p)=>Offset(size.width*p.$1/(values.length-1),12+(size.height-28)*(1-(p.$2-lo)/span));
+    for(var i=1;i<pts.length;i++){
+      canvas.drawLine(at(pts[i-1]),at(pts[i]),Paint()..strokeWidth=3..strokeCap=StrokeCap.round..color=temperatureColor((pts[i-1].$2+pts[i].$2)/2));
+    }
+    for(final p in [pts.first,pts.reduce((a,b)=>a.$2>=b.$2?a:b),pts.reduce((a,b)=>a.$2<=b.$2?a:b)]){
+      final tp=TextPainter(text:TextSpan(text:'${p.$2.round()}°',style:TextStyle(fontSize:11,color:label,fontWeight:FontWeight.w600)),textDirection:TextDirection.ltr)..layout();
+      final o=at(p);
+      tp.paint(canvas,Offset((o.dx-tp.width/2).clamp(0.0,size.width-tp.width),o.dy-tp.height-2<0?o.dy+4:o.dy-tp.height-2));
+    }
+  }
+  @override bool shouldRepaint(covariant _TempCurve old)=>old.values!=values;
 }
