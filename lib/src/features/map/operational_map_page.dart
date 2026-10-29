@@ -391,7 +391,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       if(isPco(widget.deviceId))ListTile(leading:const Icon(Icons.flag_outlined),title:Text(S.t('order.send')),onTap:()=>Navigator.pop(c,'order')),
     ])));
     if(choice=='order'){await _sendOperatorHere(point);return;}
-    if(choice=='bearing'){final wide=MediaQuery.sizeOf(context).width>=_compactWidth;await _bearings.startTaking(from:point);if(wide&&mounted)setState(()=>_aim=BearingAim(point));return;}
+    if(choice=='bearing'){if(!mounted)return;final wide=MediaQuery.sizeOf(context).width>=_compactWidth;await _bearings.startTaking(from:point);if(wide&&mounted)setState(()=>_aim=BearingAim(point));return;}
     if(choice=='measure')await _measureTo(point,label);
     if(choice=='ext'&&mounted)await _openElsewhere(point,label);
     if(choice=='nav')await _navigateTo(point,label);
