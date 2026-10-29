@@ -18,10 +18,12 @@ class RoutesPanel extends StatelessWidget {
   final ValueChanged<String?> onDraw;
   final VoidCallback onDrawClosure;
   final void Function(LatLng point,String label) onNavigate;
+  /// « Envoyer » a route to a channel or an operator (7a, 28 Oct 2026).
+  final void Function(String text)? onSend;
   final ValueChanged<List<LatLng>> onFocus;
   const RoutesPanel({super.key,required this.controller,required this.api,required this.actorId,required this.selectedRouteId,
     required this.drawingRouteId,required this.groups,required this.onSelect,required this.onDraw,required this.onDrawClosure,
-    required this.onNavigate,required this.onFocus});
+    required this.onNavigate,required this.onFocus,this.onSend});
 
   @override Widget build(BuildContext context){
     final selected=selectedRouteId==null?null:controller.route(selectedRouteId!);
@@ -79,6 +81,9 @@ class RoutesPanel extends StatelessWidget {
       Padding(padding:const EdgeInsets.symmetric(horizontal:12),child:Wrap(spacing:6,runSpacing:6,children:[
         if(editable)FilterChip(avatar:const Icon(Icons.add_location_alt_outlined,size:18),label:Text(drawing?S.t('routes.stopAdding'):S.t('routes.addPoints')),
           selected:drawing,onSelected:(_)=>onDraw(drawing?null:r.id)),
+        if(onSend!=null&&ordered.length>1)ActionChip(avatar:const Icon(Icons.send,size:18),label:Text(S.t('routes.send')),
+          onPressed:()=>onSend!(S.t('routes.sendText',{'name':r.name,'km':formatDistance(lengths.last.cumulative),'n':ordered.length,
+            'from':ordered.first.name,'to':ordered.last.name}))),
         ActionChip(avatar:const Icon(Icons.download,size:18),label:const Text('GPX'),onPressed:()=>_gpx(context,r)),
         if(editable)ActionChip(avatar:const Icon(Icons.groups,size:18),label:Text(S.t('routes.assign')),onPressed:()=>_assign(context,r)),
         if(ordered.any((w)=>w.legNeedsRouting))ActionChip(avatar:const Icon(Icons.alt_route,size:18),label:Text(S.t('routes.computeLegs')),

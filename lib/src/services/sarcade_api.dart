@@ -78,15 +78,40 @@ class SarcadeApi {
   }
   /// [fileId], chosen by the client, makes a retried upload idempotent
   /// (the server answers 200 with the stored file).
-  Future<SarcadeSharedFile> uploadFile(String eventId,String senderId,String name,String mimeType,List<int> bytes,{String? fileId}) async {
+  Future<SarcadeSharedFile> uploadFile(String eventId,String senderId,String name,String mimeType,List<int> bytes,{String? fileId,String? folder}) async {
     final req=http.MultipartRequest('POST',Uri.parse('$baseUrl/api/v0.1/events/$eventId/files'))
       ..fields['sender_id']=senderId
       ..fields['mime_type']=mimeType
       ..files.add(http.MultipartFile.fromBytes('file',bytes,filename:name,contentType:null));
     if(fileId!=null)req.fields['file_id']=fileId;
+    if(folder!=null)req.fields['folder']=folder;
     final streamed=await _client.send(req); final body=await streamed.stream.bytesToString();
     if(streamed.statusCode!=201&&streamed.statusCode!=200) throw SarcadeHttpException('file_upload',streamed.statusCode,body);
     return SarcadeSharedFile.fromJson(jsonDecode(body));
+  }
+  /// « Personnel » folder of the person (email checked by Cloudflare
+  /// Access): files, space used and quota; null when not available.
+  Future<({List<SarcadeSharedFile> files,int used,int quota})?> personalFiles() async {
+    final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/me/files'));
+    if(r.statusCode!=200)return null;
+    final j=jsonDecode(r.body) as Map;
+    return (files:[for(final f in (j['files'] as List))SarcadeSharedFile.fromJson(Map<String,dynamic>.from(f as Map))],
+      used:(j['used_bytes'] as num).toInt(),quota:(j['quota_bytes'] as num).toInt());
+  }
+  Future<void> uploadPersonalFile(String name,List<int> bytes) async {
+    final req=http.MultipartRequest('POST',Uri.parse('$baseUrl/api/v0.1/me/files'))
+      ..files.add(http.MultipartFile.fromBytes('file',bytes,filename:name));
+    final streamed=await _client.send(req); final body=await streamed.stream.bytesToString();
+    if(streamed.statusCode!=201) throw SarcadeHttpException('personal_upload',streamed.statusCode,body);
+  }
+  Future<List<int>> downloadPersonalFile(String fileId) async {
+    final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/me/files/$fileId/content'));
+    if(r.statusCode!=200) throw SarcadeHttpException('personal_download',r.statusCode,r.body);
+    return r.bodyBytes;
+  }
+  Future<void> deletePersonalFile(String fileId) async {
+    final r=await _client.delete(Uri.parse('$baseUrl/api/v0.1/me/files/$fileId'));
+    if(r.statusCode!=204) throw SarcadeHttpException('personal_delete',r.statusCode,r.body);
   }
   Future<List<int>> downloadFile(String eventId,String fileId) async {
     final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/events/$eventId/files/$fileId/content'));

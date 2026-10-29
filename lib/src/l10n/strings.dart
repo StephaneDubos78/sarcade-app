@@ -28,6 +28,8 @@ class S {
 }
 
 const Texts _fr={
+  'routes.send':'Envoyer','routes.sendText':'Itinéraire « {name} » : {km}, {n} points, de {from} à {to}. Ouvrez Itinéraires pour le suivre.','routes.toHere':'Itinéraire jusqu’ici','routes.toHereName':'Itinéraire {time}',
+  'files.tabEvent':'Événement','files.tabPersonal':'Personnel','files.search':'Rechercher un fichier','files.recent':'Récents','files.folder.consignes':'Consignes','files.folder.cartes':'Cartes et plans','files.folder.photos':'Photos terrain','files.folder.fiches':'Fiches réflexes','files.folder.divers':'Divers','files.messagePhotos':'Photos des messages','files.chooseFolder':'Dans quel dossier ?','files.open':'Ouvrir','files.delete':'Supprimer','files.deleteConfirm':'Supprimer « {name} » de votre dossier personnel ?','files.personalHelp':'Vos procédures, plans de radio… gardés par le serveur, visibles de vous seul, retrouvés sur tous vos appareils. Ce n’est pas un coffre-fort : n’y mettez pas de pièces d’identité.','files.usage':'{used} utilisés sur {quota}','files.personalUnavailable':'Dossier personnel indisponible : il faut une connexion par Cloudflare (adresse e-mail vérifiée) à un serveur à jour.','files.quotaFull':'Espace personnel plein : supprimez des fichiers ou demandez plus d’espace au responsable du serveur',
   'favourites.only':'Favoris','favourites.none':'Aucun favori : touchez l’étoile d’un opérateur','teams.active':'Actifs','teams.silent':'Sans nouvelles','teams.old':'Anciens',
   'operators.none':'Aucun opérateur',
   'bearings.signal':'Signal recherché','bearings.signalNew':'Nouveau signal','bearings.colorBy':'Colorer les relevés par','bearings.colorSignal':'Signal','bearings.colorOperator':'Opérateur',
@@ -266,6 +268,8 @@ const Texts _fr={
 };
 
 const Texts _en={
+  'routes.send':'Send','routes.sendText':'Route « {name} »: {km}, {n} points, from {from} to {to}. Open Routes to follow it.','routes.toHere':'Route to here','routes.toHereName':'Route {time}',
+  'files.tabEvent':'Event','files.tabPersonal':'Personal','files.search':'Search a file','files.recent':'Recent','files.folder.consignes':'Instructions','files.folder.cartes':'Maps and plans','files.folder.photos':'Field photos','files.folder.fiches':'Reflex sheets','files.folder.divers':'Other','files.messagePhotos':'Photos of the messages','files.chooseFolder':'In which folder?','files.open':'Open','files.delete':'Delete','files.deleteConfirm':'Delete « {name} » from your personal folder?','files.personalHelp':'Your procedures, radio plans… kept by the server, seen by you only, on all your devices. Not a safe: do not put identity papers.','files.usage':'{used} used of {quota}','files.personalUnavailable':'Personal folder unavailable: it needs a Cloudflare sign-in (checked email) on an up-to-date server.','files.quotaFull':'Personal space full: delete files or ask the server manager for more space',
   'favourites.only':'Favourites','favourites.none':'No favourite: tap the star of an operator','teams.active':'Active','teams.silent':'No news','teams.old':'Old',
   'operators.none':'No operator',
   'bearings.signal':'Signal searched','bearings.signalNew':'New signal','bearings.colorBy':'Colour bearings by','bearings.colorSignal':'Signal','bearings.colorOperator':'Operator',
