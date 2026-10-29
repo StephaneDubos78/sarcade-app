@@ -91,7 +91,7 @@ class _SignalDefaultsPageState extends State<SignalDefaultsPage> {
         Padding(padding:const EdgeInsets.fromLTRB(20,12,20,8),child:Text(_error??S.t('signals.help'),style:t.textTheme.bodyMedium?.copyWith(color:t.colorScheme.onSurfaceVariant))),
         Expanded(child:ReorderableListView(
           padding:const EdgeInsets.only(bottom:96),
-          onReorder:(a,b){setState((){if(b>a)b--;final s=_list.removeAt(a);_list.insert(b,s);_changed=true;});},
+          onReorderItem:(a,b){setState((){final s=_list.removeAt(a);_list.insert(b,s);_changed=true;});},
           children:[for(var i=0;i<_list.length;i++)ListTile(key:ValueKey('sig-$i-${_list[i].name}'),
             leading:Icon(Icons.radio,color:_list[i].hidden?t.disabledColor:t.colorScheme.primary),
             title:Row(children:[Flexible(child:Text(_list[i].name,overflow:TextOverflow.ellipsis,

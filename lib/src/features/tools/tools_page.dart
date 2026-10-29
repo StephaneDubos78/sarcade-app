@@ -43,7 +43,7 @@ class ToolsPage extends StatelessWidget {
                   Text(i.subtitle,maxLines:2,overflow:TextOverflow.ellipsis,style:t.textTheme.bodySmall?.copyWith(color:t.colorScheme.onSurfaceVariant)),
                 ])),
                 Icon(Icons.chevron_right,color:t.colorScheme.onSurfaceVariant),
-              ]))))),
+              ])))),
           ],
         );
       }),
