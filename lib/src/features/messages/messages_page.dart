@@ -496,12 +496,18 @@ class _MessagesPageState extends State<MessagesPage>{
  Widget _composer(){
    final s=Theme.of(context).colorScheme;
    return Material(color:_night?const Color(0xFF202C33):const Color(0xFFF0F2F5),child:SafeArea(child:Padding(padding:const EdgeInsets.fromLTRB(6,6,6,6),child:Row(crossAxisAlignment:CrossAxisAlignment.end,children:[
-     IconButton(tooltip:S.t('messages.photo'),onPressed:_picking?null:_photo,
-       icon:_picking?const SizedBox(width:20,height:20,child:CircularProgressIndicator(strokeWidth:2)):const Icon(Icons.add)),
-     IconButton(tooltip:S.t('quick.title'),onPressed:_sendQuickMessage,icon:const Icon(Icons.bolt)),
+     // « + »: photo or predefined message (one button: room for the field
+     // on a phone).
+     _picking?const Padding(padding:EdgeInsets.all(12),child:SizedBox(width:20,height:20,child:CircularProgressIndicator(strokeWidth:2)))
+       :PopupMenuButton<String>(tooltip:S.t('messages.attach'),icon:const Icon(Icons.add),
+         onSelected:(v){if(v=='photo'){_photo();}else{_sendQuickMessage();}},
+         itemBuilder:(_)=>[
+           PopupMenuItem(value:'photo',child:ListTile(leading:const Icon(Icons.photo_camera_outlined),title:Text(S.t('messages.photo')))),
+           PopupMenuItem(value:'quick',child:ListTile(leading:const Icon(Icons.bolt),title:Text(S.t('quick.title')))),
+         ]),
      Expanded(child:Container(padding:const EdgeInsets.only(left:4,right:4),decoration:BoxDecoration(color:_night?const Color(0xFF2A3942):Colors.white,borderRadius:BorderRadius.circular(24)),
        child:Row(crossAxisAlignment:CrossAxisAlignment.end,children:[
-         IconButton(tooltip:S.t('messages.emoji'),onPressed:_pickEmoji,icon:const Icon(Icons.emoji_emotions_outlined)),
+         IconButton(tooltip:S.t('messages.emoji'),visualDensity:VisualDensity.compact,onPressed:_pickEmoji,icon:const Icon(Icons.emoji_emotions_outlined)),
          Expanded(child:Focus(onKeyEvent:_onKey,child:TextField(controller:_text,maxLength:2048,minLines:1,maxLines:widget.initialText==null?5:7,
            decoration:InputDecoration(hintText:S.t('messages.hint'),counterText:'',border:InputBorder.none,
              helperText:_enterSends?S.t('messages.enterHint'):null)))),
