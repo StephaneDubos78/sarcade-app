@@ -39,6 +39,6 @@ void main(){
 
   test('message text has the name and the coordinates',(){
     final m=poiMessage(poi(),CoordFormat.dd);
-    expect(m,contains('Point haut')); expect(m,contains('48.8'));
+    expect(m,contains('Point haut')); expect(m,contains('48,82'));
   });
 }
