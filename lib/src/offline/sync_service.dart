@@ -120,6 +120,8 @@ class OfflineSyncService {
           if(p['deleted']==true){await store.deleteGroup(c['object_id'] as String);}
           else{await store.saveGroup(p);}
         }
+        // A deletion only updates the cache (the open screens follow it).
+        if(c['object_type']=='message'&&c['action']=='delete')continue;
         onRemoteChange?.call(c['object_type'] as String,p);
       }
       await store.setCursor(eventId,feed.nextCursor);

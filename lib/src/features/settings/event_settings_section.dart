@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../l10n/strings.dart';
 import '../../services/sarcade_api.dart';
 import '../aprs/aprs_page.dart';
+import 'quick_messages_editor.dart';
 
 /// Paramètres › Événement (PCO): settings of the active event kept by the
 /// server, applied at once and written in the logbook by the server —
@@ -47,16 +48,11 @@ class _EventSettingsSectionState extends State<EventSettingsSection> {
     }
   }
 
-  /// Predefined messages of the event (ATAK 6), one per line.
+  /// Predefined messages of the event (ATAK 6): an editable list.
   Future<void> _editQuick() async {
-    final ctrl=TextEditingController(text:((_s?['quick_messages'] as List?)??const []).join('\n'));
-    final ok=await showDialog<bool>(context:context,builder:(c)=>AlertDialog(title:Text(S.t('event.quick')),
-      content:TextField(controller:ctrl,minLines:5,maxLines:12,decoration:InputDecoration(helperText:S.t('event.quickEdit'),border:const OutlineInputBorder())),
-      actions:[TextButton(onPressed:()=>Navigator.pop(c,false),child:Text(S.t('common.cancel'))),
-        FilledButton(onPressed:()=>Navigator.pop(c,true),child:Text(S.t('common.save')))]));
-    final lines=ctrl.text.split('\n').map((l)=>l.trim()).where((l)=>l.isNotEmpty).take(20).toList();
-    ctrl.dispose();
-    if(ok==true)await _patch({'quick_messages':lines});
+    final initial=((_s?['quick_messages'] as List?)??const []).whereType<String>().toList();
+    final list=await Navigator.push<List<String>>(context,MaterialPageRoute(builder:(_)=>QuickMessagesEditor(initial:initial)));
+    if(list!=null)await _patch({'quick_messages':list});
   }
 
   Widget _row(String label,{String? help,required Widget child}){

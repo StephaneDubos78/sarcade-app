@@ -300,6 +300,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     if(e.type=='position.updated'){final p=SarcadePosition.fromJson(e.data);if(_validPosition(p)){widget.store.cachePosition(p.toJson());if(mounted)setState((){_positions[p.deviceId]=p;if(_selectedDevice==p.deviceId)_trace.add(p);});}}
     if(e.type=='poi.created'){final p=SarcadePoi.fromJson(e.data);widget.store.cachePoi(e.data);setState(()=>_pois[p.id]=p);}
     if(e.type=='message.created'){_receiveMessage(e.data);}
+    if(e.type=='message.deleted'){unawaited(widget.store.cacheMessage(Map<String,dynamic>.from(e.data)));}
     if(e.type=='map_feature.upserted'||e.type=='map_feature.deleted'){_applyRemoteFeature(e.data,persist:true);}
     if(e.type=='ack.created'){widget.store.cacheAck(e.data);if(mounted)setState((){});}
     if(e.type=='group.upserted'&&!_sync.isPending('${e.data['id']}')){widget.store.saveGroup(e.data);}
@@ -328,6 +329,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   }
   Future<void> _handleMessage(SarcadeMessage m,Map<String,dynamic> data) async {
     await widget.store.cacheMessage(data);
+    if(m.deleted){if(mounted)setState((){});return;}
     final groups={for(final j in widget.store.groups(widget.eventId)) j['id'] as String:CommGroup.fromJson(j)};
     final addressed=addressedTo(m.recipientIds,widget.deviceId,groups);
     if(addressed && m.senderId!=widget.deviceId){
