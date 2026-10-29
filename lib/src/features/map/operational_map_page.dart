@@ -26,6 +26,7 @@ import '../../ui/compass_follow.dart';
 import '../measure/wmm.dart' show magneticDeclination;
 import '../../ui/theme.dart';
 import 'stations.dart';
+import '../bearings/bearing_aim.dart';
 import '../bearings/bearing_controller.dart';
 import '../bearings/bearing_layers.dart';
 import '../bearings/bearing_models.dart';
@@ -391,7 +392,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       ListTile(leading:const Icon(Icons.track_changes),title:Text(S.t('bearings.fromHere')),onTap:()=>Navigator.pop(c,'bearing')),
     ])));
     if(choice=='order'){await _sendOperatorHere(point);return;}
-    if(choice=='bearing'){await _bearings.startTaking(from:point);return;}
+    if(choice=='bearing'){if(!mounted)return;final wide=MediaQuery.sizeOf(context).width>=_compactWidth;await _bearings.startTaking(from:point);if(wide&&mounted)setState(()=>_aim=BearingAim(point));return;}
     if(choice=='measure')await _measureTo(point,label);
     if(choice=='ext'&&mounted)await _openElsewhere(point,label);
     if(choice=='nav')await _navigateTo(point,label);
@@ -1098,6 +1099,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     final pick=_pickPoint;
     if(pick!=null){setState((){_pickPoint=null;_pickHint=null;});pick(point,null);return;}
     if(_adjusting!=null){_adjustTowards(point);return;}
+    if(_aim!=null){_aimClick(tap,point);return;}
     if(_pickingOrigin){setState(()=>_pickingOrigin=false);_measure.setOrigin(MeasureOrigin(point:point,label:S.t('measure.originPoint')));return;}
     final drawingRoute=_drawingRouteId==null?null:_routes.route(_drawingRouteId!);
     if(drawingRoute!=null){await _routes.addWaypoint(drawingRoute,point);return;}
@@ -1719,11 +1721,20 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     _bearings.addListener((){
       // Taking a bearing shows the « Relevés » filter again if it was off.
       if(_bearings.taking&&!_showBearings)unawaited(_setShown('show_brg',true));
+      if(!_bearings.taking)_aim=null;
       if(mounted)setState((){});
     });
   }
 
-  Bearing? _bearingDraft()=>_bearings.taking?_bearings.draft(strength:_brgStrength,search:_brgSearch):null;
+  Bearing? _bearingDraft()=>_bearings.taking?_bearings.draft(strength:_brgStrength,search:_brgSearch,lengthM:_aim?.lengthM,takenAt:_aim?.takenAt,method:_aim==null?null:'map'):null;
+  /// Computer: bearing aimed with the mouse (bearing_aim.dart).
+  BearingAim? _aim;
+  void _aimHover(PointerHoverEvent e){final a=_aim;if(a==null||a.fixed)return;
+    if(a.follow(_map.camera.screenOffsetToLatLng(e.localPosition),snap:HardwareKeyboard.instance.isShiftPressed))_bearings.setManual(a.azimuthDeg);}
+  void _aimClick(TapPosition tap,LatLng p){final a=_aim!;
+    if(a.fixed){final t=a.tip, at=tap.relative;if(t!=null&&at!=null&&nearTip(at,_map.camera.latLngToScreenOffset(t))){setState(a.release);}return;}
+    a.fix(p,snap:HardwareKeyboard.instance.isShiftPressed);_bearings.setManual(a.azimuthDeg);}
+  void _cancelAim(){_aim=null;_bearings.stopTaking();}
   bool get _brgByOperator=>widget.store.preference('brg_color:${widget.eventId}')=='op';
   Future<void> _setSignal(String v) async {await widget.store.setPreference('brg_search:${widget.eventId}',v.isEmpty?null:v);if(mounted)setState((){});}
 
@@ -1731,18 +1742,19 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   /// position, accuracy, time (direction-finding app of the captures).
   Widget _bearingHud(){
     final s=Theme.of(context).colorScheme; final b=_bearings; final az=b.trueDeg; final p=b.position;
+    final mouse=_aim!=null, decl=b.declinationDeg, mag=mouse?(az==null||decl==null?null:normDeg(az-decl)):b.magneticDeg;
     final t=DateTime.now(); String two(int v)=>v.toString().padLeft(2,'0');
     return Container(padding:const EdgeInsets.fromLTRB(14,10,8,10),decoration:glass(context,border:s.primary.withValues(alpha:0.6)),
       child:Column(crossAxisAlignment:CrossAxisAlignment.start,mainAxisSize:MainAxisSize.min,children:[
         Row(children:[
-          Expanded(child:Text(S.t(b.hasCompass||b.manualDeg!=null?'bearings.aim':'bearings.noCompass'),style:TextStyle(fontSize:12,fontWeight:FontWeight.w700,letterSpacing:0.8,color:s.primary))),
-          IconButton(tooltip:S.t('common.cancel'),onPressed:_bearings.stopTaking,icon:const Icon(Icons.close)),
+          Expanded(child:Text(S.t(_aim!=null?'bearings.aimMouse':b.hasCompass||b.manualDeg!=null?'bearings.aim':'bearings.noCompass'),style:TextStyle(fontSize:12,fontWeight:FontWeight.w700,letterSpacing:0.8,color:s.primary))),
+          IconButton(tooltip:S.t('common.cancel'),onPressed:_cancelAim,icon:const Icon(Icons.close)),
         ]),
         Row(crossAxisAlignment:CrossAxisAlignment.end,children:[
           Text(az==null?'—':'${az.toStringAsFixed(0).padLeft(3,'0')}°',style:const TextStyle(fontSize:60,fontWeight:FontWeight.w500,height:1,fontFeatures:[FontFeature.tabularFigures()])),
           const SizedBox(width:10),
-          Padding(padding:const EdgeInsets.only(bottom:6),child:Text([S.t(b.manualDeg!=null?'bearings.typed':'bearings.true'),
-            if(b.magneticDeg!=null&&b.manualDeg==null)S.t('bearings.magnetic',{'v':b.magneticDeg!.toStringAsFixed(0).padLeft(3,'0')})].join('\n'),
+          Padding(padding:const EdgeInsets.only(bottom:6),child:Text([S.t(b.manualDeg!=null&&!mouse?'bearings.typed':'bearings.true'),
+            if(mag!=null&&(mouse||b.manualDeg==null))'(${S.t('bearings.magnetic',{'v':mag.toStringAsFixed(0).padLeft(3,'0')})})'].join('\n'),
             style:TextStyle(fontSize:12,color:s.onSurfaceVariant))),
         ]),
         const SizedBox(height:4),
@@ -1776,22 +1788,27 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         const SizedBox(width:8),
         SizedBox(width:28,child:Text(_brgStrength==0?'—':'S$_brgStrength',style:TextStyle(fontWeight:FontWeight.w700,color:s.primary))),
       ]),
+      if(_aim!=null)Padding(padding:const EdgeInsets.only(top:10),child:AimFields(azimuthDeg:_aim!.azimuthDeg,takenAt:_aim!.takenAt,
+        onAzimuth:(d){_aim!.type(d);_bearings.setManual(d);},onTime:(t)=>setState(()=>_aim!.takenAt=t))),
       if(effect!=null)Padding(padding:const EdgeInsets.only(top:8),child:Text(effect,style:TextStyle(fontSize:13,color:s.onSurfaceVariant))),
       const SizedBox(height:10),
       Row(children:[
         Expanded(child:FilledButton.icon(style:FilledButton.styleFrom(minimumSize:const Size.fromHeight(52)),
           onPressed:draft==null?null:() async {
             final sig=_currentSignal;
-            final b=await _bearings.save(strength:_brgStrength,search:_brgSearch,exercise:sig?.exercise??false,frequencyMhz:sig?.frequencyMhz);
+            // Mouse: the free length becomes the usual one only now.
+            final a=_aim;
+            final b=await _bearings.save(strength:_brgStrength,search:_brgSearch,exercise:sig?.exercise??false,frequencyMhz:sig?.frequencyMhz,
+              lengthM:a==null?null:savedLengthM(),takenAt:a?.takenAt,method:a==null?null:'map');
             if(b!=null&&mounted){setState(()=>_brgStrength=0);
               ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(S.t('bearings.saved',{'v':b.azimuthDeg.toStringAsFixed(0).padLeft(3,'0')}))));}
           },
           icon:const Icon(Icons.track_changes),label:Text(S.t('bearings.save')))),
-        const SizedBox(width:8),
+        if(_aim==null)...[const SizedBox(width:8),
         IconButton.outlined(tooltip:S.t('bearings.typeAzimuth'),style:IconButton.styleFrom(fixedSize:const Size(52,52)),onPressed:_typeAzimuth,icon:const Icon(Icons.edit_outlined)),
         const SizedBox(width:4),
         IconButton.outlined(tooltip:S.t('bearings.useMapCentre'),style:IconButton.styleFrom(fixedSize:const Size(52,52)),
-          onPressed:(){final c=_mapCentre();if(c!=null)_bearings.setPosition(c);},icon:const Icon(Icons.filter_center_focus)),
+          onPressed:(){final c=_mapCentre();if(c!=null)_bearings.setPosition(c);},icon:const Icon(Icons.filter_center_focus))],
       ]),
     ]));
   }
@@ -1999,6 +2016,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       final key=event.logicalKey;
       bool run(VoidCallback action){action();return true;}
       final handled=switch(key){
+        LogicalKeyboardKey.escape when _aim!=null=>run(_cancelAim),
         LogicalKeyboardKey.delete||LogicalKeyboardKey.backspace when _drawing.selected!=null=>run(_drawing.deleteSelected),
         LogicalKeyboardKey.keyZ when ctrl&&keys.isShiftPressed=>run(_drawing.redo),
         LogicalKeyboardKey.keyZ when ctrl=>run(_drawing.undo),
@@ -2071,7 +2089,6 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     // at the bottom.
     final rail=<_RailAction>[
       _RailAction(Icons.groups_outlined,S.t('tabs.teams'),toggleOperators,selected:_showPanel),
-      _RailAction(Icons.track_changes,S.t('bearings.take'),(){setState((){_deskPage=null;_deskId=null;});_bearings.startTaking();}),
       _RailAction(Icons.folder_copy_outlined,S.t('map.files'),openFiles,selected:_deskId=='files'),
       // « Itinéraires » moved into « Outils » (29 Oct 2026); wrench icon, the
       // handyman glyph did not show on the web.
@@ -2145,11 +2162,11 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           ]));}))),
         // Computer: « Équipes » panel next to the map (list and nearby).
         if(_showPanel&&!compact)SizedBox(width:panelWidth(320),child:Material(elevation:3,child:_teams(sorted,screen:false))),
-        Expanded(child:Stack(key:_mapKey,children:[FlutterMap(mapController:_map,options:MapOptions(
+        Expanded(child:Stack(key:_mapKey,children:[MouseRegion(onHover:_aimHover,opaque:false,child:FlutterMap(mapController:_map,options:MapOptions(
           initialCenter:_savedView==null?const LatLng(48.8566,2.3522):LatLng(_savedView.lat,_savedView.lon),initialZoom:_savedView?.zoom??11,maxZoom:20,onTap:_onMapTap,
           onPositionChanged:(camera,_)=>_onCameraChanged(camera),
           onLongPress:(_,point)=>_onLongPress(point),
-          onSecondaryTap:(_,point)=>_onLongPress(point),
+          onSecondaryTap:(_,point){if(_aim!=null){_cancelAim();}else{_onLongPress(point);}},
           onMapEvent:_onMapEvent,
           // Rotation off: drawn arrows and handles assume north up.
           // Drag off while editing so handle and freehand gestures reach the shapes.
@@ -2164,6 +2181,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           if(_showDrawings)..._fadedAll('draw',buildDrawingLayers(_drawing)),
           if(_showBearings||_bearings.taking||_adjusting!=null)..._fadedAll('brg',buildBearingLayers(bearings:_showBearings?_bearings.all.where((b)=>b.id!=_adjusting?.id):const <Bearing>[],draft:_bearingDraft()??_adjusting,byOperator:_brgByOperator,hits:_bearingHits,
             onTapBearing:_showBearingSheet,onTapZone:(c,_)=>_onLongPress(c))),
+          if(_aim!=null)...buildAimLayers(_aim!,Color(searchColor(_brgSearch))),
           ..._variantLayers(),
           ...buildRouteLayers(_routes,selectedRouteId:_selectedRouteId,itinerary:_nav.itinerary?.geometry??const [],draftClosure:_closureDraft,
             onWaypointTap:(w)=>setState((){_showRoutesPanel=true;_showPanel=false;_showReferencePanel=false;_selectedRouteId=w.routeId;})),
@@ -2180,7 +2198,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
             child:GestureDetector(onTap:()=>_onLongPress(_searchPin!),child:const Icon(Icons.location_on,color:Colors.red,size:44)))]),
           buildHandleLayer(_drawing,_globalToLatLng),
           RichAttributionWidget(attributions:[TextSourceAttribution(_basemap.attribution.isEmpty?widget.tileAttribution:_basemap.attribution)]),
-        ]),
+        ])),
         if(_drawing.tool==FeatureKind.freehand)Positioned.fill(child:GestureDetector(
           behavior:HitTestBehavior.opaque,
           onPanStart:_onFreehandStart,onPanUpdate:_onFreehandUpdate,onPanEnd:_onFreehandEnd,
@@ -2239,7 +2257,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         if(compact&&_sosVisible&&selected==null)Positioned(left:12,bottom:100,child:_sosButton()),
         // Phone: « Suivi actif » just above the tab bar.
         if(compact&&!_bearings.taking&&selected==null)Positioned(left:12,bottom:12,child:_trackingBadge()),
-        if(_bearings.taking)Positioned(left:0,right:0,bottom:16,child:Center(child:ConstrainedBox(constraints:const BoxConstraints(maxWidth:520),child:Padding(padding:const EdgeInsets.symmetric(horizontal:12),child:_bearingTakeSheet()))))
+        if(_bearings.taking&&_aim!=null)Positioned(right:12,bottom:16,width:380,child:_bearingTakeSheet())
+        else if(_bearings.taking)Positioned(left:0,right:0,bottom:16,child:Center(child:ConstrainedBox(constraints:const BoxConstraints(maxWidth:520),child:Padding(padding:const EdgeInsets.symmetric(horizontal:12),child:_bearingTakeSheet()))))
         else if(selected!=null)Positioned(left:12,right:compact?12:null,bottom:compact?12:24,
           child:ConstrainedBox(constraints:const BoxConstraints(maxWidth:420),child:_stationSheet(selected))),
         Positioned(left:16,bottom:compact?56:24,child:IgnorePointer(child:_scaleBar())),
