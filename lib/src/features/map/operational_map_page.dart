@@ -168,7 +168,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       _deskId=id;_deskPage=build();
     });
   }
-  @override void initState(){super.initState();_initNotificationActions();unawaited(requestPersistentStorage());_sync=OfflineSyncService(api:widget.api,store:widget.store,eventId:widget.eventId,onRemoteChange:_onRemoteChange);_initDrawing();_initBearings();_loadLocal();_initRoutes();_initMeasure();_sync.start();_initOperations();_loadBasemaps();_initWebUpdate();unawaited(_loadMyPreferences());_syncUiTimer=Timer.periodic(const Duration(seconds:2),(t){if(t.tick%8==0)_checkOrderArrival();if(t.tick%3==0)_drainAnswers();if(mounted)setState((){});});AccessManager.instance.addListener(_onAccessChanged);_start();unawaited(_loadRoles());}
+  @override void initState(){super.initState();_initNotificationActions();unawaited(requestPersistentStorage());_sync=OfflineSyncService(api:widget.api,store:widget.store,eventId:widget.eventId,onRemoteChange:_onRemoteChange);_initDrawing();_initBearings();_loadLocal();_initRoutes();_initMeasure();_sync.start();_initOperations();_loadBasemaps();_initWebUpdate();unawaited(_loadMyPreferences());_syncUiTimer=Timer.periodic(const Duration(seconds:2),(t){if(t.tick%8==0)_checkOrderArrival();if(t.tick%30==1)unawaited(_loadDevices());if(t.tick%3==0)_drainAnswers();if(mounted)setState((){});});AccessManager.instance.addListener(_onAccessChanged);_start();unawaited(_loadRoles());}
 
   /// Rights given by the server for the checked email (PCO, administrator).
   Future<void> _loadRoles() async {
@@ -273,7 +273,29 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     setState(()=>_drawingTools=!_drawingTools);
   }
   void _openUnsent()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>UnsentPage(sync:_sync,actorId:widget.deviceId))).then((_){if(mounted)setState((){});});
+  // --- Devices: platform, version, last contact (« Version de l'application
+  // et connexions des opérateurs », 29 Oct 2026) ---
+  final Map<String,Map<String,dynamic>> _devices={};
+  Future<void> _loadDevices() async {
+    try{
+      final list=await widget.api.devices(widget.eventId);
+      if(!mounted)return;
+      setState((){for(final d in list){_devices['${d['device_id']}']=d;}});
+    }catch(_){/* offline: the last list stays */}
+  }
+  /// « SARCADE 0.1.0+415 · Android · dernier contact il y a 12 s ».
+  String? _deviceLine(String deviceId){
+    final d=_devices[deviceId]; if(d==null)return null;
+    final seen=DateTime.tryParse('${d['last_seen']??d['last_contact_at']??''}');
+    return [
+      if('${d['app_version']??''}'.isNotEmpty)'SARCADE ${d['app_version']}',
+      if('${d['platform']??''}'.isNotEmpty)platformLabel('${d['platform']}'),
+      if(seen!=null)S.t('device.lastContact',{'age':ageLabel(seen.toUtc(),DateTime.now().toUtc())}),
+    ].join(' · ');
+  }
+
   void _onRealtime(RealtimeEvent e){
+    if(e.type=='device.updated'){final id='${e.data['device_id']??''}';if(id.isNotEmpty&&mounted)setState(()=>_devices[id]=Map<String,dynamic>.from(e.data));}
     if(e.type==RealtimeService.reconnectedType){unawaited(_reloadPositions());return;}
     if(e.type=='position.updated'){final p=SarcadePosition.fromJson(e.data);if(_validPosition(p)){widget.store.cachePosition(p.toJson());if(mounted)setState((){_positions[p.deviceId]=p;if(_selectedDevice==p.deviceId)_trace.add(p);});}}
     if(e.type=='poi.created'){final p=SarcadePoi.fromJson(e.data);widget.store.cachePoi(e.data);setState(()=>_pois[p.id]=p);}
@@ -1544,7 +1566,9 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     final f=freshness(p.time.toUtc(),now,ageingMin:_ageingMin,staleMin:_staleMin); final fav=_favourites.contains(p.deviceId);
     return ListTile(selected:_selectedDevice==p.deviceId,leading:_stationIcon(p,size:32),
       title:Text(p.label,style:TextStyle(decoration:f==Freshness.stale?TextDecoration.lineThrough:null)),
-      subtitle:Text('${_sourceLabel(p)} · ${ageLabel(p.time.toUtc(),now)}',style:TextStyle(color:f==Freshness.fresh?null:s.tertiary)),
+      subtitle:Text([_sourceLabel(p),ageLabel(p.time.toUtc(),now),
+          if(!_isCompact&&isPco(widget.deviceId)&&'${_devices[p.deviceId]?['app_version']??''}'.isNotEmpty)'v${_devices[p.deviceId]!['app_version']}'].join(' · '),
+        style:TextStyle(color:f==Freshness.fresh?null:s.tertiary)),
       trailing:IconButton(tooltip:S.t(fav?'favourites.remove':'favourites.add'),onPressed:()=>_toggleFavourite(p.deviceId),
         visualDensity:VisualDensity.compact,iconSize:20,
         icon:Icon(fav?Icons.star:Icons.star_border,color:fav?s.tertiary:s.onSurfaceVariant)),
@@ -1573,6 +1597,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
             Text(p.isAprs&&p.callsign!=null&&p.callsign!.isNotEmpty&&p.callsign!.toUpperCase()!=p.label.toUpperCase()
               ?'${p.label} · ${p.callsign}':p.label,style:const TextStyle(fontSize:17,fontWeight:FontWeight.w700)),
             Text(details.join(' · '),style:TextStyle(fontSize:12,color:f==Freshness.fresh?s.onSurfaceVariant:s.tertiary)),
+            if(!p.isAprs&&(_deviceLine(p.deviceId)?.isNotEmpty??false))Text(_deviceLine(p.deviceId)!,style:TextStyle(fontSize:12,color:s.onSurfaceVariant)),
           ])),
           IconButton(tooltip:S.t(fav?'favourites.remove':'favourites.add'),onPressed:()=>_toggleFavourite(p.deviceId),icon:Icon(fav?Icons.star:Icons.star_border,color:fav?s.tertiary:null)),
           // « Discuter »: direct chat with this operator (not with myself, not an APRS station).
