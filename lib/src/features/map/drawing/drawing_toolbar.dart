@@ -149,6 +149,11 @@ class SelectionBar extends StatelessWidget {
               itemBuilder:(_)=>[for(final w in drawingWidths)PopupMenuItem(value:w,child:Row(children:[SizedBox(width:48,child:Divider(thickness:w,color:Colors.black87)),const SizedBox(width:10),Text(w==drawingWidths.first?'Fin':w==drawingWidths.last?'Épais':'Moyen')]))],
               child:const Padding(padding:EdgeInsets.all(10),child:Icon(Icons.line_weight)),
             ),
+            PopupMenuButton<double>(
+              tooltip:S.t('draw.opacity'),onSelected:c.setOpacity,
+              itemBuilder:(_)=>[for(final o in drawingOpacities)CheckedPopupMenuItem(value:o,checked:(f.opacity-o).abs()<0.01,child:Text('${(o*100).round()} %'))],
+              child:Padding(padding:const EdgeInsets.all(10),child:Icon(Icons.opacity,color:Color(f.color).withValues(alpha:f.opacity))),
+            ),
             IconButton(tooltip:f.kind==FeatureKind.text?S.t('draw.editText'):S.t('groups.name'),onPressed:onEditLabel,icon:const Icon(Icons.edit_outlined)),
             // Géorepérage (PCO): alert when a team enters or leaves the zone.
             if(f.isClosed&&canFence)IconButton(tooltip:S.t(f.geofence?'draw.geofenceOff':'draw.geofenceOn'),onPressed:c.toggleGeofence,

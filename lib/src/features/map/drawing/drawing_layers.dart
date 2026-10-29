@@ -25,39 +25,39 @@ List<Widget> buildDrawingLayers(DrawingController c){
     final selected=f.id==selectedId;
     switch(f.kind){
       case FeatureKind.point:
-        symbols.add(Marker(point:f.points[0],width:40,height:40,alignment:Alignment.topCenter,child:Icon(Icons.place,size:38,color:_c(f.color),shadows:selected?const [Shadow(color:Colors.white,blurRadius:6)]:null)));
-        if(f.label.isNotEmpty)labels.add(_label(f.points[0],f.label,f.color,below:true));
+        symbols.add(Marker(point:f.points[0],width:40,height:40,alignment:Alignment.topCenter,child:Icon(Icons.place,size:38,color:_c(f.color).withValues(alpha:f.opacity),shadows:selected?const [Shadow(color:Colors.white,blurRadius:6)]:null)));
+        if(f.label.isNotEmpty)labels.add(_label(f.points[0],f.label,f.color,below:true,opacity:f.opacity));
       case FeatureKind.text:
-        symbols.add(Marker(point:f.points[0],width:200,height:48,child:Center(child:_TextChip(text:f.label.isEmpty?'Texte':f.label,color:f.color,selected:selected))));
+        symbols.add(Marker(point:f.points[0],width:200,height:48,child:Center(child:_faded(f.opacity,_TextChip(text:f.label.isEmpty?'Texte':f.label,color:f.color,selected:selected)))));
       case FeatureKind.arrow:
         if(f.points.length>=2){
           final a=f.points[f.points.length-2], b=f.points.last;
           final angle=bearingDeg(a,b)*math.pi/180;
           final size=18+f.strokeWidth*3;
-          symbols.add(Marker(point:b,width:size,height:size,child:Transform.rotate(angle:angle,child:Icon(Icons.navigation,size:size,color:_c(f.color)))));
+          symbols.add(Marker(point:b,width:size,height:size,child:Transform.rotate(angle:angle,child:Icon(Icons.navigation,size:size,color:_c(f.color).withValues(alpha:f.opacity)))));
         }
-        if(f.label.isNotEmpty)labels.add(_label(f.anchor,f.label,f.color));
+        if(f.label.isNotEmpty)labels.add(_label(f.anchor,f.label,f.color,opacity:f.opacity));
       case FeatureKind.measure:
-        labels.add(_label(f.points.last,formatDistance(f.lengthM),f.color));
-        if(f.label.isNotEmpty)labels.add(_label(f.anchor,f.label,f.color));
+        labels.add(_label(f.points.last,formatDistance(f.lengthM),f.color,opacity:f.opacity));
+        if(f.label.isNotEmpty)labels.add(_label(f.anchor,f.label,f.color,opacity:f.opacity));
       default:
-        if(f.label.isNotEmpty)labels.add(_label(f.anchor,f.label,f.color));
+        if(f.label.isNotEmpty)labels.add(_label(f.anchor,f.label,f.color,opacity:f.opacity));
     }
   }
 
   return [
     if(closed.isNotEmpty)PolygonLayer(polygons:closed.map((f)=>Polygon(
-      points:f.ring,color:_c(f.color).withAlpha(f.id==selectedId?80:50),
-      borderColor:_c(f.color),borderStrokeWidth:f.strokeWidth,
+      points:f.ring,color:_c(f.color).withAlpha(((f.id==selectedId?80:50)*f.opacity).round()),
+      borderColor:_c(f.color).withValues(alpha:f.opacity),borderStrokeWidth:f.strokeWidth,
     )).toList()),
     if(circles.isNotEmpty)CircleLayer(circles:circles.map((f)=>CircleMarker(
       point:f.points[0],radius:f.radiusM??1,useRadiusInMeter:true,
-      color:_c(f.color).withAlpha(f.id==selectedId?80:50),borderColor:_c(f.color),borderStrokeWidth:f.strokeWidth,
+      color:_c(f.color).withAlpha(((f.id==selectedId?80:50)*f.opacity).round()),borderColor:_c(f.color).withValues(alpha:f.opacity),borderStrokeWidth:f.strokeWidth,
     )).toList()),
     if(lines.isNotEmpty)PolylineLayer(polylines:lines.map((f)=>Polyline(
-      points:f.points,color:_c(f.color),strokeWidth:f.strokeWidth,
+      points:f.points,color:_c(f.color).withValues(alpha:f.opacity),strokeWidth:f.strokeWidth,
       pattern:f.kind==FeatureKind.measure?StrokePattern.dashed(segments:const [12,8]):const StrokePattern.solid(),
-      borderColor:Colors.white,borderStrokeWidth:f.id==selectedId?3:1,
+      borderColor:Colors.white.withValues(alpha:f.opacity),borderStrokeWidth:f.id==selectedId?3:1,
       strokeCap:StrokeCap.round,strokeJoin:StrokeJoin.round,
     )).toList()),
     ..._draftLayers(c),
@@ -79,13 +79,16 @@ List<Widget> _draftLayers(DrawingController c){
   return [vertices];
 }
 
-Marker _label(LatLng p,String text,int color,{bool below=false})=>Marker(
+/// Child drawn with the transparency of its object (no extra layer at 100 %).
+Widget _faded(double opacity,Widget child)=>opacity>=1?child:Opacity(opacity:opacity,child:child);
+
+Marker _label(LatLng p,String text,int color,{bool below=false,double opacity=1})=>Marker(
   point:p,width:180,height:30,alignment:below?Alignment.bottomCenter:Alignment.center,
-  child:IgnorePointer(child:Center(child:Container(
+  child:IgnorePointer(child:Center(child:_faded(opacity,Container(
     padding:const EdgeInsets.symmetric(horizontal:6,vertical:2),
     decoration:BoxDecoration(color:Colors.white.withAlpha(230),borderRadius:BorderRadius.circular(4),border:Border.all(color:_c(color))),
     child:Text(text,maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(fontSize:12,fontWeight:FontWeight.w600,color:Colors.black87)),
-  ))),
+  )))),
 );
 
 class _TextChip extends StatelessWidget {
