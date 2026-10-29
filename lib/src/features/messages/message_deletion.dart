@@ -28,8 +28,9 @@ Map<String,dynamic>? mergeCachedMessage(Map<String,dynamic>? existing,Map<String
   final deleting=incoming['deleted']==true;
   if(existing==null)return incoming['sender_id']==null?null:(deleting?{...incoming,'body':'','attachments':const []}:incoming);
   if(deleting)return {...existing,...incoming,'body':'','attachments':const []};
-  if(existing['deleted']==true)return {...incoming,'body':'','attachments':const [],
-    for(final k in const ['deleted','deleted_by','deleted_by_pco','deleted_at'])k:existing[k]};
+  if(existing['deleted']==true){
+    return {...incoming,'body':'','attachments':const [],for(final k in const ['deleted','deleted_by','deleted_by_pco','deleted_at'])k:existing[k]};
+  }
   return incoming;
 }
 

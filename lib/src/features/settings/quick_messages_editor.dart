@@ -50,7 +50,7 @@ class _QuickMessagesEditorState extends State<QuickMessagesEditor> {
           buildDefaultDragHandles:false,
           padding:const EdgeInsets.only(bottom:8),
           itemCount:_rows.length,
-          onReorder:(a,b){setState(()=>_rows.insert(b>a?b-1:b,_rows.removeAt(a)));},
+          onReorderItem:(a,b){setState(()=>_rows.insert(b,_rows.removeAt(a)));},
           itemBuilder:(c,i){
             final r=_rows[i];
             return ListTile(key:ValueKey(r.$1),
