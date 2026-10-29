@@ -66,16 +66,17 @@ class BearingController extends ChangeNotifier {
   /// Colour of this operator, kept with each bearing.
   int? operatorColor;
 
-  Bearing? draft({String target='',int strength=0,String comment='',String search=''}){
+  Bearing? draft({String target='',int strength=0,String comment='',String search='',double? lengthM,DateTime? takenAt,String? method}){
     final p=position, az=trueDeg; if(p==null||az==null)return null;
     final now=DateTime.now().toUtc();
-    return Bearing(id:'draft',eventId:eventId,origin:p,azimuthDeg:az,strength:strength,target:target,comment:comment,search:search,
-      method:manualDeg!=null?'manual':'compass',magneticDeg:manualDeg==null?magneticDeg:null,declinationDeg:manualDeg==null?declinationDeg:null,
-      accuracyM:accuracyM,operatorColor:operatorColor,takenAt:now,createdBy:actorId,updatedBy:actorId,updatedAt:now);
+    return Bearing(id:'draft',eventId:eventId,origin:p,azimuthDeg:az,lengthM:lengthM??10000,strength:strength,target:target,comment:comment,search:search,
+      method:method??(manualDeg!=null?'manual':'compass'),magneticDeg:manualDeg==null?magneticDeg:null,declinationDeg:manualDeg==null?declinationDeg:null,
+      accuracyM:accuracyM,operatorColor:operatorColor,takenAt:takenAt??now,createdBy:actorId,updatedBy:actorId,updatedAt:now);
   }
 
-  Future<Bearing?> save({String target='',int strength=0,String comment='',String search='',bool exercise=false,double? frequencyMhz}) async {
-    final d=draft(target:target,strength:strength,comment:comment,search:search); if(d==null)return null;
+  /// [lengthM], [takenAt], [method]: bearing taken with the mouse (bearing_aim.dart).
+  Future<Bearing?> save({String target='',int strength=0,String comment='',String search='',bool exercise=false,double? frequencyMhz,double? lengthM,DateTime? takenAt,String? method}) async {
+    final d=draft(target:target,strength:strength,comment:comment,search:search,lengthM:lengthM,takenAt:takenAt,method:method); if(d==null)return null;
     final b=Bearing.fromJson({...d.copyWith(exercise:exercise,frequencyMhz:frequencyMhz,updatedBy:d.updatedBy,updatedAt:d.updatedAt).toJson(),'id':const Uuid().v4()});
     _all[b.id]=b; stopTaking();
     await onSave(b,isNew:true);

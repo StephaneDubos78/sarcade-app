@@ -35,6 +35,13 @@ void main() {
     expect(x.canEdit('B', false), isFalse);
     expect(x.canEdit('B', true), isTrue);
   });
+  test('beacon colours: 406 violet, 121,5 red, exercise 121,375 blue', () {
+    expect(searchColor('406,000 MHz · Cospas-Sarsat'), beacon406Color);
+    expect(searchColor('Balise 406 – 23/10'), beacon406Color);
+    expect(searchColor('121,500 MHz · Balise de détresse réelle'), beacon1215Color);
+    expect(searchColor('121,375 MHz · Balise d’exercice'), beaconExerciseColor);
+    expect(beaconColor('Relais 2026'), isNull);
+  });
   test('« Signal recherché »: old target moved into the comment', () {
     final j = b('1', o1, 38.5, search: 'Balise 406').toJson();
     (j['bearing'] as Map)['target'] = '121,500 MHz';
