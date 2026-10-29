@@ -97,6 +97,20 @@ class _TvScreensPanelState extends State<TvScreensPanel> {
     }
   }
 
+  /// « Retirer le bandeau SOS »: the person who paired the screen or an
+  /// administrator; the SOS pill of the TV stays until the end of distress.
+  Future<void> _clearSos(Map<String,dynamic> d) async {
+    try{
+      await widget.api.clearDisplayAlert(widget.eventId,'${d['id']}');
+      _say('tv.sosCleared');
+      await _load();
+    }on SarcadeHttpException catch(e){
+      _say(e.statusCode==403?'tv.sosForbidden':e.statusCode==401?'tv.signIn':'event.offline');
+    }catch(_){
+      _say('event.offline');
+    }
+  }
+
   /// Messages panel shown on the TV with « Envoyer ma vue ».
   bool _messages=true;
   TvOptions? _options(){final o=currentMapOptions?.call();return o==null?null:(layers:o.layers,opacity:o.opacity,messages:_messages);}
@@ -136,13 +150,16 @@ class _TvScreensPanelState extends State<TvScreensPanel> {
         else if(list==null)const Padding(padding:EdgeInsets.all(16),child:Center(child:CircularProgressIndicator()))
         else if(list.isEmpty)ListTile(contentPadding:EdgeInsets.zero,title:Text(S.t('tv.none')))
         else for(final d in list)ListTile(contentPadding:EdgeInsets.zero,
-          leading:Icon(d['active']==true?Icons.tv:Icons.tv_off,color:d['active']==true?Colors.green:null),
+          leading:Icon(d['active']==true?(d['alert']==true?Icons.sos:Icons.tv):Icons.tv_off,
+            color:d['active']==true?(d['alert']==true?t.colorScheme.error:Colors.green):null),
           title:Text('${S.t('tv.code')} ${d['code']??''}'),subtitle:Text(S.t('tv.until',{'t':_when(d['expires'])})),
           trailing:d['active']==true?PopupMenuButton<String>(
-            onSelected:(a){if(a=='view')_view(d,mine:true);if(a=='auto')_view(d,mine:false);if(a=='revoke')_revoke(d);},
+            onSelected:(a){if(a=='view')_view(d,mine:true);if(a=='auto')_view(d,mine:false);if(a=='revoke')_revoke(d);if(a=='sos')_clearSos(d);},
             itemBuilder:(_)=>[
               PopupMenuItem(value:'view',child:ListTile(leading:const Icon(Icons.cast),title:Text(S.t('tv.sendView')),subtitle:Text(S.t('tv.sendViewHelp2')))),
               PopupMenuItem(value:'auto',child:ListTile(leading:const Icon(Icons.fit_screen),title:Text(S.t('tv.auto')))),
+              PopupMenuItem(value:'sos',enabled:d['can_clear_alert']!=false,
+                child:ListTile(leading:const Icon(Icons.sos),title:Text(S.t('tv.clearSos')))),
               PopupMenuItem(value:'revoke',child:ListTile(leading:const Icon(Icons.tv_off),title:Text(S.t('tv.revoke')))),
             ]):null),
       ]));

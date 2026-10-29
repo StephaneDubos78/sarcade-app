@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 import 'package:hive_ce_flutter/hive_ce_flutter.dart';
 import '../platform/platform_services.dart';
+import '../features/messages/message_deletion.dart';
 
 class LocalStore {
   static const _positions='positions', _pois='pois', _messages='messages', _acks='acks', _references='references', _outbox='outbox', _meta='meta', _features='map_features', _uploads='uploads', _attachments='attachments', _groups='comm_groups', _routeObjects='route_objects';
@@ -29,7 +30,14 @@ class LocalStore {
 
   Future<void> cachePosition(Map<String,dynamic> v)=>_positionBox.put(v['id'],v);
   Future<void> cachePoi(Map<String,dynamic> v)=>_poiBox.put(v['id'],v);
-  Future<void> cacheMessage(Map<String,dynamic> v)=>_messageBox.put(v['id'],v);
+  Future<void> deletePoi(String id)=>_poiBox.delete(id);
+  /// A deletion is merged onto the known message, which never comes back
+  /// with its text (see message_deletion.dart).
+  Future<void> cacheMessage(Map<String,dynamic> v) async {
+    final old=_messageBox.get(v['id']);
+    final merged=mergeCachedMessage(old is Map?Map<String,dynamic>.from(old):null,v);
+    if(merged!=null)await _messageBox.put(v['id'],merged);
+  }
   Future<void> cacheAck(Map<String,dynamic> v)=>_ackBox.put(v['id'],v);
   Future<void> cacheReference(Map<String,dynamic> v)=>_referenceBox.put(v['id'],v);
   Future<void> replaceReferences(List<Map<String,dynamic>> values) async {await _referenceBox.clear();for(final v in values){await _referenceBox.put(v['id'],v);}}

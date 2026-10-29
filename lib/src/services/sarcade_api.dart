@@ -210,6 +210,12 @@ class SarcadeApi {
     if(r.statusCode!=200) throw SarcadeHttpException('displays',r.statusCode,r.body);
     return [for(final d in jsonDecode(r.body) as List)Map<String,dynamic>.from(d as Map)];
   }
+  /// « Retirer le bandeau SOS » of a screen: the person who paired it or an
+  /// administrator (403 otherwise).
+  Future<void> clearDisplayAlert(String eventId,String id) async {
+    final r=await _client.post(Uri.parse('$baseUrl/api/v0.1/events/$eventId/displays/$id/alert/clear'));
+    if(r.statusCode!=200) throw SarcadeHttpException('display_alert_clear',r.statusCode,r.body);
+  }
   Future<void> revokeDisplay(String eventId,String id) async {
     final r=await _client.delete(Uri.parse('$baseUrl/api/v0.1/events/$eventId/displays/$id'));
     if(r.statusCode!=204) throw SarcadeHttpException('display_revoke',r.statusCode,r.body);
@@ -283,6 +289,14 @@ class SarcadeApi {
     final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/geocode').replace(queryParameters:{
       'q':q,if(lat!=null)'lat':lat.toStringAsFixed(4),if(lon!=null)'lon':lon.toStringAsFixed(4)}));
     if(r.statusCode!=200) throw SarcadeHttpException('geocode',r.statusCode);
+    return Map<String,dynamic>.from(jsonDecode(r.body) as Map);
+  }
+  /// Readable location of a point (« 800 m au nord de Plaisir ») and the
+  /// nearest road when the server is online; 404 on an older server.
+  Future<Map<String,dynamic>> describePlace(double lat,double lon) async {
+    final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/places/describe').replace(queryParameters:{
+      'lat':lat.toStringAsFixed(5),'lon':lon.toStringAsFixed(5)}));
+    if(r.statusCode!=200) throw SarcadeHttpException('places_describe',r.statusCode);
     return Map<String,dynamic>.from(jsonDecode(r.body) as Map);
   }
   /// Routes with ordered waypoints, lengths and passages.

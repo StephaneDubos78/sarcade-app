@@ -99,7 +99,7 @@ async function joinEvent(page, { eventName, deviceId }) {
 
 async function openMessages(page) {
   await page.getByRole('button', { name: 'Messages', exact: true }).click();
-  await expect(page.getByLabel('Short message')).toBeVisible();
+  await expect(page.getByLabel('Message', { exact: true })).toBeVisible();
 }
 
 /** Sends a message from the messages screen (general broadcast by default). */
@@ -109,12 +109,13 @@ async function sendMessage(page, body, { priority = 'Urgent' } = {}) {
   // proof is the message card shown by Flutter (not the DOM value, which
   // Flutter may not have taken).
   await expect(async () => {
-    const field = page.getByLabel('Short message');
+    const field = page.getByLabel('Message', { exact: true });
     await field.click();
     await page.keyboard.press('Control+A');
     await page.keyboard.press('Delete');
     await page.keyboard.type(body, { delay: 10 });
-    await page.getByRole('button', { name: /^(Routine|Urgent|Immediate)$/ }).click();
+    // Bar like WhatsApp (29 Oct 2026): the priority is in the « + » menu.
+    await page.getByRole('button', { name: 'Predefined messages, photo and priority' }).click();
     await page.getByRole('menuitem', { name: priority }).click();
     await page.getByRole('button', { name: 'Send', exact: true }).click();
     await expect(messageCard(page, body)).toBeVisible({ timeout: 8_000 });

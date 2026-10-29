@@ -104,7 +104,10 @@ class OfflineSyncService {
       for(final c in feed.changes){
         final p=Map<String,dynamic>.from(c['payload']);
         if(c['object_type']=='position') await store.cachePosition(p);
-        if(c['object_type']=='poi') await store.cachePoi(p);
+        if(c['object_type']=='poi'&&!isPending(c['object_id'] as String)){
+          if(p['deleted']==true){await store.deletePoi(c['object_id'] as String);}
+          else if(c['action']=='create'||p['lat']!=null){await store.cachePoi(p);}
+        }
         if(c['object_type']=='message') await store.cacheMessage(p);
         if(c['object_type']=='ack') await store.cacheAck(p);
         // A pending local change wins locally until the server has ruled on it.
@@ -120,6 +123,8 @@ class OfflineSyncService {
           if(p['deleted']==true){await store.deleteGroup(c['object_id'] as String);}
           else{await store.saveGroup(p);}
         }
+        // A deletion only updates the cache (the open screens follow it).
+        if(c['object_type']=='message'&&c['action']=='delete')continue;
         onRemoteChange?.call(c['object_type'] as String,p);
       }
       await store.setCursor(eventId,feed.nextCursor);
