@@ -28,6 +28,7 @@ class S {
 }
 
 const Texts _fr={
+  'draw.geofence':'Géorepérage','draw.geofenceOn':'Géorepérage : prévenir le PCO à l’entrée ou à la sortie','draw.geofenceOff':'Arrêter le géorepérage',
   'favourites.only':'Favoris','favourites.none':'Aucun favori : touchez l’étoile d’un opérateur','teams.active':'Actifs','teams.silent':'Sans nouvelles','teams.old':'Anciens',
   'operators.none':'Aucun opérateur',
   'bearings.signal':'Signal recherché','bearings.signalNew':'Nouveau signal','bearings.colorBy':'Colorer les relevés par','bearings.colorSignal':'Signal','bearings.colorOperator':'Opérateur',
@@ -266,6 +267,7 @@ const Texts _fr={
 };
 
 const Texts _en={
+  'draw.geofence':'Geofence','draw.geofenceOn':'Geofence: warn the PCO when a team enters or leaves','draw.geofenceOff':'Stop the geofence',
   'favourites.only':'Favourites','favourites.none':'No favourite: tap the star of an operator','teams.active':'Active','teams.silent':'No news','teams.old':'Old',
   'operators.none':'No operator',
   'bearings.signal':'Signal searched','bearings.signalNew':'New signal','bearings.colorBy':'Colour bearings by','bearings.colorSignal':'Signal','bearings.colorOperator':'Operator',

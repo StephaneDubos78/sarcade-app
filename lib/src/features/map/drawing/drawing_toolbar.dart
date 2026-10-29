@@ -114,7 +114,9 @@ class DraftBar extends StatelessWidget {
 class SelectionBar extends StatelessWidget {
   final DrawingController controller;
   final Future<void> Function() onEditLabel;
-  const SelectionBar({super.key,required this.controller,required this.onEditLabel});
+  /// PCO: a closed shape can become a géorepérage.
+  final bool canFence;
+  const SelectionBar({super.key,required this.controller,required this.onEditLabel,this.canFence=false});
 
   String? _info(MapFeature f){
     if(f.kind==FeatureKind.circle)return '${S.t('draw.radius')} ${formatDistance(f.radiusM??0)} · ${formatArea(f.areaM2)}';
@@ -133,7 +135,7 @@ class SelectionBar extends StatelessWidget {
         padding:const EdgeInsets.symmetric(horizontal:6,vertical:2),
         child:Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.start,children:[
           Padding(padding:const EdgeInsets.fromLTRB(8,6,8,0),child:Text(
-            [f.kind.label,if(f.label.isNotEmpty&&f.kind!=FeatureKind.text)f.label,?info].join(' · '),
+            [f.kind.label,if(f.label.isNotEmpty&&f.kind!=FeatureKind.text)f.label,?info,if(f.geofence)S.t('draw.geofence')].join(' · '),
             maxLines:1,overflow:TextOverflow.ellipsis,style:Theme.of(context).textTheme.labelLarge,
           )),
           SingleChildScrollView(scrollDirection:Axis.horizontal,child:Row(mainAxisSize:MainAxisSize.min,children:[
@@ -148,6 +150,9 @@ class SelectionBar extends StatelessWidget {
               child:const Padding(padding:EdgeInsets.all(10),child:Icon(Icons.line_weight)),
             ),
             IconButton(tooltip:f.kind==FeatureKind.text?S.t('draw.editText'):S.t('groups.name'),onPressed:onEditLabel,icon:const Icon(Icons.edit_outlined)),
+            // Géorepérage (PCO): alert when a team enters or leaves the zone.
+            if(f.isClosed&&canFence)IconButton(tooltip:S.t(f.geofence?'draw.geofenceOff':'draw.geofenceOn'),onPressed:c.toggleGeofence,
+              isSelected:f.geofence,icon:Icon(f.geofence?Icons.notifications_active:Icons.notifications_none_outlined)),
             IconButton(tooltip:S.t('draw.duplicate'),onPressed:c.duplicateSelected,icon:const Icon(Icons.copy_all_outlined)),
             IconButton(tooltip:S.t('routes.delete'),onPressed:c.deleteSelected,icon:const Icon(Icons.delete_outline),color:Colors.red.shade700),
             IconButton(tooltip:S.t('draw.deselect'),onPressed:()=>c.select(null),icon:const Icon(Icons.close)),

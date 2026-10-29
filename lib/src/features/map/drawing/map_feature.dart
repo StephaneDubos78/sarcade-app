@@ -54,13 +54,16 @@ class MapFeature {
   /// Author of the last change, tie-break of the conflict rule (ADR-001).
   final String? updatedBy;
   final DateTime updatedAt;
+  /// Géorepérage (ATAK 5): the PCO is warned when a team enters or leaves
+  /// this zone, rectangle or circle (checked by the server).
+  final bool geofence;
 
-  const MapFeature({required this.id,required this.eventId,required this.kind,required this.points,this.radiusM,required this.color,required this.strokeWidth,this.label='',this.createdBy,this.updatedBy,required this.updatedAt});
+  const MapFeature({required this.id,required this.eventId,required this.kind,required this.points,this.radiusM,required this.color,required this.strokeWidth,this.label='',this.createdBy,this.updatedBy,required this.updatedAt,this.geofence=false});
 
-  MapFeature copyWith({List<LatLng>? points,double? radiusM,int? color,double? strokeWidth,String? label,String? id,String? updatedBy,DateTime? updatedAt})=>MapFeature(
+  MapFeature copyWith({List<LatLng>? points,double? radiusM,int? color,double? strokeWidth,String? label,String? id,String? updatedBy,DateTime? updatedAt,bool? geofence})=>MapFeature(
     id:id??this.id,eventId:eventId,kind:kind,points:points??this.points,radiusM:radiusM??this.radiusM,
     color:color??this.color,strokeWidth:strokeWidth??this.strokeWidth,label:label??this.label,createdBy:createdBy,
-    updatedBy:updatedBy??this.updatedBy,updatedAt:updatedAt??DateTime.now().toUtc(),
+    updatedBy:updatedBy??this.updatedBy,updatedAt:updatedAt??DateTime.now().toUtc(),geofence:geofence??this.geofence,
   );
 
   /// Vertices of the polygon outline for closed shapes.
@@ -97,6 +100,7 @@ class MapFeature {
     'points':points.map((p)=>[p.latitude,p.longitude]).toList(),
     'radius_m':radiusM,'color':color,'stroke_width':strokeWidth,'label':label,
     'created_by':createdBy,'updated_by':updatedBy??createdBy,'updated_at':updatedAt.toUtc().toIso8601String(),
+    if(geofence)'geofence':true,
   };
 
   factory MapFeature.fromJson(Map<String,dynamic> j)=>MapFeature(
@@ -106,7 +110,7 @@ class MapFeature {
     radiusM:(j['radius_m'] as num?)?.toDouble(),
     color:(j['color'] as num).toInt(),strokeWidth:(j['stroke_width'] as num).toDouble(),
     label:(j['label'] as String?)??'',createdBy:j['created_by'] as String?,updatedBy:j['updated_by'] as String?,
-    updatedAt:DateTime.parse(j['updated_at'] as String),
+    updatedAt:DateTime.parse(j['updated_at'] as String),geofence:j['geofence']==true,
   );
 
   /// GeoJSON Feature. Coordinates are [longitude, latitude] as the spec requires.
