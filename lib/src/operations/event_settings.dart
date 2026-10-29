@@ -80,7 +80,10 @@ enum UpdateStatus{ok,invited,deferred,required}
 class ClientUpdate {
   final UpdateStatus status; final String? minVersion; final DateTime? deadline;
   final String? packageUrl, packageVersion, packageSha256;
-  const ClientUpdate({this.status=UpdateStatus.ok,this.minVersion,this.deadline,this.packageUrl,this.packageVersion,this.packageSha256});
+  /// Last version published on the store of this phone (Google Play,
+  /// TestFlight), given by the server; never an obligation.
+  final StoreRelease? latest;
+  const ClientUpdate({this.status=UpdateStatus.ok,this.minVersion,this.deadline,this.packageUrl,this.packageVersion,this.packageSha256,this.latest});
 
   factory ClientUpdate.fromJson(Map<String,dynamic>? j){
     if(j==null)return const ClientUpdate();
@@ -89,11 +92,32 @@ class ClientUpdate {
     final pkg=j['package'] is Map?Map<String,dynamic>.from(j['package'] as Map):null;
     return ClientUpdate(status:status,minVersion:j['min_version'] as String?,
       deadline:j['deadline']==null?null:DateTime.tryParse('${j['deadline']}'),
-      packageUrl:pkg?['url'] as String?,packageVersion:pkg?['version'] as String?,packageSha256:pkg?['sha256'] as String?);
+      packageUrl:pkg?['url'] as String?,packageVersion:pkg?['version'] as String?,packageSha256:pkg?['sha256'] as String?,
+      latest:StoreRelease.fromJson(j['latest']));
   }
 
   /// Version to install: the package offered by the local server, or the minimum.
   String get targetVersion=>packageVersion??minVersion??'';
+}
+
+/// Version published on Google Play or TestFlight (« client_update.latest »).
+class StoreRelease {
+  final String version; final int? build; final String? url;
+  const StoreRelease({required this.version,this.build,this.url});
+  static StoreRelease? fromJson(Object? j){
+    if(j is! Map||j['version'] is! String||(j['version'] as String).isEmpty)return null;
+    return StoreRelease(version:j['version'] as String,build:(j['build'] as num?)?.toInt(),url:j['url'] as String?);
+  }
+  /// Newer than the running application: version first, then build number.
+  bool newerThan(String version,String build){
+    List<int> parts(String v)=>[for(final p in v.split(RegExp(r'[-+]')).first.split('.'))int.tryParse(RegExp(r'^\d*').stringMatch(p)??'')??0];
+    final a=parts(this.version), b=parts(version);
+    for(var i=0;i<3;i++){
+      final x=i<a.length?a[i]:0, y=i<b.length?b[i]:0;
+      if(x!=y)return x>y;
+    }
+    return (this.build??0)>(int.tryParse(build)??0);
+  }
 }
 
 /// Platform name sent to the server, matching its client packages.

@@ -30,6 +30,8 @@ class NotificationService {
   /// The operator has not answered yet: show the banner.
   bool get needsUserAction=>_permission=='default';
   bool bypassDnd=false;
+  /// Sound by priority (see [soundFor]): a browser only knows silent or not.
+  Map<String,String> sounds={};
   final _opens=StreamController<String>.broadcast();
   final _answers=StreamController<void>.broadcast();
   final Map<String,List<Timer>> _timers={};
@@ -53,10 +55,18 @@ class NotificationService {
 
   Future<bool> enableDndBypass() async=>false;
 
+  /// Allowed (true), refused or not asked yet (false), unsupported (null).
+  Future<bool?> permissionGranted() async=>_permission=='unsupported'?null:_permission=='granted';
+  /// The browser asks again only while the operator has not answered.
+  Future<void> openPermissionSettings() async {await requestFromUser();}
+  /// Refused once: only the site settings of the browser can change it.
+  bool get permissionBlocked=>_permission=='denied';
+
   void _show(String title,String body,String priority,NotificationPayload? payload){
     final n=web.Notification(title,web.NotificationOptions(body:body,
       tag:payload==null?'sarcade-${DateTime.now().millisecondsSinceEpoch}':'sarcade-${payload.messageId}',
-      requireInteraction:isUrgentPriority(priority)));
+      requireInteraction:isUrgentPriority(priority),
+      silent:const {soundSilent,soundDiscreet}.contains(soundFor(priority,sounds,sos:isSosBody(body)))));
     if(payload!=null){
       n.onclick=((web.Event _){
         web.window.focus();

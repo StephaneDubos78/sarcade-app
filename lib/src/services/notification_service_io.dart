@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:timezone/timezone.dart' as tz;
+import 'package:url_launcher/url_launcher.dart';
 import 'package:uuid/uuid.dart';
 import '../l10n/strings.dart';
 import 'notification_actions.dart';
@@ -28,6 +29,18 @@ final _immediateDndChannel=AndroidNotificationChannel('sarcade_immediate_dnd','M
   description:'Messages immédiats, même en mode Ne pas déranger',importance:Importance.max,bypassDnd:true,
   sound:const UriAndroidNotificationSound('content://settings/system/alarm_alert'),
   vibrationPattern:Int64List.fromList([0,700,300,700,300,700]));
+
+/// Routine without sound, with or without vibration, and urgent or
+/// immediate with the other sound (an Android channel keeps its sound).
+const _routineSilentChannel=AndroidNotificationChannel('sarcade_routine_silent','Messages (silencieux)',
+  description:'Messages de routine sans son ni vibration',importance:Importance.low,playSound:false,enableVibration:false);
+const _routineDiscreetChannel=AndroidNotificationChannel('sarcade_routine_discreet','Messages (discret)',
+  description:'Messages de routine en vibration seule',importance:Importance.defaultImportance,playSound:false);
+const _urgentAlarmChannel=AndroidNotificationChannel('sarcade_urgent_alarm','Messages urgents (alarme)',
+  description:'Messages urgents avec le son d’alarme',importance:Importance.max,
+  sound:UriAndroidNotificationSound('content://settings/system/alarm_alert'));
+const _immediateNormalChannel=AndroidNotificationChannel('sarcade_immediate_normal','Messages immédiats (son normal)',
+  description:'Messages immédiats avec le son de notification',importance:Importance.max);
 
 const _answersFileName='sarcade_notification_answers.jsonl';
 const _launchFileName='sarcade_notification_launch.txt';
@@ -103,6 +116,8 @@ class NotificationService {
   bool _ready=false; int _id=0;
   /// Consent of the operator to ring immediate messages in Do Not Disturb.
   bool bypassDnd=false;
+  /// Sound by priority (see [soundFor]), set from the device preferences.
+  Map<String,String> sounds={};
   final _opens=StreamController<String>.broadcast();
   final _answers=StreamController<void>.broadcast();
   final Map<String,List<Timer>> _timers={};
@@ -190,10 +205,43 @@ class NotificationService {
     }
   }
 
-  Future<AndroidNotificationChannel> _channelFor(String priority) async {
+  /// Notifications allowed: true or false; null when the system does not say
+  /// (Windows, Linux).
+  Future<bool?> permissionGranted() async {
+    try{
+      final android=_plugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+      if(android!=null)return await android.areNotificationsEnabled();
+      final ios=_plugin.resolvePlatformSpecificImplementation<IOSFlutterLocalNotificationsPlugin>();
+      if(ios!=null)return (await ios.checkPermissions())?.isEnabled;
+    }catch(_){/* unknown */}
+    return null;
+  }
+
+  bool get permissionBlocked=>false;
+  /// Asks again (Android 13+), else opens the settings of SARCADE (iPhone).
+  Future<void> openPermissionSettings() async {
+    try{
+      final android=_plugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+      if(android!=null){await android.requestNotificationsPermission();return;}
+      if(defaultTargetPlatform==TargetPlatform.iOS)await launchUrl(Uri.parse('app-settings:'));
+    }catch(_){/* nothing to open */}
+  }
+
+  Future<AndroidNotificationChannel> _channelFor(String priority,String sound) async {
+    final android=_plugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+    Future<AndroidNotificationChannel> created(AndroidNotificationChannel c) async {
+      try{await android?.createNotificationChannel(c);}catch(_){/* channel kept */}
+      return c;
+    }
+    if(!isUrgentPriority(priority)){
+      if(sound==soundSilent)return created(_routineSilentChannel);
+      if(sound==soundDiscreet)return created(_routineDiscreetChannel);
+      return _routineChannel;
+    }
+    if(priority=='urgent')return sound==soundAlarm?created(_urgentAlarmChannel):_urgentChannel;
+    if(sound==soundNormal)return created(_immediateNormalChannel);
     if(priority=='immediate'){
       if(bypassDnd){
-        final android=_plugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
         try{
           if(await android?.hasNotificationPolicyAccess()==true){
             await android?.createNotificationChannel(_immediateDndChannel);
@@ -203,21 +251,24 @@ class NotificationService {
       }
       return _immediateChannel;
     }
-    return isUrgentPriority(priority)?_urgentChannel:_routineChannel;
+    return _urgentChannel;
   }
 
-  Future<NotificationDetails> _details(String priority,NotificationPayload? payload) async {
+  Future<NotificationDetails> _details(String priority,NotificationPayload? payload,{bool sos=false}) async {
     final urgent=isUrgentPriority(priority), immediate=priority=='immediate';
-    final channel=await _channelFor(priority);
+    final sound=soundFor(priority,sounds,sos:sos);
+    final quiet=sound==soundSilent||sound==soundDiscreet;
+    final channel=await _channelFor(sos?'immediate':priority,sound);
     final actions=payload==null?const <String>[]:actionsFor(priority);
     return NotificationDetails(
       android:AndroidNotificationDetails(channel.id,channel.name,channelDescription:channel.description,
         importance:channel.importance,priority:urgent?Priority.max:Priority.defaultPriority,
         category:urgent?AndroidNotificationCategory.message:null,
-        sound:channel.sound,vibrationPattern:channel.vibrationPattern,
+        sound:channel.sound,vibrationPattern:channel.vibrationPattern,playSound:channel.playSound,enableVibration:channel.enableVibration,
         audioAttributesUsage:channel.audioAttributesUsage,
         actions:[for(final a in actions)AndroidNotificationAction(a,S.t('notif.action.$a'),showsUserInterface:a==actionOpen)]),
-      iOS:DarwinNotificationDetails(interruptionLevel:urgent?InterruptionLevel.timeSensitive:InterruptionLevel.active,
+      iOS:DarwinNotificationDetails(interruptionLevel:urgent?InterruptionLevel.timeSensitive:(quiet?InterruptionLevel.passive:InterruptionLevel.active),
+        presentSound:!quiet,
         categoryIdentifier:payload==null?null:(urgent?'sarcade_urgent':'sarcade_routine')),
       macOS:DarwinNotificationDetails(categoryIdentifier:payload==null?null:(urgent?'sarcade_urgent':'sarcade_routine')),
       linux:LinuxNotificationDetails(urgency:urgent?LinuxNotificationUrgency.critical:LinuxNotificationUrgency.normal,
@@ -236,7 +287,7 @@ class NotificationService {
     if(!_ready){debugPrint('SARCADE notification [$priority] $title: $body');return;}
     try{
       final id=payload==null?(_id++ & 0x0fffffff)|0x40000000:notificationIdFor(payload.messageId);
-      await _plugin.show(id,title,body,await _details(priority,payload),payload:payload?.encode());
+      await _plugin.show(id,title,body,await _details(priority,payload,sos:isSosBody(body)),payload:payload?.encode());
       if(priority=='immediate'&&payload!=null)await _scheduleReminders(title,body,payload);
     }catch(e){
       debugPrint('SARCADE notification failed: $e');
@@ -244,7 +295,7 @@ class NotificationService {
   }
 
   Future<void> _scheduleReminders(String title,String body,NotificationPayload payload) async {
-    final details=await _details(payload.priority,payload);
+    final details=await _details(payload.priority,payload,sos:isSosBody(body));
     final times=reminderTimes(DateTime.now().toUtc());
     for(var k=1;k<=times.length;k++){
       final reminderTitle=S.t('notif.reminder',{'n':k,'total':times.length,'title':title});

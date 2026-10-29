@@ -7,6 +7,7 @@ import '../../config/app_config.dart';
 import '../../config/saved_servers.dart';
 import '../../config/version.dart';
 import 'about_page.dart';
+import 'notifications_panel.dart';
 import '../../ui/theme.dart' show themeMode;
 import '../map/drawing/drawing_controller.dart' show drawingPalette, defaultDrawColor;
 import '../../l10n/strings.dart';
@@ -470,7 +471,7 @@ class _SettingsPageState extends State<SettingsPage> {
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(S.t('settings.dndPending'))));
         }
       }))),
-    _row(S.t('wakeup.test'),help:S.t('settings.wakeupWhere'),child:const SizedBox.shrink()),
+    NotificationsPanel(api:widget.api,eventId:widget.initial.eventId,deviceId:widget.initial.deviceId,store:widget.store,row:_row),
   ]);
 
   /// Active session only: what is shown does not depend on unsaved edits.
@@ -490,6 +491,7 @@ class _SettingsPageState extends State<SettingsPage> {
           if(c.mounted)ScaffoldMessenger.of(c).showSnackBar(SnackBar(content:Text(S.t('common.copied'))));
         })]);
     })),
+    if(VersionStatus.shown)const Padding(padding:EdgeInsets.only(bottom:12),child:VersionStatus()),
   ]);
 
   Widget _tabBody(String id)=>switch(id){

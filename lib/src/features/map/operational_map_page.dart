@@ -42,6 +42,7 @@ import 'drawing/hit_test.dart';
 import 'drawing/import_formats.dart';
 import 'drawing/map_feature.dart';
 import '../../services/wakeup_fcm.dart';
+import '../../services/wakeup_state.dart';
 import '../../services/notification_service.dart';
 import '../../services/location_service.dart';
 import '../../services/realtime_service.dart';
@@ -207,7 +208,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       _realtime.connect(widget.api.websocketUri(widget.eventId),headers:widget.api.realtimeHeaders);
       await _rtSub?.cancel();
       _rtSub=_realtime.events.listen(_onRealtime);
-      unawaited(_registerWakeup());
+      registerWakeupHook=_wakeupNoted;
+      unawaited(_wakeupNoted());
       if(mounted){setState(()=>_started=true);if(_savedView==null)WidgetsBinding.instance.addPostFrameCallback((_)=>_fitOperators());}
     } catch(e){if(mounted)setState((){});} finally {_starting=false;}
   }
@@ -879,16 +881,9 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
 
   StreamSubscription<String>? _fcmRefresh; StreamSubscription<Map<String,dynamic>>? _fcmForeground;
 
-  /// « Tester le réveil »: the server sends a signal to this device only.
-  Future<void> _testWakeup() async {
-    await _registerWakeup();
-    String text;
-    try{
-      final r=await widget.api.testWakeup(widget.eventId,widget.deviceId);
-      text=((r['sent'] as num?)??0)>0?S.t('wakeup.sent'):S.t('wakeup.none');
-    }catch(_){text=S.t('wakeup.failed');}
-    if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(text)));
-  }
+  /// Registration remembered for Paramètres › Notifications (« Tester le
+  /// réveil » moved there, 29 Oct 2026).
+  Future<bool> _wakeupNoted() async=>wakeupRegistered.value=await _registerWakeup();
 
   /// Unread messages: count on the Messages button, red when one is urgent.
   /// The first time on this device every existing message counts as seen.
@@ -1471,8 +1466,6 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         if(unsent>0||_sync.inFlight>0||state!=ServerLink.direct)ListTile(leading:const Icon(Icons.info_outline),title:Text(_statusLine)),
         ListTile(leading:const Icon(Icons.sync),title:Text(S.t('map.sync')),onTap:() async {Navigator.pop(c);await _sync.syncNow();if(mounted)setState((){});}),
         ListTile(leading:const Icon(Icons.outbox_outlined),title:Text('${S.t('unsent.title')} ($unsent)'),onTap:(){Navigator.pop(c);_openUnsent();}),
-        if(isWebPlatform||fcmAvailable)ListTile(leading:const Icon(Icons.notifications_active_outlined),title:Text(S.t('wakeup.test')),subtitle:Text(S.t('wakeup.testHelp')),
-          onTap:(){Navigator.pop(c);unawaited(_testWakeup());}),
         if(access)ListTile(leading:const Icon(Icons.lock_outline),title:Text(S.t('links.signInAgain')),onTap:(){Navigator.pop(c);_signIn();}),
       ]))),
       child:Container(height:48,padding:const EdgeInsets.symmetric(horizontal:14),decoration:glass(context,radius:24),
@@ -2070,7 +2063,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     child:child,
   );
 
-  @override void dispose(){if(currentMapView==_tvView)currentMapView=null;if(currentMapOptions==_tvOptions)currentMapOptions=null;_headingSub?.cancel();_webUpdateTimer?.cancel();_saveViewTimer?.cancel();_bearings.dispose();_positionsTimer?.cancel();_meSub?.cancel();_mapEvents?.cancel();AccessManager.instance.removeListener(_onAccessChanged);_fcmRefresh?.cancel();_fcmForeground?.cancel();_opensSub?.cancel();_answersSub?.cancel();_rtSub?.cancel();_tracking.removeListener(_onOperationsChanged);_ops.removeListener(_onOperationsChanged);_tracking.dispose();_ops.dispose();_routes.removeListener(_onRoutesChanged);_nav.removeListener(_onNavigationChanged);_variantHits.dispose();_bearingHits.dispose();_routes.dispose();_nav.dispose();_graphs.removeListener(_onRoutesChanged);_graphs.dispose();_measure.removeListener(_onRoutesChanged);_measure.dispose();_syncUiTimer?.cancel();_sync.dispose();_realtime.dispose();_drawing.dispose();_resectionCtl.dispose();widget.api.close();super.dispose();}
+  @override void dispose(){if(currentMapView==_tvView)currentMapView=null;if(currentMapOptions==_tvOptions)currentMapOptions=null;_headingSub?.cancel();_webUpdateTimer?.cancel();_saveViewTimer?.cancel();_bearings.dispose();_positionsTimer?.cancel();_meSub?.cancel();_mapEvents?.cancel();AccessManager.instance.removeListener(_onAccessChanged);_fcmRefresh?.cancel();_fcmForeground?.cancel();if(registerWakeupHook==_wakeupNoted)registerWakeupHook=null;_opensSub?.cancel();_answersSub?.cancel();_rtSub?.cancel();_tracking.removeListener(_onOperationsChanged);_ops.removeListener(_onOperationsChanged);_tracking.dispose();_ops.dispose();_routes.removeListener(_onRoutesChanged);_nav.removeListener(_onNavigationChanged);_variantHits.dispose();_bearingHits.dispose();_routes.dispose();_nav.dispose();_graphs.removeListener(_onRoutesChanged);_graphs.dispose();_measure.removeListener(_onRoutesChanged);_measure.dispose();_syncUiTimer?.cancel();_sync.dispose();_realtime.dispose();_drawing.dispose();_resectionCtl.dispose();widget.api.close();super.dispose();}
 
   /// Current view, for « Envoyer ma vue » on a TV (Paramètres › Affichage › Écrans).
   TvView? _tvView(){

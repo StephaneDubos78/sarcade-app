@@ -15,6 +15,7 @@ import 'offline/sync_service.dart';
 import 'l10n/strings.dart';
 import 'operations/event_settings.dart';
 import 'services/notification_service.dart';
+import 'features/settings/notifications_panel.dart' show readSoundPrefs;
 
 class SarcadeApp extends StatefulWidget {
   final LocalStore store;
@@ -51,6 +52,7 @@ class _SarcadeAppState extends State<SarcadeApp> {
   void _applyLanguage(){
     S.setLanguage(_config.language,systemLanguage:WidgetsBinding.instance.platformDispatcher.locale.languageCode);
     NotificationService().bypassDnd=_config.immediateBypassDnd;
+    NotificationService().sounds=readSoundPrefs(widget.store);
   }
 
   static String get _platform=>platformName(isWeb:kIsWeb,targetPlatform:defaultTargetPlatform.name);

@@ -6,6 +6,7 @@ import '../offline/local_store.dart';
 import '../offline/sync_service.dart';
 import '../services/sarcade_api.dart';
 import 'event_settings.dart';
+import 'version_state.dart';
 
 /// Heartbeat of the device (note « Synchronisation client-serveur »): tells
 /// the PCO the last contact, the items waiting in the Outbox and the tracking
@@ -64,7 +65,7 @@ class OperationsService extends ChangeNotifier {
       final wasLow=settings.lowBandwidth, wasInterval=settings.lowBandwidthIntervalS;
       settings=EventSettings.fromHeartbeat(answer);
       serverTrackingIntervalS=(answer['tracking_interval_s'] as num?)?.toInt();
-      if(answer['client_update'] is Map)update=ClientUpdate.fromJson(Map<String,dynamic>.from(answer['client_update'] as Map));
+      if(answer['client_update'] is Map){update=ClientUpdate.fromJson(Map<String,dynamic>.from(answer['client_update'] as Map));latestRelease.value=update.latest;}
       await _saveOrganization(answer['organization']);
       lastContact=DateTime.now().toUtc();
       await store.saveEventSettings(eventId,settings.toJson());
@@ -82,6 +83,7 @@ class OperationsService extends ChangeNotifier {
     try{
       final j=await api.clientCheck(deviceId,platform,appVersion);
       update=ClientUpdate.fromJson(j);
+      latestRelease.value=update.latest;
       await _saveOrganization(j['organization']);
       notifyListeners();
     }catch(_){/* checked again with the heartbeats */}

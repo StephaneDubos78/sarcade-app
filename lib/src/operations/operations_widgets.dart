@@ -45,9 +45,12 @@ class OperationsBanners extends StatelessWidget {
       if(onReload!=null)_Banner(icon:Icons.refresh,color:Colors.orange.shade100,
         text:S.t('access.webExpired'),
         action:TextButton(onPressed:onReload,child:Text(S.t('access.reload')))),
-      if(onWebUpdate!=null)_Banner(icon:Icons.system_update_alt,color:scheme.primaryContainer,
+      // Night blue, white text, lighter blue button (29 Oct 2026).
+      if(onWebUpdate!=null)_Banner(icon:Icons.system_update_alt,color:webUpdateBannerColor,foreground:Colors.white,
         text:S.t('webUpdate.available'),
-        action:FilledButton.tonal(onPressed:onWebUpdate,child:Text(S.t('webUpdate.reload')))),
+        action:FilledButton(onPressed:onWebUpdate,
+          style:FilledButton.styleFrom(backgroundColor:webUpdateButtonColor,foregroundColor:Colors.white),
+          child:Text(S.t('webUpdate.reload')))),
       if(onEnableNotifications!=null)_Banner(icon:Icons.notifications_active_outlined,color:scheme.secondaryContainer,
         text:S.t('notifications.prompt'),
         action:Row(mainAxisSize:MainAxisSize.min,children:[
@@ -72,12 +75,15 @@ class OperationsBanners extends StatelessWidget {
   }
 }
 
+const webUpdateBannerColor=Color(0xFF14213D), webUpdateButtonColor=Color(0xFF3D7BFF);
+
 class _Banner extends StatelessWidget {
-  final IconData icon; final Color color; final String text; final Widget? action;
-  const _Banner({required this.icon,required this.color,required this.text,this.action});
+  final IconData icon; final Color color; final String text; final Widget? action; final Color? foreground;
+  const _Banner({required this.icon,required this.color,required this.text,this.action,this.foreground});
   @override Widget build(BuildContext context)=>Material(color:color,child:Padding(
     padding:const EdgeInsets.symmetric(horizontal:12,vertical:6),
-    child:Row(children:[Icon(icon,size:18),const SizedBox(width:8),Expanded(child:Text(text,style:Theme.of(context).textTheme.bodySmall)),?action]),
+    child:Row(children:[Icon(icon,size:18,color:foreground),const SizedBox(width:8),
+      Expanded(child:Text(text,style:Theme.of(context).textTheme.bodySmall?.copyWith(color:foreground))),?action]),
   ));
 }
 
