@@ -55,4 +55,20 @@ void main() {
     expect(operatorInitials('f4jpo-7'), 'F4');
     expect(operatorInitials('PC'), 'PC');
   });
+  test('résection: position from azimuths towards known points', () {
+    const team = LatLng(48.80, 1.90);
+    final a = geo.destination(team, 5000, 30), c = geo.destination(team, 7000, 150), d = geo.destination(team, 4000, 270);
+    final r = resection([
+      (known: a, azimuthDeg: geo.bearingDeg(team, a)),
+      (known: c, azimuthDeg: geo.bearingDeg(team, c)),
+      (known: d, azimuthDeg: geo.bearingDeg(team, d)),
+    ]);
+    expect(geo.distanceM(r.centre!, team), lessThan(60));
+  });
+  test('time of a bearing changed afterwards', () {
+    final t = DateTime(2026, 10, 29, 9, 0).toUtc();
+    expect(hhmm(withHhmm(t, '14:05')), '14:05');
+    expect(hhmm(withHhmm(t, '14h05')), '14:05');
+    expect(withHhmm(t, 'n’importe'), t);
+  });
 }

@@ -28,6 +28,10 @@ class S {
 }
 
 const Texts _fr={
+  'bearings.adjust':'Ajuster sur la carte','bearings.adjustHelp':'Touchez la carte pour orienter la ligne · appui long pour déplacer le point de prise','bearings.time':'Heure du relevé',
+  'distress.title':'Détresse','distress.help':'Envoie à tous un message immédiat avec votre position et réveille les appareils. Maintenez le bouton 2 secondes.','distress.hold':'Maintenir : DÉTRESSE','distress.body':'🆘 DÉTRESSE — {who} — position {pos}','distress.noPosition':'inconnue','distress.sent':'Détresse envoyée à tous','distress.active':'Détresse en cours — toucher pour terminer','distress.end':'Terminer la détresse','distress.endTitle':'Terminer la détresse ?','distress.endBody':'Fin de détresse — {who}',
+  'resection.title':'Résection','resection.help':'Azimut vrai mesuré depuis votre position vers deux ou trois points connus.','resection.point':'Point connu','resection.pointOptional':'Troisième point (facultatif)','resection.compute':'Calculer','resection.none':'Pas de position : vérifiez les points et les azimuts','resection.found':'Position estimée à ±{r}','resection.noRefs':'Il faut au moins deux points hauts ou relais dans le référentiel',
+  'layers.terrain':'Terrain','layers.operation':'Opération','layers.reference':'Référentiel ADRASEC',
   'quick.title':'Messages prédéfinis','quick.inPlace':'En place','quick.signalHeard':'Signal entendu','quick.signalLost':'Signal perdu','quick.backToPco':'Retour PCO','quick.needHelp':'Besoin d’assistance','quick.copy':'Bien reçu',
   'groups.addAdrasec':'Ajouter les canaux du modèle ADRASEC','groups.addedAdrasec':'{n} canal(aux) ajouté(s)',
   'messages.everyone':'Tous','messages.you':'Vous','messages.info':'Infos : reçu et lu par','messages.noAck':'Pas encore d’accusé','messages.copy':'Copier','messages.copied':'Message copié','messages.reply':'Discuter avec {who}','messages.ackSummary':'✓✓ lu par {r} · reçu par {n}','messages.empty':'Aucun message dans cette conversation','operators.chat':'Discuter',
@@ -274,6 +278,10 @@ const Texts _fr={
 };
 
 const Texts _en={
+  'bearings.adjust':'Adjust on the map','bearings.adjustHelp':'Tap the map to turn the line · long press to move where it was taken','bearings.time':'Time of the bearing',
+  'distress.title':'Distress','distress.help':'Sends everyone an immediate message with your position and wakes the devices. Hold the button 2 seconds.','distress.hold':'Hold: DISTRESS','distress.body':'🆘 DISTRESS — {who} — position {pos}','distress.noPosition':'unknown','distress.sent':'Distress sent to everyone','distress.active':'Distress in progress — tap to end','distress.end':'End the distress','distress.endTitle':'End the distress?','distress.endBody':'End of distress — {who}',
+  'resection.title':'Resection','resection.help':'True azimuth measured from your position towards two or three known points.','resection.point':'Known point','resection.pointOptional':'Third point (optional)','resection.compute':'Compute','resection.none':'No position: check the points and azimuths','resection.found':'Position estimated within ±{r}','resection.noRefs':'At least two high points or relays are needed in the reference',
+  'layers.terrain':'Field','layers.operation':'Operation','layers.reference':'ADRASEC reference',
   'quick.title':'Predefined messages','quick.inPlace':'In place','quick.signalHeard':'Signal heard','quick.signalLost':'Signal lost','quick.backToPco':'Back to the PCO','quick.needHelp':'Need assistance','quick.copy':'Copy, received',
   'groups.addAdrasec':'Add the channels of the ADRASEC model','groups.addedAdrasec':'{n} channel(s) added',
   'messages.everyone':'Everyone','messages.you':'You','messages.info':'Info: received and read by','messages.noAck':'No acknowledgement yet','messages.copy':'Copy','messages.copied':'Message copied','messages.reply':'Chat with {who}','messages.ackSummary':'✓✓ read by {r} · received by {n}','messages.empty':'No message in this conversation','operators.chat':'Chat',

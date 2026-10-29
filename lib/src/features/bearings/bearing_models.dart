@@ -50,10 +50,11 @@ class Bearing {
       if(magneticDeg!=null)'magnetic_deg':magneticDeg,if(declinationDeg!=null)'declination_deg':declinationDeg,if(accuracyM!=null)'accuracy_m':accuracyM,if(operatorColor!=null)'operator_color':operatorColor}};
 
   Bearing copyWith({double? azimuthDeg,double? coneDeg,double? lengthM,int? strength,String? target,String? comment,String? search,
-      required String updatedBy,required DateTime updatedAt})=>Bearing(id:id,eventId:eventId,origin:origin,
+      LatLng? origin,String? method,DateTime? takenAt,
+      required String updatedBy,required DateTime updatedAt})=>Bearing(id:id,eventId:eventId,origin:origin??this.origin,
     azimuthDeg:azimuthDeg??this.azimuthDeg,lengthM:lengthM??this.lengthM,coneDeg:coneDeg??this.coneDeg,strength:strength??this.strength,
-    target:target??this.target,comment:comment??this.comment,search:search??this.search,method:method,magneticDeg:magneticDeg,
-    declinationDeg:declinationDeg,accuracyM:accuracyM,operatorColor:operatorColor,takenAt:takenAt,createdBy:createdBy,updatedBy:updatedBy,updatedAt:updatedAt);
+    target:target??this.target,comment:comment??this.comment,search:search??this.search,method:method??this.method,magneticDeg:magneticDeg,
+    declinationDeg:declinationDeg,accuracyM:accuracyM,operatorColor:operatorColor,takenAt:takenAt??this.takenAt,createdBy:createdBy,updatedBy:updatedBy,updatedAt:updatedAt);
 
   LatLng get end=>geo.destination(origin,lengthM,azimuthDeg);
   /// The two edges of the uncertainty cone.
@@ -132,4 +133,30 @@ int operatorColor(String id){
 String operatorInitials(String id){
   final t=id.trim().toUpperCase().replaceAll(RegExp(r'[^A-Z0-9]'),'');
   return t.length<=2?t:t.substring(0,2);
+}
+
+/// Résection (ATAK 2): position of a team without GPS from the azimuths it
+/// measured towards two or three known points (high points, relays). Seen
+/// from each known point, the team is in the opposite direction; the
+/// crossings of these lines give the position and its uncertainty.
+({LatLng? centre,double radiusM}) resection(List<({LatLng known,double azimuthDeg})> sights,{double coneDeg=3}){
+  final now=DateTime.utc(2000);
+  final lines=[for(var i=0;i<sights.length;i++)Bearing(id:'r$i',eventId:'',origin:sights[i].known,
+    azimuthDeg:(sights[i].azimuthDeg+180)%360,lengthM:60000,coneDeg:coneDeg,takenAt:now,createdBy:'',updatedBy:'',updatedAt:now)];
+  final z=probableZone(lines);
+  return (centre:z.centre,radiusM:z.radiusM);
+}
+
+/// « 14:05 », local time of a bearing.
+String hhmm(DateTime t){final l=t.toLocal();String two(int v)=>v.toString().padLeft(2,'0');return '${two(l.hour)}:${two(l.minute)}';}
+
+/// The same day at the local time typed (« 14:05 », « 14h05 »); unchanged
+/// when not understood.
+DateTime withHhmm(DateTime t,String text){
+  final m=RegExp(r'^\s*(\d{1,2})\s*[:hH.]\s*(\d{2})\s*$').firstMatch(text);
+  if(m==null)return t;
+  final h=int.parse(m.group(1)!), mi=int.parse(m.group(2)!);
+  if(h>23||mi>59)return t;
+  final l=t.toLocal();
+  return DateTime(l.year,l.month,l.day,h,mi).toUtc();
 }
