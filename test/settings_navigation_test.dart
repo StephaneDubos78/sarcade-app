@@ -32,6 +32,8 @@ void main() {
     await tester.tap(find.text('Ouvrir'));
     expect(logbookOpened, isTrue);
     expect(saves, 0);
+    await tester.ensureVisible(find.text('Général'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Général'));
     await tester.pumpAndSettle();
     expect(find.text('unsaved-event'), findsOneWidget);
