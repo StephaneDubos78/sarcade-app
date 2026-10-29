@@ -376,6 +376,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   }
 
   Future<void> _measureTo(LatLng point,String label) async {
+    if(!_showBearings)unawaited(_setShown('show_brg',true));
     await _measure.start(point,label);
     _measure.startCompass();
   }
@@ -428,6 +429,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   // --- Follow mode and variants of the navigation (decisions of 10 Oct 2026) ---
   bool _follow=false, _followPending=false; LatLng? _navStart, _lastFollowCenter; double? _lastFollowRotation;
   final LayerHitNotifier<int> _variantHits=ValueNotifier(null);
+  final LayerHitNotifier<Bearing> _bearingHits=ValueNotifier(null);
 
   static bool get _phoneOrTablet=>!kIsWeb&&(defaultTargetPlatform==TargetPlatform.android||defaultTargetPlatform==TargetPlatform.iOS);
   /// Phones and tablets turn the map; computers keep north up unless chosen.
@@ -993,9 +995,17 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       toggle(S.t('refs.relays'),_showRelays,(v) async =>setState(()=>_showRelays=v)),
       toggle(S.t('chips.drawings'),_showDrawings,(v)=>_setShown('show_draw',v)),
       toggle(S.t('chips.bearings'),_showBearings,(v)=>_setShown('show_brg',v)),
+      _bearingColorBy(refresh),
       toggle(S.t('chips.withoutInternet'),_withoutInternetOnly,(v) async =>setState(()=>_withoutInternetOnly=v)),
     ])));
   }));
+
+  /// « Colorer les relevés par : Signal / Opérateur » (Filtres).
+  Widget _bearingColorBy(void Function(VoidCallback) refresh)=>ListTile(title:Text(S.t('bearings.colorBy')),
+    trailing:SegmentedButton<bool>(showSelectedIcon:false,
+      segments:[ButtonSegment(value:false,label:Text(S.t('bearings.colorSignal'))),ButtonSegment(value:true,label:Text(S.t('bearings.colorOperator')))],
+      selected:{_brgByOperator},
+      onSelectionChanged:(v) async {await widget.store.setPreference('brg_color:${widget.eventId}',v.first?'op':null);refresh((){});if(mounted)setState((){});}));
 
   /// « Équipes »: the stations and « À proximité » in one place, a screen on
   /// the phone, a panel next to the map on a computer.
@@ -1064,6 +1074,10 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       chip(S.t('refs.relays'),_showRelays,(v)=>setState(()=>_showRelays=v)),
       chip(S.t('chips.drawings'),_showDrawings,(v)=>_setShown('show_draw',v)),
       chip(S.t('chips.bearings'),_showBearings,(v)=>_setShown('show_brg',v)),
+      if(_showBearings)Padding(padding:const EdgeInsets.only(right:6),child:ActionChip(visualDensity:VisualDensity.compact,
+        avatar:const Icon(Icons.palette_outlined,size:16),
+        label:Text('${S.t('bearings.colorBy')} : ${S.t(_brgByOperator?'bearings.colorOperator':'bearings.colorSignal')}'),
+        onPressed:() async {await widget.store.setPreference('brg_color:${widget.eventId}',_brgByOperator?null:'op');if(mounted)setState((){});})),
       chip(S.t('chips.withoutInternet'),_withoutInternetOnly,(v)=>setState(()=>_withoutInternetOnly=v)),
     ]));
   }
@@ -1315,7 +1329,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
 
   // --- Bearings (note « Relevés et croisements », screen V2) ---
   late final BearingController _bearings;
-  final _brgTarget=TextEditingController(); int _brgStrength=0;
+  int _brgStrength=0;
   bool get _showBearings=>widget.store.preference('show_brg:${widget.eventId}')!='0';
   String get _brgSearch=>widget.store.preference('brg_search:${widget.eventId}')??'';
 
@@ -1334,10 +1348,16 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       if(!Bearing.isBearing(j)||j['deleted']==true)continue;
       try{_bearings.applyRemote(Bearing.fromJson(j));}catch(_){}
     }
-    _bearings.addListener((){if(mounted)setState((){});});
+    _bearings.addListener((){
+      // Taking a bearing shows the « Relevés » filter again if it was off.
+      if(_bearings.taking&&!_showBearings)unawaited(_setShown('show_brg',true));
+      if(mounted)setState((){});
+    });
   }
 
-  Bearing? _bearingDraft()=>_bearings.taking?_bearings.draft(target:_brgTarget.text.trim(),strength:_brgStrength,search:_brgSearch):null;
+  Bearing? _bearingDraft()=>_bearings.taking?_bearings.draft(strength:_brgStrength,search:_brgSearch):null;
+  bool get _brgByOperator=>widget.store.preference('brg_color:${widget.eventId}')=='op';
+  Future<void> _setSignal(String v) async {await widget.store.setPreference('brg_search:${widget.eventId}',v.isEmpty?null:v);if(mounted)setState((){});}
 
   /// Top of the screen while taking a bearing: azimuth in big figures,
   /// position, accuracy, time (direction-finding app of the captures).
@@ -1374,13 +1394,16 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     final effect=before.centre!=null&&after?.centre!=null?S.t('bearings.effect',{'a':geo.formatDistance(before.radiusM),'b':geo.formatDistance(after!.radiusM)})
       :after?.centre!=null?S.t('bearings.firstZone',{'b':geo.formatDistance(after!.radiusM)}):null;
     return Container(padding:const EdgeInsets.all(14),decoration:glass(context,radius:22),child:Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.stretch,children:[
-      Row(children:[
-        Expanded(child:TextField(controller:_brgTarget,onChanged:(_)=>setState((){}),decoration:InputDecoration(labelText:S.t('bearings.target'),hintText:'121,500 MHz',isDense:true,border:const OutlineInputBorder()))),
-        const SizedBox(width:8),
-        Expanded(child:InkWell(onTap:_chooseSearch,child:InputDecorator(decoration:InputDecoration(labelText:S.t('bearings.search'),isDense:true,border:const OutlineInputBorder()),
-          child:Row(children:[Container(width:10,height:10,decoration:BoxDecoration(color:Color(searchColor(_brgSearch)),shape:BoxShape.circle)),const SizedBox(width:6),
-            Expanded(child:Text(_brgSearch.isEmpty?S.t('bearings.searchNone'):_brgSearch,overflow:TextOverflow.ellipsis))])))),
-      ]),
+      // « Signal recherché »: the signals of the event first, one touch
+      // takes the same again; the current one stays for the next bearings.
+      Text(S.t('bearings.signal'),style:TextStyle(fontSize:12,color:s.onSurfaceVariant)),
+      const SizedBox(height:4),
+      SingleChildScrollView(scrollDirection:Axis.horizontal,child:Row(children:[
+        for(final n in {if(_brgSearch.isNotEmpty)_brgSearch,...signalsByRecency(_bearings.all)})Padding(padding:const EdgeInsets.only(right:6),child:ChoiceChip(
+          avatar:Icon(Icons.circle,size:12,color:Color(searchColor(n))),label:Text(n),selected:n==_brgSearch,showCheckmark:false,
+          onSelected:(_)=>_setSignal(n==_brgSearch?'':n))),
+        ActionChip(avatar:const Icon(Icons.add,size:18),label:Text(S.t('bearings.signalNew')),onPressed:_newSignal),
+      ])),
       const SizedBox(height:10),
       Row(children:[
         Text(S.t('bearings.strength'),style:const TextStyle(fontSize:13)),const SizedBox(width:8),
@@ -1395,8 +1418,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       Row(children:[
         Expanded(child:FilledButton.icon(style:FilledButton.styleFrom(minimumSize:const Size.fromHeight(52)),
           onPressed:draft==null?null:() async {
-            final b=await _bearings.save(target:_brgTarget.text.trim(),strength:_brgStrength,search:_brgSearch);
-            if(b!=null&&mounted){_brgTarget.clear();setState(()=>_brgStrength=0);
+            final b=await _bearings.save(strength:_brgStrength,search:_brgSearch);
+            if(b!=null&&mounted){setState(()=>_brgStrength=0);
               ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(S.t('bearings.saved',{'v':b.azimuthDeg.toStringAsFixed(0).padLeft(3,'0')}))));}
           },
           icon:const Icon(Icons.track_changes),label:Text(S.t('bearings.save')))),
@@ -1420,19 +1443,10 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     _bearings.setManual(d==null||d<0||d>360?null:d);
   }
 
-  Future<void> _chooseSearch() async {
-    final names={for(final b in _bearings.all)b.search}..remove('');
-    final ctrl=TextEditingController();
-    final v=await showDialog<String>(context:context,builder:(c)=>SimpleDialog(title:Text(S.t('bearings.search')),children:[
-      SimpleDialogOption(onPressed:()=>Navigator.pop(c,''),child:Text(S.t('bearings.searchNone'))),
-      for(final n in names)SimpleDialogOption(onPressed:()=>Navigator.pop(c,n),child:Row(children:[Icon(Icons.circle,size:12,color:Color(searchColor(n))),const SizedBox(width:8),Text(n)])),
-      Padding(padding:const EdgeInsets.fromLTRB(24,8,24,8),child:TextField(controller:ctrl,decoration:InputDecoration(labelText:S.t('bearings.searchNew'),hintText:'Balise 406 – 27/10'),
-        onSubmitted:(t)=>Navigator.pop(c,t.trim()))),
-    ]));
-    ctrl.dispose();
-    if(v==null)return;
-    await widget.store.setPreference('brg_search:${widget.eventId}',v.isEmpty?null:v);
-    if(mounted)setState((){});
+  Future<void> _newSignal() async {
+    final v=await _askText(title:S.t('bearings.signalNew'),initial:'');
+    if(v==null||v.trim().isEmpty)return;
+    await _setSignal(v.trim());
   }
 
   /// Details of a bearing; change or delete for its author or the PCO.
@@ -1442,8 +1456,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     final choice=await showModalBottomSheet<String>(context:context,showDragHandle:true,builder:(c)=>SafeArea(child:Padding(padding:const EdgeInsets.fromLTRB(20,0,20,12),
       child:Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.start,children:[
         Text('${b.azimuthDeg.toStringAsFixed(0).padLeft(3,'0')}° ${S.t('bearings.true')}',style:const TextStyle(fontSize:32,fontWeight:FontWeight.w600)),
-        Text([b.createdBy,'${two(l.day)}/${two(l.month)} ${two(l.hour)}:${two(l.minute)}',if(b.strength>0)'S${b.strength}',if(b.target.isNotEmpty)b.target,
-          S.t('bearings.method.${b.method}'),if(b.search.isNotEmpty)b.search].join(' · ')),
+        Text([if(b.search.isNotEmpty)b.search,b.createdBy,'${two(l.day)}/${two(l.month)} ${two(l.hour)}:${two(l.minute)}',if(b.strength>0)'S${b.strength}',
+          S.t('bearings.method.${b.method}')].join(' · ')),
         if(b.comment.isNotEmpty)Padding(padding:const EdgeInsets.only(top:6),child:Text(b.comment)),
         Text(S.t('bearings.lineCone',{'l':geo.formatDistance(b.lengthM),'c':b.coneDeg.toStringAsFixed(0)}),style:TextStyle(fontSize:12,color:Theme.of(c).colorScheme.onSurfaceVariant)),
         const SizedBox(height:8),
@@ -1463,19 +1477,19 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
 
   Future<void> _editBearing(Bearing b) async {
     final az=TextEditingController(text:b.azimuthDeg.toStringAsFixed(1)), cone=TextEditingController(text:b.coneDeg.toStringAsFixed(0)),
-      len=TextEditingController(text:(b.lengthM/1000).toStringAsFixed(1)), target=TextEditingController(text:b.target), comment=TextEditingController(text:b.comment);
+      len=TextEditingController(text:(b.lengthM/1000).toStringAsFixed(1)), target=TextEditingController(text:b.search), comment=TextEditingController(text:b.comment);
     final ok=await showDialog<bool>(context:context,builder:(c)=>AlertDialog(title:Text(S.t('bearings.edit')),content:SingleChildScrollView(child:Column(mainAxisSize:MainAxisSize.min,children:[
       TextField(controller:az,keyboardType:const TextInputType.numberWithOptions(decimal:true),decoration:InputDecoration(labelText:S.t('bearings.azimuth'),suffixText:'°')),
       TextField(controller:cone,keyboardType:TextInputType.number,decoration:InputDecoration(labelText:S.t('bearings.cone'),suffixText:'± °')),
       TextField(controller:len,keyboardType:const TextInputType.numberWithOptions(decimal:true),decoration:InputDecoration(labelText:S.t('bearings.length'),suffixText:'km')),
-      TextField(controller:target,decoration:InputDecoration(labelText:S.t('bearings.target'))),
+      TextField(controller:target,decoration:InputDecoration(labelText:S.t('bearings.signal'))),
       TextField(controller:comment,decoration:InputDecoration(labelText:S.t('bearings.comment'))),
     ])),actions:[TextButton(onPressed:()=>Navigator.pop(c,false),child:Text(S.t('common.cancel'))),FilledButton(onPressed:()=>Navigator.pop(c,true),child:Text(S.t('common.save')))]));
     double? n(TextEditingController t)=>double.tryParse(t.text.replaceAll(',','.').trim());
     if(ok==true){
       final a=n(az),cn=n(cone),ln=n(len);
       await _bearings.update(b.copyWith(azimuthDeg:a==null||a<0||a>360?null:a%360,coneDeg:cn==null||cn<0||cn>45?null:cn,
-        lengthM:ln==null||ln<0.1||ln>200?null:ln*1000,target:target.text.trim(),comment:comment.text.trim(),
+        lengthM:ln==null||ln<0.1||ln>200?null:ln*1000,target:'',search:target.text.trim(),comment:comment.text.trim(),
         updatedBy:widget.deviceId,updatedAt:DateTime.now().toUtc()));
     }
     for(final t in [az,cone,len,target,comment]){t.dispose();}
@@ -1586,7 +1600,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     child:child,
   );
 
-  @override void dispose(){_headingSub?.cancel();_webUpdateTimer?.cancel();_saveViewTimer?.cancel();_bearings.dispose();_brgTarget.dispose();_positionsTimer?.cancel();_meSub?.cancel();_mapEvents?.cancel();AccessManager.instance.removeListener(_onAccessChanged);_fcmRefresh?.cancel();_fcmForeground?.cancel();_opensSub?.cancel();_answersSub?.cancel();_rtSub?.cancel();_tracking.removeListener(_onOperationsChanged);_ops.removeListener(_onOperationsChanged);_tracking.dispose();_ops.dispose();_routes.removeListener(_onRoutesChanged);_nav.removeListener(_onNavigationChanged);_variantHits.dispose();_routes.dispose();_nav.dispose();_graphs.removeListener(_onRoutesChanged);_graphs.dispose();_measure.removeListener(_onRoutesChanged);_measure.dispose();_syncUiTimer?.cancel();_sync.dispose();_realtime.dispose();_drawing.dispose();widget.api.close();super.dispose();}
+  @override void dispose(){_headingSub?.cancel();_webUpdateTimer?.cancel();_saveViewTimer?.cancel();_bearings.dispose();_positionsTimer?.cancel();_meSub?.cancel();_mapEvents?.cancel();AccessManager.instance.removeListener(_onAccessChanged);_fcmRefresh?.cancel();_fcmForeground?.cancel();_opensSub?.cancel();_answersSub?.cancel();_rtSub?.cancel();_tracking.removeListener(_onOperationsChanged);_ops.removeListener(_onOperationsChanged);_tracking.dispose();_ops.dispose();_routes.removeListener(_onRoutesChanged);_nav.removeListener(_onNavigationChanged);_variantHits.dispose();_bearingHits.dispose();_routes.dispose();_nav.dispose();_graphs.removeListener(_onRoutesChanged);_graphs.dispose();_measure.removeListener(_onRoutesChanged);_measure.dispose();_syncUiTimer?.cancel();_sync.dispose();_realtime.dispose();_drawing.dispose();widget.api.close();super.dispose();}
 
   @override Widget build(BuildContext context){
     final sorted=_positions.values.where((p)=>(p.isAprs?_showAprs:_showOperators)&&(!_withoutInternetOnly||worksWithoutInternet(p)||p.deviceId==widget.deviceId)).toList()..sort((a,b)=>a.deviceId.compareTo(b.deviceId));
@@ -1709,7 +1723,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           // Reference sites below the drawn objects, grouped when zoomed out.
           ReferenceClusterLayer(sites:_references.values.where((r)=>(r.isHighPoint&&_showHighPoints)||(r.isRelay&&_showRelays)).toList(),onSelect:_selectReference),
           if(_showDrawings)...buildDrawingLayers(_drawing),
-          if(_showBearings||_bearings.taking)...buildBearingLayers(bearings:_showBearings?_bearings.all:const <Bearing>[],draft:_bearingDraft(),
+          if(_showBearings||_bearings.taking)...buildBearingLayers(bearings:_showBearings?_bearings.all:const <Bearing>[],draft:_bearingDraft(),byOperator:_brgByOperator,hits:_bearingHits,
             onTapBearing:_showBearingSheet,onTapZone:(c,_)=>_onLongPress(c)),
           ..._variantLayers(),
           ...buildRouteLayers(_routes,selectedRouteId:_selectedRouteId,itinerary:_nav.itinerary?.geometry??const [],draftClosure:_closureDraft,
