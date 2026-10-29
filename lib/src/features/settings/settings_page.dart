@@ -15,6 +15,7 @@ import '../../services/notification_service.dart';
 import '../../models/comm_group.dart' show isPco;
 import '../../services/sarcade_api.dart' show SarcadeApi, SarcadeHttpException;
 import 'event_settings_section.dart';
+import '../tv/tv_screens_page.dart';
 
 /// Operator settings: server address, event and terminal identifier,
 /// language, radio callsign. Lets one APK serve every field operator
@@ -390,6 +391,10 @@ class _SettingsPageState extends State<SettingsPage> {
       ],
       onChanged:(v)=>setState(()=>_language=v??'system'),
     )),
+    // Smart TV screens (any operator, decision of 29 Oct 2026): Paramètres › Affichage › Écrans.
+    if(widget.api!=null)_row(S.t('tv.title'),help:S.t('tv.help'),child:Align(alignment:Alignment.centerLeft,child:FilledButton.tonal(
+      onPressed:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>TvScreensPage(api:widget.api!,eventId:widget.initial.eventId))),
+      child:Text(S.t('tv.manage'))))),
   ]);
 
   Widget _notificationsTab()=>Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[

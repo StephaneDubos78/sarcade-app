@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import '../../l10n/strings.dart';
 import '../../services/sarcade_api.dart';
 import '../aprs/aprs_page.dart';
-import '../tv/tv_screens_page.dart';
 
 /// Paramètres › Événement (PCO): settings of the active event kept by the
 /// server, applied at once and written in the logbook by the server —
@@ -98,9 +97,6 @@ class _EventSettingsSectionState extends State<EventSettingsSection> {
         onChanged:(v){if(v!=null)_patch({'position_old_min':v});})),
       _row(S.t('event.quick'),help:S.t('event.quickHelp',{'n':(s['quick_messages'] as List?)?.length??0}),
         child:TextButton(onPressed:_editQuick,child:Text(S.t('event.edit')))),
-      _row(S.t('tv.title'),help:S.t('tv.help'),child:FilledButton.tonal(
-        onPressed:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>TvScreensPage(api:widget.api,eventId:widget.eventId))),
-        child:Text(S.t('tv.menu')))),
       _row(S.t('event.aprsFollowed'),help:S.t('event.aprsFollowedHelp',{'g':(s['aprs_groups'] as List?)?.length??0,'c':(s['aprs_callsigns'] as List?)?.length??0}),
         child:TextButton(onPressed:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>AprsPage(api:widget.api,eventId:widget.eventId,actorId:widget.actorId))).then((_)=>_load()),
           child:Text(S.t('diagnostics.open')))),

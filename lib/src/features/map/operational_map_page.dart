@@ -31,7 +31,6 @@ import '../bearings/bearing_layers.dart';
 import '../bearings/bearing_models.dart';
 import 'drawing/geometry.dart' as geo;
 import '../files/files_page.dart';
-import '../tv/tv_screens_page.dart';
 import 'drawing/drawing_controller.dart';
 import 'reference_cluster_layer.dart';
 import 'drawing/drawing_layers.dart';
@@ -1809,7 +1808,6 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       _RailAction(Icons.my_location_outlined,S.t('resection.title'),()=>onMap(_resection)),
       _RailAction(Icons.sos,_inDistress?S.t('distress.end'):S.t('distress.title'),_distress),
       if(isPco(widget.deviceId))_RailAction(Icons.settings_input_antenna,S.t('aprs.title'),openAprs),
-      _RailAction(Icons.tv,S.t('tv.menu'),()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>TvScreensPage(api:widget.api,eventId:widget.eventId)))),
       if(widget.onSettings!=null)_RailAction(Icons.settings_outlined,S.t('map.settings'),widget.onSettings!),
     ];
     void openMoreSheet()=>showModalBottomSheet<void>(context:context,showDragHandle:true,builder:(c)=>SafeArea(child:Column(mainAxisSize:MainAxisSize.min,children:[
