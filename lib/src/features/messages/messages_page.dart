@@ -388,9 +388,30 @@ class _MessagesPageState extends State<MessagesPage>{
    return Align(alignment:mine?Alignment.centerRight:Alignment.centerLeft,child:ConstrainedBox(constraints:const BoxConstraints(maxWidth:560),child:MergeSemantics(child:bubble)));
  }
 
+ /// Predefined messages (ATAK 6): the list of the PCO for the event, else
+ /// the usual ones; one touch sends.
+ List<String>? _quick;
+ Future<List<String>> _quickMessages() async {
+   if(_quick!=null)return _quick!;
+   try{
+     final e=await widget.api.event(widget.eventId);
+     final l=((e['settings'] as Map?)?['quick_messages'] as List?)?.whereType<String>().toList()??const [];
+     if(l.isNotEmpty)return _quick=l;
+   }catch(_){/* offline: the usual list */}
+   return _quick=[for(final k in const ['inPlace','signalHeard','signalLost','backToPco','needHelp','copy'])S.t('quick.$k')];
+ }
+ Future<void> _sendQuickMessage() async {
+   final list=await _quickMessages();
+   if(!mounted)return;
+   final pick=await showModalBottomSheet<String>(context:context,showDragHandle:true,builder:(c)=>SafeArea(child:ListView(shrinkWrap:true,children:[
+     for(final q in list)ListTile(leading:const Icon(Icons.bolt),title:Text(q),onTap:()=>Navigator.pop(c,q))])));
+   if(pick!=null)await _post(pick);
+ }
+
  Widget _composer(){
    final s=Theme.of(context).colorScheme;
    return SafeArea(child:Padding(padding:const EdgeInsets.fromLTRB(6,4,6,6),child:Row(crossAxisAlignment:CrossAxisAlignment.end,children:[
+     IconButton(tooltip:S.t('quick.title'),onPressed:_sendQuickMessage,icon:const Icon(Icons.bolt)),
      IconButton(tooltip:S.t('messages.photo'),onPressed:_picking?null:_photo,
        icon:_picking?const SizedBox(width:20,height:20,child:CircularProgressIndicator(strokeWidth:2)):const Icon(Icons.add_circle_outline)),
      Expanded(child:Container(padding:const EdgeInsets.only(left:14,right:4),decoration:BoxDecoration(color:s.surfaceContainerHighest,borderRadius:BorderRadius.circular(24)),

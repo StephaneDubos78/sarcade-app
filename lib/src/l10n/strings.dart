@@ -28,6 +28,7 @@ class S {
 }
 
 const Texts _fr={
+  'quick.title':'Messages prédéfinis','quick.inPlace':'En place','quick.signalHeard':'Signal entendu','quick.signalLost':'Signal perdu','quick.backToPco':'Retour PCO','quick.needHelp':'Besoin d’assistance','quick.copy':'Bien reçu',
   'event.offline':'Serveur injoignable : réessayez',
   'groups.addAdrasec':'Ajouter les canaux du modèle ADRASEC','groups.addedAdrasec':'{n} canal(aux) ajouté(s)',
   'messages.everyone':'Tous','messages.you':'Vous','messages.info':'Infos : reçu et lu par','messages.noAck':'Pas encore d’accusé','messages.copy':'Copier','messages.copied':'Message copié','messages.reply':'Discuter avec {who}','messages.ackSummary':'✓✓ lu par {r} · reçu par {n}','messages.empty':'Aucun message dans cette conversation','operators.chat':'Discuter',
@@ -266,6 +267,7 @@ const Texts _fr={
 };
 
 const Texts _en={
+  'quick.title':'Predefined messages','quick.inPlace':'In place','quick.signalHeard':'Signal heard','quick.signalLost':'Signal lost','quick.backToPco':'Back to the PCO','quick.needHelp':'Need assistance','quick.copy':'Copy, received',
   'event.offline':'Server unreachable: try again',
   'groups.addAdrasec':'Add the channels of the ADRASEC model','groups.addedAdrasec':'{n} channel(s) added',
   'messages.everyone':'Everyone','messages.you':'You','messages.info':'Info: received and read by','messages.noAck':'No acknowledgement yet','messages.copy':'Copy','messages.copied':'Message copied','messages.reply':'Chat with {who}','messages.ackSummary':'✓✓ read by {r} · received by {n}','messages.empty':'No message in this conversation','operators.chat':'Chat',
