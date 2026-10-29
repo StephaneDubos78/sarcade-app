@@ -315,8 +315,10 @@ class _FilesPageState extends State<FilesPage> with SingleTickerProviderStateMix
       if(open){for(final k in kids){node(personal:personal,path:k,label:folderLabel(k),icon:Icons.folder,folders:folders,depth:depth+1);}}
     }
     node(personal:false,path:'',label:S.t('files.tabEvent'),icon:Icons.groups_outlined,folders:_folders);
-    if(_personal!=null)node(personal:true,path:'',label:S.t('files.tabPersonal'),icon:Icons.folder_shared_outlined,
-      folders:allFolders(_personal!.folders,_personal!.files));
+    if(_personal!=null){
+      node(personal:true,path:'',label:S.t('files.tabPersonal'),icon:Icons.folder_shared_outlined,
+        folders:allFolders(_personal!.folders,_personal!.files));
+    }
     return ListView(padding:const EdgeInsets.all(8),children:rows);
   }
 
