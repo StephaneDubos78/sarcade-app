@@ -12,6 +12,8 @@ and this script applies the SARCADE-specific settings to Runner/Info.plist:
   TestFlight does not ask the export question for every build
 - Apple team of SDUBOS Consulting on the Runner target (automatic signing)
 - SARCADE icon (single 1024 px image, Xcode derives the other sizes)
+- push notifications (wake-up by Firebase / APNs): aps-environment
+  entitlement and the remote-notification background mode
 
 Idempotent, and fails loudly if the template changed shape.
 """
@@ -26,6 +28,13 @@ PBXPROJ = Path("ios/Runner.xcodeproj/project.pbxproj")
 ICONSET = Path("ios/Runner/Assets.xcassets/AppIcon.appiconset")
 TEAM = "34785R7XLK"
 BUNDLE_LINE = "PRODUCT_BUNDLE_IDENTIFIER = org.sarcade.sarcadeApp;"
+ENTITLEMENTS = Path("ios/Runner/Runner.entitlements")
+ENTITLEMENTS_XML = """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>aps-environment</key><string>production</string>
+</dict></plist>
+"""
 
 USAGE = {
     "NSLocationWhenInUseUsageDescription":
@@ -55,6 +64,9 @@ def main() -> int:
     info.update(USAGE)
     info["CFBundleDisplayName"] = "SARCADE"
     info["ITSAppUsesNonExemptEncryption"] = False
+    modes = info.setdefault("UIBackgroundModes", [])
+    if "remote-notification" not in modes:
+        modes.append("remote-notification")
     ats = info.setdefault("NSAppTransportSecurity", {})
     ats["NSAllowsArbitraryLoads"] = True
     ats["NSAllowsLocalNetworking"] = True
@@ -66,12 +78,14 @@ def main() -> int:
     if BUNDLE_LINE not in proj:
         print(f"error: {BUNDLE_LINE} not found in {PBXPROJ}", file=sys.stderr)
         return 1
+    ENTITLEMENTS.write_text(ENTITLEMENTS_XML)
     if f"DEVELOPMENT_TEAM = {TEAM};" not in proj:
         lines = []
         for line in proj.splitlines(keepends=True):
             if line.strip() == BUNDLE_LINE:
                 indent = line[: len(line) - len(line.lstrip())]
                 lines.append(f"{indent}DEVELOPMENT_TEAM = {TEAM};\n")
+                lines.append(f"{indent}CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements;\n")
             lines.append(line)
         PBXPROJ.write_text("".join(lines))
     print(f"patched {PBXPROJ} (team {TEAM})")

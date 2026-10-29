@@ -564,8 +564,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       try{
         final token=await fcmToken();
         if(token==null)return false;
-        await widget.api.registerWakeToken(widget.eventId,widget.deviceId,'fcm',token);
-        _fcmRefresh??=fcmTokenRefresh().listen((t)=>unawaited(widget.api.registerWakeToken(widget.eventId,widget.deviceId,'fcm',t).catchError((_){})));
+        await widget.api.registerWakeToken(widget.eventId,widget.deviceId,fcmPlatform,token);
+        _fcmRefresh??=fcmTokenRefresh().listen((t)=>unawaited(widget.api.registerWakeToken(widget.eventId,widget.deviceId,fcmPlatform,t).catchError((_){})));
         _fcmForeground??=fcmForeground().listen((_)=>unawaited(_sync.syncNow()));
         return true;
       }catch(e){
