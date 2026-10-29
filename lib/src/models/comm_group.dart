@@ -2,7 +2,13 @@
 /// object with the ADR-001 rule, like map objects. Pure code.
 library;
 
-bool isPco(String actorId)=>actorId=='PCO'||actorId.startsWith('PCO-');
+/// Rights given by the server for the email checked by Cloudflare Access
+/// (« admin », « pco »), for this device (actor [myActorId]); read at start
+/// (GET /me). Without Access, the former rule by terminal name stays.
+String? myActorId;
+Set<String> myRoles=<String>{};
+
+bool isPco(String actorId)=>actorId=='PCO'||actorId.startsWith('PCO-')||(actorId==myActorId&&myRoles.contains('pco'));
 
 class CommGroup {
   final String id, eventId, name, description, mode, kind, createdBy, updatedBy, radioChannel;
