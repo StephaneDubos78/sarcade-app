@@ -210,7 +210,7 @@ class _SettingsPageState extends State<SettingsPage> {
         key:ValueKey('$current|${_events.length}'),
         initialValue:current.isEmpty?null:current,
         isExpanded:true,
-        decoration:_field(help:help),
+        decoration:_field(label:S.t('settings.event'),help:help),
         items:items,
         onChanged:(v)=>setState(()=>_event.text=v??''),
         validator:(_)=>_required(_event.text),
@@ -286,8 +286,13 @@ class _SettingsPageState extends State<SettingsPage> {
     ]);
   }
 
-  InputDecoration _field({String? hint,String? help})=>InputDecoration(isDense:true,hintText:hint,helperText:help,helperMaxLines:3,
+  /// Compact field; its label stays inside (read by screen readers and the
+  /// end-to-end tests).
+  InputDecoration _field({String? label,String? hint,String? help})=>InputDecoration(isDense:true,labelText:label,hintText:hint,helperText:help,helperMaxLines:3,
     border:OutlineInputBorder(borderRadius:BorderRadius.circular(8)));
+
+  /// A text field on its own line (label inside the field).
+  Widget _fieldRow(Widget child)=>Padding(padding:const EdgeInsets.only(top:14),child:child);
 
   /// Read-only value with an optional text action on the right (« Ouvrir »).
   Widget _value(String text,{String? action,VoidCallback? onAction})=>Row(children:[
@@ -297,14 +302,14 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Widget _generalTab()=>Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
     if(widget.firstRun)Padding(padding:const EdgeInsets.only(top:12),child:Text(S.t('settings.intro'))),
-    _row(S.t('settings.server'),help:S.t('settings.serverHelp'),child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+    _fieldRow(Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
       _serverPicker(),
       Focus(
         // Leaving the server field reloads the events of that server.
         onFocusChange:(f){if(!f)_loadEvents();},
         child:TextFormField(
           controller:_server,
-          decoration:_field(hint:defaultServerUrl),
+          decoration:_field(label:S.t('settings.server'),hint:defaultServerUrl,help:S.t('settings.serverHelp')),
           keyboardType:TextInputType.url,autocorrect:false,validator:_url,
           onFieldSubmitted:(_)=>_loadEvents(),
           onChanged:(_)=>setState((){}),
@@ -312,16 +317,18 @@ class _SettingsPageState extends State<SettingsPage> {
       ),
       _accessRow(),
     ])),
-    _row(S.t('settings.event'),child:widget.loadEvents!=null?_eventPicker():TextFormField(
-      controller:_event,decoration:_field(),autocorrect:false,validator:_required)),
-    _row(S.t('settings.device'),help:S.t('settings.deviceHelp'),child:TextFormField(
-      controller:_device,decoration:_field(hint:'TERRAIN-01'),autocorrect:false,validator:_required)),
+    _fieldRow(widget.loadEvents!=null?_eventPicker():TextFormField(
+      controller:_event,decoration:_field(label:S.t('settings.event')),autocorrect:false,validator:_required)),
+    _fieldRow(TextFormField(
+      controller:_device,decoration:_field(label:S.t('settings.device'),hint:'TERRAIN-01',help:S.t('settings.deviceHelp')),autocorrect:false,validator:_required)),
+    const SizedBox(height:8),
   ]);
 
   Widget _profileTab()=>Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
-    _row(S.t('settings.callsign'),help:S.t('settings.callsignHelp'),child:TextFormField(
-      controller:_callsign,decoration:_field(hint:'F4ABC-7'),
+    _fieldRow(TextFormField(
+      controller:_callsign,decoration:_field(label:S.t('settings.callsign'),hint:'F4ABC-7',help:S.t('settings.callsignHelp')),
       autocorrect:false,textCapitalization:TextCapitalization.characters,validator:_callsignCheck)),
+    const SizedBox(height:8),
     _row(S.t('settings.aprsConsent'),help:S.t('settings.aprsConsentHelp'),child:Align(alignment:Alignment.centerRight,
       child:Switch(value:_aprsConsent,onChanged:(v)=>setState(()=>_aprsConsent=v)))),
     // Colour of every new drawing (existing objects keep theirs).
@@ -348,9 +355,9 @@ class _SettingsPageState extends State<SettingsPage> {
         selected:{mode},
         onSelectionChanged:(v){themeMode.value=v.first;widget.onThemeChanged?.call(v.first);},
       )))),
-    _row(S.t('settings.language'),child:DropdownButtonFormField<String>(
+    _fieldRow(DropdownButtonFormField<String>(
       initialValue:_language,isExpanded:true,
-      decoration:_field(),
+      decoration:_field(label:S.t('settings.language')),
       items:[
         DropdownMenuItem(value:'system',child:Text(S.t('settings.languageSystem'))),
         const DropdownMenuItem(value:'fr',child:Text('Français')),
