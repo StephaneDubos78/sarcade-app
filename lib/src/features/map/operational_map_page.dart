@@ -969,11 +969,6 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
 
   bool _darkTiles(BuildContext context)=>Theme.of(context).brightness==Brightness.dark&&!_basemap.id.contains('photo')&&!_basemap.id.contains('sat');
 
-  void _toggleDayNight(){
-    final next=Theme.of(context).brightness==Brightness.dark?ThemeMode.light:ThemeMode.dark;
-    themeMode.value=next;
-    unawaited(widget.store.setPreference('theme_mode',themeModeName(next)));
-  }
 
   /// Filter chips under the search (Google Maps), kept per event.
   bool get _showOperators=>widget.store.preference('show_ops:${widget.eventId}')!='0';
@@ -1571,7 +1566,6 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         _RailAction(Icons.folder_copy_outlined,S.t('map.files'),openFiles),
       ],
       if(isPco(widget.deviceId))_RailAction(Icons.settings_input_antenna,S.t('aprs.title'),openAprs),
-      _RailAction(Theme.of(context).brightness==Brightness.dark?Icons.light_mode_outlined:Icons.dark_mode_outlined,S.t('ui.dayNight'),_toggleDayNight),
       if(widget.onSettings!=null)_RailAction(Icons.settings_outlined,S.t('map.settings'),widget.onSettings!),
     ];
     void openMoreSheet()=>showModalBottomSheet<void>(context:context,showDragHandle:true,builder:(c)=>SafeArea(child:Column(mainAxisSize:MainAxisSize.min,children:[

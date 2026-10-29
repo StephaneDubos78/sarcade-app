@@ -23,7 +23,7 @@ void main() {
     expect(linksCount([true, true, null, false]), (ok: 2, total: 3));
   });
   test('theme mode names', () {
-    expect(themeModeFrom(null), ThemeMode.dark);
+    expect(themeModeFrom(null), ThemeMode.system);
     expect(themeModeFrom(themeModeName(ThemeMode.light)), ThemeMode.light);
     expect(nightTheme().colorScheme.brightness, Brightness.dark);
   });
