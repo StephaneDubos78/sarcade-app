@@ -28,6 +28,8 @@ class S {
 }
 
 const Texts _fr={
+  'favourites.only':'Favoris','favourites.none':'Aucun favori : touchez l’étoile d’un opérateur','teams.active':'Actifs','teams.silent':'Sans nouvelles','teams.old':'Anciens',
+  'operators.none':'Aucun opérateur',
   'settings.diagnostics':'Diagnostic',
   'diagnostics.description':'Informations de diagnostic et historique de l’opération active.',
   'diagnostics.activeEvent':'Événement actif : {event}',
@@ -257,6 +259,8 @@ const Texts _fr={
 };
 
 const Texts _en={
+  'favourites.only':'Favourites','favourites.none':'No favourite: tap the star of an operator','teams.active':'Active','teams.silent':'No news','teams.old':'Old',
+  'operators.none':'No operator',
   'settings.diagnostics':'Diagnostics',
   'diagnostics.description':'Diagnostic information and history of the active operation.',
   'diagnostics.activeEvent':'Active event: {event}',

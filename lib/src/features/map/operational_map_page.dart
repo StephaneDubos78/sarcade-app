@@ -145,7 +145,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     Navigator.push(context,MaterialPageRoute(builder:(_)=>MessagesPage(api:widget.api,eventId:widget.eventId,
       actorId:widget.deviceId,sync:_sync,store:widget.store)));
   }
-  @override void initState(){super.initState();_initNotificationActions();unawaited(requestPersistentStorage());_sync=OfflineSyncService(api:widget.api,store:widget.store,eventId:widget.eventId,onRemoteChange:_onRemoteChange);_initDrawing();_initBearings();_loadLocal();_initRoutes();_initMeasure();_sync.start();_initOperations();_loadBasemaps();_initWebUpdate();_syncUiTimer=Timer.periodic(const Duration(seconds:2),(t){if(t.tick%3==0)_drainAnswers();if(mounted)setState((){});});AccessManager.instance.addListener(_onAccessChanged);_start();}
+  @override void initState(){super.initState();_initNotificationActions();unawaited(requestPersistentStorage());_sync=OfflineSyncService(api:widget.api,store:widget.store,eventId:widget.eventId,onRemoteChange:_onRemoteChange);_initDrawing();_initBearings();_loadLocal();_initRoutes();_initMeasure();_sync.start();_initOperations();_loadBasemaps();_initWebUpdate();unawaited(_loadMyPreferences());_syncUiTimer=Timer.periodic(const Duration(seconds:2),(t){if(t.tick%3==0)_drainAnswers();if(mounted)setState((){});});AccessManager.instance.addListener(_onAccessChanged);_start();}
   bool _validPosition(SarcadePosition p){
     final t=p.time.toUtc(), now=DateTime.now().toUtc();
     return t.isAfter(DateTime.utc(2020)) && t.isBefore(now.add(const Duration(days:1)));
@@ -1004,12 +1004,43 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
 
   /// « Équipes »: the stations and « À proximité » in one place, a screen on
   /// the phone, a panel next to the map on a computer.
+  bool _favouritesOnly=false, _showOld=false;
+
+  /// Three sections by freshness: Actifs (favourites first), Sans
+  /// nouvelles (age shown), Anciens (folded).
+  Widget _teamsList(List<SarcadePosition> sorted){
+    final now=DateTime.now().toUtc(); final fav=_favourites;
+    final shown=_favouritesOnly?sorted.where((p)=>fav.contains(p.deviceId)):sorted;
+    final by={for(final x in Section.values)x:<SarcadePosition>[]};
+    for(final p in shown){by[sectionOf(p.time.toUtc(),now)]!.add(p);}
+    final t=Theme.of(context);
+    Widget head(String label,int n,{VoidCallback? onTap,bool? open})=>InkWell(onTap:onTap,child:Padding(
+      padding:const EdgeInsets.fromLTRB(16,12,8,4),child:Row(children:[
+        Expanded(child:Text('$label · $n',style:t.textTheme.labelLarge?.copyWith(color:t.colorScheme.onSurfaceVariant))),
+        if(open!=null)Icon(open?Icons.expand_less:Icons.expand_more,size:20,color:t.colorScheme.onSurfaceVariant),
+      ])));
+    final active=sortStations(by[Section.active]!,fav);
+    final silent=[...by[Section.silent]!]..sort((a,b)=>b.time.compareTo(a.time));
+    final old=[...by[Section.old]!]..sort((a,b)=>b.time.compareTo(a.time));
+    return ListView(children:[
+      if(shown.isEmpty)Padding(padding:const EdgeInsets.all(16),child:Text(S.t(_favouritesOnly?'favourites.none':'operators.none'))),
+      if(active.isNotEmpty)...[head(S.t('teams.active'),active.length),...active.map(_stationTile)],
+      if(silent.isNotEmpty)...[head(S.t('teams.silent'),silent.length),...silent.map(_stationTile)],
+      if(old.isNotEmpty)...[head(S.t('teams.old'),old.length,open:_showOld,onTap:()=>setState(()=>_showOld=!_showOld)),
+        if(_showOld)...old.map(_stationTile)],
+    ]);
+  }
+
   Widget _teams(List<SarcadePosition> sorted,{required bool screen}){
     final list=Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
       const SizedBox(height:6),
-      if(_positions.values.any((p)=>p.isAprs))Padding(padding:const EdgeInsets.symmetric(horizontal:12),child:Align(alignment:Alignment.centerLeft,child:Tooltip(message:S.t('operators.aprsHint'),
-        child:FilterChip(avatar:const Icon(Icons.settings_input_antenna,size:18),label:Text(S.t('operators.aprs')),selected:_showAprs,onSelected:(v)=>setState(()=>_showAprs=v))))),
-      Expanded(child:ListView(children:sortStations(sorted,_favourites).map((p)=>_stationTile(p)).toList())),
+      Padding(padding:const EdgeInsets.symmetric(horizontal:12),child:Wrap(spacing:6,children:[
+        FilterChip(avatar:const Icon(Icons.star_border,size:18),label:Text(S.t('favourites.only')),selected:_favouritesOnly,
+          onSelected:(v)=>setState(()=>_favouritesOnly=v)),
+        if(_positions.values.any((p)=>p.isAprs))Tooltip(message:S.t('operators.aprsHint'),
+          child:FilterChip(avatar:const Icon(Icons.settings_input_antenna,size:18),label:Text(S.t('operators.aprs')),selected:_showAprs,onSelected:(v)=>setState(()=>_showAprs=v))),
+      ])),
+      Expanded(child:_teamsList(sorted)),
     ]);
     final tabs=DefaultTabController(length:2,child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
       // Count of the stations above the two tabs (as the former panel).
@@ -1104,6 +1135,26 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     final f=_favourites; if(!f.remove(id))f.add(id);
     await widget.store.setPreference('favourites',encodeFavourites(f));
     if(mounted)setState((){});
+    // Kept by the server for the email (every device of the person).
+    unawaited(widget.api.patchMyPreferences({'favourites':f.toList()..sort()}).catchError((_)=>false));
+  }
+
+  /// Favourites of the person from the server; the first time, the ones of
+  /// this device are sent.
+  Future<void> _loadMyPreferences() async {
+    try{
+      final p=await widget.api.myPreferences();
+      if(p==null)return;
+      final remote=p['favourites'];
+      if(remote is List){
+        await widget.store.setPreference('favourites',encodeFavourites({for(final x in remote)'$x'}));
+        if(mounted)setState((){});
+      }else if(_favourites.isNotEmpty){
+        await widget.api.patchMyPreferences({'favourites':_favourites.toList()..sort()});
+      }
+    }catch(e){
+      debugPrint('SARCADE personal settings not read: $e');
+    }
   }
   Future<void> _setTraceHours(int h) async {
     setState((){_traceHours=h;_scrub=null;_trace=traceWithin(_history,DateTime.now().toUtc(),h);});
@@ -1173,7 +1224,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       title:Text(p.label,style:TextStyle(decoration:f==Freshness.stale?TextDecoration.lineThrough:null)),
       subtitle:Text('${_sourceLabel(p)} · ${ageLabel(p.time.toUtc(),now)}',style:TextStyle(color:f==Freshness.fresh?null:s.tertiary)),
       trailing:IconButton(tooltip:S.t(fav?'favourites.remove':'favourites.add'),onPressed:()=>_toggleFavourite(p.deviceId),
-        icon:Icon(fav?Icons.star:Icons.star_border,color:fav?s.tertiary:null)),
+        visualDensity:VisualDensity.compact,iconSize:20,
+        icon:Icon(fav?Icons.star:Icons.star_border,color:fav?s.tertiary:s.onSurfaceVariant)),
       onTap:()=>_select(p));
   }
 
@@ -1544,7 +1596,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   @override Widget build(BuildContext context){
     final sorted=_positions.values.where((p)=>(p.isAprs?_showAprs:_showOperators)&&(!_withoutInternetOnly||worksWithoutInternet(p)||p.deviceId==widget.deviceId)).toList()..sort((a,b)=>a.deviceId.compareTo(b.deviceId));
     final markers=<Marker>[
-      ..._stationMarkers(sorted),
+      // Old stations stay in the list and the search, not on the map.
+      ..._stationMarkers(sorted.where((p)=>p.deviceId==widget.deviceId||sectionOf(p.time.toUtc(),DateTime.now().toUtc())!=Section.old).toList()),
       ..._pois.values.map((p)=>Marker(point:LatLng(p.lat,p.lon),width:40,height:40,child:Tooltip(message:p.label??p.kind,child:const Icon(Icons.location_on,size:38,color:Colors.red)))),
     ];
     final selected=_selectedDevice==null?null:_positions[_selectedDevice];
