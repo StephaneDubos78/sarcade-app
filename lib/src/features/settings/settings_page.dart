@@ -332,15 +332,35 @@ class _SettingsPageState extends State<SettingsPage> {
     _row(S.t('settings.aprsConsent'),help:S.t('settings.aprsConsentHelp'),child:Align(alignment:Alignment.centerRight,
       child:Switch(value:_aprsConsent,onChanged:(v)=>setState(()=>_aprsConsent=v)))),
     // Colour of every new drawing (existing objects keep theirs).
-    _row(S.t('settings.drawColor'),help:S.t('settings.drawColorHelp'),child:Wrap(spacing:8,runSpacing:8,children:[for(final c in drawingPalette)Semantics(
+    _row(S.t('settings.drawColor'),help:S.t('settings.drawColorHelp'),child:Wrap(spacing:8,runSpacing:8,crossAxisAlignment:WrapCrossAlignment.center,children:[
+      for(final c in [...drawingPalette,if(!drawingPalette.contains(_drawColor))_drawColor])Semantics(
       label:S.t('color.$c'),selected:c==_drawColor,button:true,
       child:InkWell(customBorder:const CircleBorder(),onTap:()=>setState(()=>_drawColor=c),child:Container(
         width:34,height:34,
         decoration:BoxDecoration(color:Color(c),shape:BoxShape.circle,border:Border.all(color:c==_drawColor?Theme.of(context).colorScheme.primary:Colors.black26,width:c==_drawColor?3:1)),
-        child:c==_drawColor?Icon(Icons.check,size:18,color:c==0xFFFFFFFF||c==0xFFFDD835?Colors.black:Colors.white):null,
+        child:c==_drawColor?Icon(Icons.check,size:18,color:Color(c).computeLuminance()>0.5?Colors.black:Colors.white):null,
       )),
-    )])),
+    ),
+      ActionChip(avatar:const Icon(Icons.palette_outlined,size:18),label:Text(S.t('settings.otherColor')),onPressed:_pickOtherColor),
+    ])),
   ]);
+
+  /// « Autre couleur »: free choice of the hue, light enough to read on
+  /// the map.
+  Future<void> _pickOtherColor() async {
+    var hue=HSVColor.fromColor(Color(_drawColor)).hue;
+    final picked=await showDialog<int>(context:context,builder:(c)=>StatefulBuilder(builder:(c,set){
+      final color=HSVColor.fromAHSV(1,hue,0.8,0.85).toColor();
+      return AlertDialog(title:Text(S.t('settings.otherColor')),content:Column(mainAxisSize:MainAxisSize.min,children:[
+        Container(width:56,height:56,decoration:BoxDecoration(color:color,shape:BoxShape.circle)),
+        Slider(value:hue,min:0,max:359,onChanged:(v)=>set(()=>hue=v)),
+      ]),actions:[
+        TextButton(onPressed:()=>Navigator.pop(c),child:Text(S.t('common.cancel'))),
+        FilledButton(onPressed:()=>Navigator.pop(c,color.toARGB32()),child:Text(S.t('common.ok'))),
+      ]);
+    }));
+    if(picked!=null&&mounted)setState(()=>_drawColor=picked);
+  }
 
   Widget _displayTab()=>Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
     // Applied at once, kept on the device (not part of the saved form).

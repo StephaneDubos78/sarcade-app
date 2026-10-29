@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
@@ -60,7 +61,11 @@ class _SarcadeAppState extends State<SarcadeApp> {
     _saveServers(rememberServer(_readServers(),url,eventId:eventId,deviceId:deviceId,now:DateTime.now().toUtc()));
 
   Future<void> _save(AppConfig c) async {
+    final colourChanged=c.drawColor!=null&&c.drawColor!=_config.drawColor;
     await widget.store.saveConfig(c.toStored());
+    // Preferred colour kept by the server for the email (every device and
+    // event); refused silently without Cloudflare Access.
+    if(colourChanged)unawaited(_apiFor(c).patchMyPreferences({'color':c.drawColor}).catchError((_)=>false));
     // Last event and terminal of this server, taken back when switching to it.
     await _rememberServer(c.serverUrl,eventId:c.eventId,deviceId:c.deviceId);
     final wasSetup=_needsSetup;

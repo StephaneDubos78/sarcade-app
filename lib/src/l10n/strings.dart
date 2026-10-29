@@ -28,6 +28,8 @@ class S {
 }
 
 const Texts _fr={
+  'links.serverLink':'Liaison avec le serveur','links.direct':'Directe','links.slowed':'Ralentie','links.cut':'Coupée','links.starting':'Connexion…','links.slowedHelp':'Le temps réel est coupé : les mises à jour arrivent environ chaque minute.','links.cutHelp':'Hors ligne : ce que vous envoyez part dès le retour de la liaison.','links.signInAgain':'Se reconnecter (Cloudflare)',
+  'settings.otherColor':'Autre couleur','color.4290824755':'Vert pomme','color.4278225275':'Sarcelle','color.4278234305':'Cyan','color.4278426597':'Bleu ciel','color.4281944491':'Indigo','color.4292352864':'Rose','color.4285353025':'Marron','color.4285887861':'Gris',
   'settings.subtitle':'Connexion, profil, affichage et outils de diagnostic de cet appareil.','settings.subtitleFirst':'Indique le serveur SARCADE et ton identifiant pour cet événement.',
   'settings.statusEvent':'Événement : {v}','settings.statusDevice':'Terminal : {v}',
   'settings.tab.general':'Général','settings.tab.profile':'Profil','settings.tab.display':'Affichage','settings.tab.notifications':'Notifications','settings.tab.diagnostics':'Diagnostic','settings.tab.about':'À propos',
@@ -263,6 +265,8 @@ const Texts _fr={
 };
 
 const Texts _en={
+  'links.serverLink':'Link with the server','links.direct':'Direct','links.slowed':'Slowed','links.cut':'Cut','links.starting':'Connecting…','links.slowedHelp':'Realtime is off: updates arrive about every minute.','links.cutHelp':'Offline: what you send leaves when the link is back.','links.signInAgain':'Sign in again (Cloudflare)',
+  'settings.otherColor':'Other colour','color.4290824755':'Lime','color.4278225275':'Teal','color.4278234305':'Cyan','color.4278426597':'Sky blue','color.4281944491':'Indigo','color.4292352864':'Pink','color.4285353025':'Brown','color.4285887861':'Grey',
   'settings.subtitle':'Connection, profile, display and diagnostic tools of this device.','settings.subtitleFirst':'Enter the SARCADE server and your identifier for this event.',
   'settings.statusEvent':'Event: {v}','settings.statusDevice':'Terminal: {v}',
   'settings.tab.general':'General','settings.tab.profile':'Profile','settings.tab.display':'Display','settings.tab.notifications':'Notifications','settings.tab.diagnostics':'Diagnostics','settings.tab.about':'About',
