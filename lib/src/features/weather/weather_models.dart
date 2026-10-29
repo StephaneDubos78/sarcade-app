@@ -101,3 +101,22 @@ String windDirection(int? deg){
   DateTime at(double minutes)=>DateTime.utc(day.year,day.month,day.day).add(Duration(seconds:(minutes*60).round()));
   return (sunrise:at(720-4*(lon+ha)-eqtime),sunset:at(720-4*(lon-ha)-eqtime));
 }
+
+/// Night at [t] (between sunset and sunrise at that place): night icons.
+bool isNightAt(DateTime t,double lat,double lon){
+  final u=t.toUtc();
+  final s=sunTimes(u,lat,lon);
+  if(s.sunrise==null||s.sunset==null)return false;
+  return u.isBefore(s.sunrise!)||!u.isBefore(s.sunset!);
+}
+
+/// Sunrise or sunset falling within the hour starting at [t].
+({String kind,DateTime at})? sunEventIn(DateTime t,double lat,double lon){
+  final u=t.toUtc(); final end=u.add(const Duration(hours:1));
+  final s=sunTimes(u,lat,lon);
+  for(final e in [('rise',s.sunrise),('set',s.sunset)]){
+    final at=e.$2;
+    if(at!=null&&!at.isBefore(u)&&at.isBefore(end))return (kind:e.$1,at:at);
+  }
+  return null;
+}

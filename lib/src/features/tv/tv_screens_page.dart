@@ -84,13 +84,17 @@ class _TvScreensPageState extends State<TvScreensPage> {
     }
   }
 
+  /// Messages panel shown on the TV with « Envoyer ma vue ».
+  bool _messages=true;
+  TvOptions? _options(){final o=currentMapOptions?.call();return o==null?null:(layers:o.layers,opacity:o.opacity,messages:_messages);}
+
   /// « Envoyer ma vue » (view of the map of this device) or back to the
   /// automatic framing (null).
   Future<void> _view(Map<String,dynamic> d,{required bool mine}) async {
     final v=mine?currentMapView?.call():null;
     if(mine&&v==null){_say('tv.noMap');return;}
     try{
-      await widget.api.sendDisplayView(widget.eventId,'${d['id']}',v==null?null:tvViewJson(v));
+      await widget.api.sendDisplayView(widget.eventId,'${d['id']}',v==null?null:tvViewJson(v,options:_options()));
       _say(mine?'tv.viewSent':'tv.autoSent');
     }on SarcadeHttpException catch(e){
       _say(e.statusCode==401||e.statusCode==403?'tv.signIn':'event.offline');
@@ -118,6 +122,8 @@ class _TvScreensPageState extends State<TvScreensPage> {
         if(_busy)const Padding(padding:EdgeInsets.only(top:16),child:LinearProgressIndicator()),
         const SizedBox(height:24),
         Text(S.t('tv.list'),style:t.textTheme.titleMedium),
+        SwitchListTile(contentPadding:EdgeInsets.zero,value:_messages,onChanged:(v)=>setState(()=>_messages=v),
+          title:Text(S.t('tv.messagesPanel')),subtitle:Text(S.t('tv.messagesPanelHelp'))),
         if(_offline)ListTile(leading:const Icon(Icons.cloud_off),title:Text(S.t('event.offline')),
           trailing:TextButton(onPressed:_load,child:Text(S.t('common.retry'))))
         else if(list==null)const Padding(padding:EdgeInsets.all(16),child:Center(child:CircularProgressIndicator()))
@@ -128,7 +134,7 @@ class _TvScreensPageState extends State<TvScreensPage> {
           trailing:d['active']==true?PopupMenuButton<String>(
             onSelected:(a){if(a=='view')_view(d,mine:true);if(a=='auto')_view(d,mine:false);if(a=='revoke')_revoke(d);},
             itemBuilder:(_)=>[
-              PopupMenuItem(value:'view',child:ListTile(leading:const Icon(Icons.cast),title:Text(S.t('tv.sendView')),subtitle:Text(S.t('tv.sendViewHelp')))),
+              PopupMenuItem(value:'view',child:ListTile(leading:const Icon(Icons.cast),title:Text(S.t('tv.sendView')),subtitle:Text(S.t('tv.sendViewHelp2')))),
               PopupMenuItem(value:'auto',child:ListTile(leading:const Icon(Icons.fit_screen),title:Text(S.t('tv.auto')))),
               PopupMenuItem(value:'revoke',child:ListTile(leading:const Icon(Icons.tv_off),title:Text(S.t('tv.revoke')))),
             ]):null),
