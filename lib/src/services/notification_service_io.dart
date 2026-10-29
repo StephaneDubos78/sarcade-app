@@ -30,6 +30,23 @@ final _immediateDndChannel=AndroidNotificationChannel('sarcade_immediate_dnd','M
   vibrationPattern:Int64List.fromList([0,700,300,700,300,700]));
 
 const _answersFileName='sarcade_notification_answers.jsonl';
+const _launchFileName='sarcade_notification_launch.txt';
+bool _launchChecked=false;
+
+/// True the first time a given notification launch is seen; remembers it
+/// so that the same launch reported again by Android is ignored.
+Future<bool> _firstLaunchHandling(NotificationResponse r) async {
+  try{
+    final f=File('${(await getApplicationSupportDirectory()).path}${Platform.pathSeparator}$_launchFileName');
+    final key=launchKey(r.id,r.actionId,r.payload);
+    if(await f.exists()&&(await f.readAsString())==key)return false;
+    await f.parent.create(recursive:true);
+    await f.writeAsString(key,flush:true);
+  }catch(e){
+    debugPrint('SARCADE notification launch marker unavailable: $e');
+  }
+  return true;
+}
 
 Future<File> _answersFile() async =>
   File('${(await getApplicationSupportDirectory()).path}${Platform.pathSeparator}$_answersFileName');
@@ -132,10 +149,16 @@ class NotificationService {
       // Android 13 and later ask the operator once.
       await android?.requestNotificationsPermission();
       _ready=true;
-      // Application started by a notification (action or tap, application closed).
-      final launch=await _plugin.getNotificationAppLaunchDetails();
-      final response=launch?.notificationResponse;
-      if(launch?.didNotificationLaunchApp==true&&response!=null)await _onResponse(response);
+      // Application started by a notification (action or tap, application
+      // closed). Android keeps reporting that launch on later starts by the
+      // icon (same activity intent): handled once per process and once per
+      // notification, so the app opens on the map, not on Messages.
+      if(!_launchChecked){
+        _launchChecked=true;
+        final launch=await _plugin.getNotificationAppLaunchDetails();
+        final response=launch?.notificationResponse;
+        if(launch?.didNotificationLaunchApp==true&&response!=null&&await _firstLaunchHandling(response))await _onResponse(response);
+      }
     }catch(e){
       debugPrint('SARCADE notifications unavailable: $e');
     }

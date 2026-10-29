@@ -12,13 +12,25 @@ const _apiKey=String.fromEnvironment('SARCADE_FCM_API_KEY');
 const _appId=String.fromEnvironment('SARCADE_FCM_APP_ID');
 const _senderId=String.fromEnvironment('SARCADE_FCM_SENDER_ID');
 const _projectId=String.fromEnvironment('SARCADE_FCM_PROJECT_ID');
+/// iPhone: same Firebase project, its own app (GoogleService-Info.plist,
+/// secret GOOGLE_SERVICE_INFO_PLIST); the APNs key is held by Firebase.
+const _iosApiKey=String.fromEnvironment('SARCADE_FCM_IOS_API_KEY');
+const _iosAppId=String.fromEnvironment('SARCADE_FCM_IOS_APP_ID');
 
-bool get fcmAvailable=>!kIsWeb&&defaultTargetPlatform==TargetPlatform.android
-  &&_apiKey.isNotEmpty&&_appId.isNotEmpty&&_senderId.isNotEmpty&&_projectId.isNotEmpty;
+bool get _ios=>!kIsWeb&&defaultTargetPlatform==TargetPlatform.iOS;
+bool get fcmAvailable=>!kIsWeb&&_senderId.isNotEmpty&&_projectId.isNotEmpty&&(
+  defaultTargetPlatform==TargetPlatform.android?_apiKey.isNotEmpty&&_appId.isNotEmpty
+  :_ios&&_iosApiKey.isNotEmpty&&_iosAppId.isNotEmpty);
+
+/// Platform name of the token for the server (« fcm_ios »: the server adds
+/// the generic alert that iOS needs to show something application closed).
+String get fcmPlatform=>_ios?'fcm_ios':'fcm';
 
 Future<void> _ensureFirebase() async {
   if(Firebase.apps.isEmpty){
-    await Firebase.initializeApp(options:const FirebaseOptions(apiKey:_apiKey,appId:_appId,messagingSenderId:_senderId,projectId:_projectId));
+    await Firebase.initializeApp(options:_ios
+      ?const FirebaseOptions(apiKey:_iosApiKey,appId:_iosAppId,messagingSenderId:_senderId,projectId:_projectId,iosBundleId:'org.sarcade.sarcadeApp')
+      :const FirebaseOptions(apiKey:_apiKey,appId:_appId,messagingSenderId:_senderId,projectId:_projectId));
   }
 }
 
@@ -26,6 +38,8 @@ Future<void> _ensureFirebase() async {
 /// notification asks to open SARCADE, which then synchronises.
 @pragma('vm:entry-point')
 Future<void> fcmBackgroundHandler(RemoteMessage message) async {
+  // iPhone: the system already shows the alert sent by the server.
+  if(defaultTargetPlatform==TargetPlatform.iOS)return;
   await showWakeNotification(message.data);
 }
 
@@ -55,6 +69,15 @@ Future<String?> fcmToken() async {
   try{
     await _ensureFirebase();
     FirebaseMessaging.onBackgroundMessage(fcmBackgroundHandler);
+    if(_ios){
+      // iPhone: the operator allows the notifications, then the APNs
+      // token must exist before Firebase gives its own.
+      final settings=await FirebaseMessaging.instance.requestPermission(alert:true,sound:true,badge:false);
+      if(settings.authorizationStatus==AuthorizationStatus.denied)return null;
+      for(var i=0;i<10&&await FirebaseMessaging.instance.getAPNSToken()==null;i++){
+        await Future<void>.delayed(const Duration(seconds:1));
+      }
+    }
     return await FirebaseMessaging.instance.getToken();
   }catch(e){
     debugPrint('SARCADE FCM unavailable: $e');

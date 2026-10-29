@@ -29,6 +29,12 @@ class S {
 
 const Texts _fr={
   'bearings.signal':'Signal recherché','bearings.signalNew':'Nouveau signal','bearings.colorBy':'Colorer les relevés par','bearings.colorSignal':'Signal','bearings.colorOperator':'Opérateur',
+  'settings.subtitle':'Connexion, profil, affichage et outils de diagnostic de cet appareil.','settings.subtitleFirst':'Indique le serveur SARCADE et ton identifiant pour cet événement.',
+  'settings.statusEvent':'Événement : {v}','settings.statusDevice':'Terminal : {v}',
+  'settings.tab.general':'Général','settings.tab.profile':'Profil','settings.tab.display':'Affichage','settings.tab.notifications':'Notifications','settings.tab.diagnostics':'Diagnostic','settings.tab.about':'À propos',
+  'settings.theme':'Thème','settings.themeHelp':'Automatique suit le réglage de l’appareil','settings.themeDay':'Jour','settings.themeNight':'Nuit','settings.themeAuto':'Automatique',
+  'settings.wakeupWhere':'Dans la pastille des liaisons, sur la carte',
+  'diagnostics.event':'Identifiant de l’événement actif','diagnostics.server':'Serveur actif','diagnostics.device':'Terminal','diagnostics.version':'Version','diagnostics.open':'Ouvrir',
   'settings.diagnostics':'Diagnostic',
   'diagnostics.description':'Informations de diagnostic et historique de l’opération active.',
   'diagnostics.activeEvent':'Événement actif : {event}',
@@ -223,8 +229,8 @@ const Texts _fr={
   // Event list (« Choix de l'événement dans une liste »)
   'settings.eventsRefresh':'Recharger la liste des événements','settings.eventsOffline':'Pas de réseau : dernière liste connue',
   'settings.eventsEmpty':'Aucun événement ouvert sur ce serveur','settings.eventsError':'Liste indisponible ({error})',
-  'settings.eventAdvanced':'Saisie avancée','settings.eventId':'Identifiant de l’événement',
-  'settings.eventIdHelp':'Seulement pour un serveur ancien ou un dépannage',
+  
+  
   'eventState.draft':'brouillon','eventState.active':'actif','eventState.closed':'clos',
   'settings.eventUnlisted':'{id} (absent de la liste)',
   // Unsent items (« Robustesse de la synchronisation »)
@@ -259,6 +265,12 @@ const Texts _fr={
 
 const Texts _en={
   'bearings.signal':'Signal searched','bearings.signalNew':'New signal','bearings.colorBy':'Colour bearings by','bearings.colorSignal':'Signal','bearings.colorOperator':'Operator',
+  'settings.subtitle':'Connection, profile, display and diagnostic tools of this device.','settings.subtitleFirst':'Enter the SARCADE server and your identifier for this event.',
+  'settings.statusEvent':'Event: {v}','settings.statusDevice':'Terminal: {v}',
+  'settings.tab.general':'General','settings.tab.profile':'Profile','settings.tab.display':'Display','settings.tab.notifications':'Notifications','settings.tab.diagnostics':'Diagnostics','settings.tab.about':'About',
+  'settings.theme':'Theme','settings.themeHelp':'Automatic follows the device setting','settings.themeDay':'Day','settings.themeNight':'Night','settings.themeAuto':'Automatic',
+  'settings.wakeupWhere':'In the links pill, on the map',
+  'diagnostics.event':'Active event identifier','diagnostics.server':'Active server','diagnostics.device':'Terminal','diagnostics.version':'Version','diagnostics.open':'Open',
   'settings.diagnostics':'Diagnostics',
   'diagnostics.description':'Diagnostic information and history of the active operation.',
   'diagnostics.activeEvent':'Active event: {event}',
@@ -435,8 +447,8 @@ const Texts _en={
   'settings.callsignInvalid':'Invalid callsign (e.g. F4ABC or F4ABC-7)',
   'settings.eventsRefresh':'Reload the event list','settings.eventsOffline':'No network: last known list',
   'settings.eventsEmpty':'No open event on this server','settings.eventsError':'List unavailable ({error})',
-  'settings.eventAdvanced':'Advanced entry','settings.eventId':'Event identifier',
-  'settings.eventIdHelp':'Only for an older server or troubleshooting',
+  
+  
   'eventState.draft':'draft','eventState.active':'active','eventState.closed':'closed',
   'settings.eventUnlisted':'{id} (not in the list)',
   'status.unsent':'Connected · {n} not sent','status.inFlight':'Pending ({n})',

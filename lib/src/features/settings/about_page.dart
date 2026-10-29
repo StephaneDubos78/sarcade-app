@@ -6,6 +6,20 @@ import '../../l10n/strings.dart';
 class SarcadeAboutPage extends StatelessWidget {
   const SarcadeAboutPage({super.key});
 
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: Text(S.t('about.title'))),
+    body: SafeArea(child: Center(child: ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 640),
+      child: ListView(padding: const EdgeInsets.all(20), children: const [SarcadeAboutContent()]),
+    ))),
+  );
+}
+
+/// Content of « À propos », shown in its page and in the Settings tab.
+class SarcadeAboutContent extends StatelessWidget {
+  const SarcadeAboutContent({super.key});
+
   Future<void> _open(BuildContext context, String url) async {
     bool opened;
     try {
@@ -26,11 +40,7 @@ class SarcadeAboutPage extends StatelessWidget {
   );
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: Text(S.t('about.title'))),
-    body: SafeArea(child: Center(child: ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 640),
-      child: ListView(padding: const EdgeInsets.all(20), children: [
+  Widget build(BuildContext context) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Text('SARCADE', style: Theme.of(context).textTheme.headlineMedium),
         const SizedBox(height: 8),
         Text(S.t('about.description')),
@@ -51,7 +61,5 @@ class SarcadeAboutPage extends StatelessWidget {
           trailing: const Icon(Icons.chevron_right),
           onTap: () => showLicensePage(context: context, applicationName: 'SARCADE', applicationVersion: appVersion),
         ),
-      ]),
-    ))),
-  );
+      ]);
 }

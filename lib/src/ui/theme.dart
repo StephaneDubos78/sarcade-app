@@ -14,9 +14,10 @@ class SarcadeColors {
 }
 
 /// Day or night, chosen on the device; « system » follows the device.
-final themeMode=ValueNotifier<ThemeMode>(ThemeMode.dark);
+final themeMode=ValueNotifier<ThemeMode>(ThemeMode.system);
 
-ThemeMode themeModeFrom(String? v)=>switch(v){'light'=>ThemeMode.light,'system'=>ThemeMode.system,_=>ThemeMode.dark};
+/// Automatic by default (decision of the project owner, 28 Oct 2026).
+ThemeMode themeModeFrom(String? v)=>switch(v){'light'=>ThemeMode.light,'dark'=>ThemeMode.dark,_=>ThemeMode.system};
 String themeModeName(ThemeMode m)=>switch(m){ThemeMode.light=>'light',ThemeMode.system=>'system',_=>'dark'};
 
 ThemeData nightTheme(){
