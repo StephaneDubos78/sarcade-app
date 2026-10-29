@@ -31,7 +31,9 @@ test.describe.serial('PCO (web) and a field terminal', () => {
     await field.position(48.8049, 2.1204);
     await joinEvent(page, { eventName: EVENT_NAME, deviceId: 'PCO' });
 
-    // The PCO sees the field terminal in its operators list.
+    // The PCO sees the field terminal in its operators list (the panel is
+    // closed at start since 29 Oct 2026: the map first; Teams opens it).
+    await page.getByRole('button', { name: 'Teams', exact: true }).click();
     await expect(page.getByRole('group', { name: /^Operators \([1-9]/ })).toBeVisible();
     // The server knows the PCO (heartbeat of the web client).
     await expect.poll(async () => (await field.devices()).map((d) => d.device_id), { timeout: 60_000 })
