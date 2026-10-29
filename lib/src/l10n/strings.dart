@@ -28,6 +28,7 @@ class S {
 }
 
 const Texts _fr={
+  'settings.tab.event':'Événement','event.intro':'Réglages de l’événement {event}, appliqués aussitôt pour tous et inscrits dans la main courante.','event.radioTx':'Émission radio locale des positions','event.radioTxHelp':'Positions des opérateurs qui l’acceptent, émises en APRS par la station radio du serveur, jamais vers Internet','event.radioCallsign':'Indicatif d’émission','event.radioCallsignHelp':'Indicatif du PCO de l’événement (l’ADRASEC n’en a pas)','event.apply':'Appliquer','event.oldThreshold':'Stations « anciennes » après','event.oldThresholdHelp':'Repliées dans Équipes et masquées sur la carte','event.aprsFollowed':'APRS suivi par l’événement','event.aprsFollowedHelp':'{g} groupe(s), {c} indicatif(s) ajouté(s)','event.forbidden':'Réservé au PCO de l’événement','event.refused':'Refusé par le serveur ({error})','event.offline':'Serveur injoignable : réessayez',
   'settings.subtitle':'Connexion, profil, affichage et outils de diagnostic de cet appareil.','settings.subtitleFirst':'Indique le serveur SARCADE et ton identifiant pour cet événement.',
   'settings.statusEvent':'Événement : {v}','settings.statusDevice':'Terminal : {v}',
   'settings.tab.general':'Général','settings.tab.profile':'Profil','settings.tab.display':'Affichage','settings.tab.notifications':'Notifications','settings.tab.diagnostics':'Diagnostic','settings.tab.about':'À propos',
@@ -263,6 +264,7 @@ const Texts _fr={
 };
 
 const Texts _en={
+  'settings.tab.event':'Event','event.intro':'Settings of the event {event}, applied at once for everyone and written in the logbook.','event.radioTx':'Local radio transmission of positions','event.radioTxHelp':'Positions of the consenting operators, sent in APRS by the server radio station, never to the Internet','event.radioCallsign':'Transmission callsign','event.radioCallsignHelp':'Callsign of the PCO of the event (the ADRASEC has none)','event.apply':'Apply','event.oldThreshold':'Stations « old » after','event.oldThresholdHelp':'Folded in Teams and hidden on the map','event.aprsFollowed':'APRS followed by the event','event.aprsFollowedHelp':'{g} group(s), {c} added callsign(s)','event.forbidden':'Only for the PCO of the event','event.refused':'Refused by the server ({error})','event.offline':'Server unreachable: try again',
   'settings.subtitle':'Connection, profile, display and diagnostic tools of this device.','settings.subtitleFirst':'Enter the SARCADE server and your identifier for this event.',
   'settings.statusEvent':'Event: {v}','settings.statusDevice':'Terminal: {v}',
   'settings.tab.general':'General','settings.tab.profile':'Profile','settings.tab.display':'Display','settings.tab.notifications':'Notifications','settings.tab.diagnostics':'Diagnostics','settings.tab.about':'About',

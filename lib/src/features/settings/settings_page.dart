@@ -12,7 +12,9 @@ import '../../l10n/strings.dart';
 import '../../offline/outbox_policy.dart' show normalServer;
 import '../../operations/event_settings.dart';
 import '../../services/notification_service.dart';
-import '../../services/sarcade_api.dart' show SarcadeHttpException;
+import '../../models/comm_group.dart' show isPco;
+import '../../services/sarcade_api.dart' show SarcadeApi, SarcadeHttpException;
+import 'event_settings_section.dart';
 
 /// Operator settings: server address, event and terminal identifier,
 /// language, radio callsign. Lets one APK serve every field operator
@@ -37,8 +39,10 @@ class SettingsPage extends StatefulWidget {
   final Future<void> Function(List<SavedServer>)? saveServers;
   /// Day / night / automatic chosen: applied at once, kept by the caller.
   final void Function(ThemeMode)? onThemeChanged;
+  /// Active session, for Paramètres › Événement (PCO only).
+  final SarcadeApi? api;
   const SettingsPage({super.key,required this.initial,required this.onSave,this.firstRun=false,
-    this.loadEvents,this.cachedEvents,this.waitingFor,this.sendFirst,this.readServers,this.saveServers,this.onOpenLogbook,this.onThemeChanged});
+    this.loadEvents,this.cachedEvents,this.waitingFor,this.sendFirst,this.readServers,this.saveServers,this.onOpenLogbook,this.onThemeChanged,this.api});
   @override State<SettingsPage> createState()=>_SettingsPageState();
 }
 
@@ -267,7 +271,8 @@ class _SettingsPageState extends State<SettingsPage> {
   /// shows what is needed to start.
   List<String> get _tabs=>widget.firstRun
     ?['general','profile','display','about']
-    :['general','profile','display','notifications','diagnostics','about'];
+    :['general',if(_eventTab)'event','profile','display','notifications','diagnostics','about'];
+  bool get _eventTab=>widget.api!=null&&isPco(widget.initial.deviceId);
   int _tab=0;
 
   /// One setting per line: bold label and grey help on the left (under it
@@ -394,6 +399,7 @@ class _SettingsPageState extends State<SettingsPage> {
   Widget _tabBody(String id)=>switch(id){
     'general'=>_generalTab(),'profile'=>_profileTab(),'display'=>_displayTab(),
     'notifications'=>_notificationsTab(),'diagnostics'=>_diagnosticsTab(),
+    'event'=>EventSettingsSection(api:widget.api!,eventId:widget.initial.eventId,actorId:widget.initial.deviceId),
     _=>const Padding(padding:EdgeInsets.only(top:16),child:SarcadeAboutContent()),
   };
 

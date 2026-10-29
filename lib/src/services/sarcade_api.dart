@@ -130,6 +130,14 @@ class SarcadeApi {
     final r=await _client.delete(Uri.parse('$baseUrl/api/v0.1/aprs/groups/$id'));
     if(r.statusCode!=204&&r.statusCode!=404) throw SarcadeHttpException('aprs_group_delete',r.statusCode);
   }
+  /// Who the server sees (email checked by Cloudflare Access) and the
+  /// rights it gives; null for an older server.
+  Future<Map<String,dynamic>?> me() async {
+    final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/me'));
+    if(r.statusCode!=200)return null;
+    return Map<String,dynamic>.from(jsonDecode(r.body) as Map);
+  }
+
   /// Wake-up of the devices (note « Réveil des appareils »).
   Future<Map<String,dynamic>> wakeupConfig() async {
     final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/wakeup/config'));

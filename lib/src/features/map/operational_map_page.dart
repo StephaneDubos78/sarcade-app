@@ -145,7 +145,19 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     Navigator.push(context,MaterialPageRoute(builder:(_)=>MessagesPage(api:widget.api,eventId:widget.eventId,
       actorId:widget.deviceId,sync:_sync,store:widget.store)));
   }
-  @override void initState(){super.initState();_initNotificationActions();unawaited(requestPersistentStorage());_sync=OfflineSyncService(api:widget.api,store:widget.store,eventId:widget.eventId,onRemoteChange:_onRemoteChange);_initDrawing();_initBearings();_loadLocal();_initRoutes();_initMeasure();_sync.start();_initOperations();_loadBasemaps();_initWebUpdate();_syncUiTimer=Timer.periodic(const Duration(seconds:2),(t){if(t.tick%3==0)_drainAnswers();if(mounted)setState((){});});AccessManager.instance.addListener(_onAccessChanged);_start();}
+  @override void initState(){super.initState();_initNotificationActions();unawaited(requestPersistentStorage());_sync=OfflineSyncService(api:widget.api,store:widget.store,eventId:widget.eventId,onRemoteChange:_onRemoteChange);_initDrawing();_initBearings();_loadLocal();_initRoutes();_initMeasure();_sync.start();_initOperations();_loadBasemaps();_initWebUpdate();_syncUiTimer=Timer.periodic(const Duration(seconds:2),(t){if(t.tick%3==0)_drainAnswers();if(mounted)setState((){});});AccessManager.instance.addListener(_onAccessChanged);_start();unawaited(_loadRoles());}
+
+  /// Rights given by the server for the checked email (PCO, administrator).
+  Future<void> _loadRoles() async {
+    myActorId=widget.deviceId;
+    try{
+      final me=await widget.api.me();
+      myRoles={for(final r in (me?['roles'] as List?)??const [])'$r'};
+      if(mounted)setState((){});
+    }catch(e){
+      debugPrint('SARCADE rights not read: $e');
+    }
+  }
   bool _validPosition(SarcadePosition p){
     final t=p.time.toUtc(), now=DateTime.now().toUtc();
     return t.isAfter(DateTime.utc(2020)) && t.isBefore(now.add(const Duration(days:1)));

@@ -97,6 +97,7 @@ class _SarcadeAppState extends State<SarcadeApp> {
     waitingFor:(server,eventId)=>outbox.waitingFor(widget.store.pending(),server,eventId),
     sendFirst:_sendFirst,
     readServers:_readServers,saveServers:_saveServers,
+    api:firstRun?null:_apiFor(_config),
     onThemeChanged:(m)=>widget.store.setPreference('theme_mode',themeModeName(m)),
     onOpenLogbook:firstRun?null:()=>_navigator.currentState?.push(MaterialPageRoute(
       builder:(_)=>LogbookPage(api:_apiFor(_config),eventId:_config.eventId))),
