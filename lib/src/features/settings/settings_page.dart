@@ -6,7 +6,7 @@ import '../../config/app_config.dart';
 import '../../config/saved_servers.dart';
 import '../../config/version.dart';
 import 'about_page.dart';
-import 'diagnostics_page.dart';
+import '../../ui/theme.dart' show themeMode;
 import '../map/drawing/drawing_controller.dart' show drawingPalette, defaultDrawColor;
 import '../../l10n/strings.dart';
 import '../../offline/outbox_policy.dart' show normalServer;
@@ -35,8 +35,10 @@ class SettingsPage extends StatefulWidget {
   /// each successful connection, and saved after a rename or a removal.
   final List<SavedServer> Function()? readServers;
   final Future<void> Function(List<SavedServer>)? saveServers;
+  /// Day / night / automatic chosen: applied at once, kept by the caller.
+  final void Function(ThemeMode)? onThemeChanged;
   const SettingsPage({super.key,required this.initial,required this.onSave,this.firstRun=false,
-    this.loadEvents,this.cachedEvents,this.waitingFor,this.sendFirst,this.readServers,this.saveServers,this.onOpenLogbook});
+    this.loadEvents,this.cachedEvents,this.waitingFor,this.sendFirst,this.readServers,this.saveServers,this.onOpenLogbook,this.onThemeChanged});
   @override State<SettingsPage> createState()=>_SettingsPageState();
 }
 
@@ -79,7 +81,7 @@ class _SettingsPageState extends State<SettingsPage> {
       // Protected by Cloudflare Access: sign in first, then the list comes.
       if(mounted)setState((){_events=widget.cachedEvents?.call(server)??[];_accessRequired=true;});
     }on SarcadeHttpException catch(e){
-      // An older server without the list: the advanced entry stays available.
+      // The list could not be read: the last known one is shown.
       if(mounted)setState((){_events=widget.cachedEvents?.call(server)??[];_eventsError='HTTP ${e.statusCode}';});
     }catch(_){
       if(mounted)setState((){_events=widget.cachedEvents?.call(server)??[];_eventsOffline=true;});
@@ -143,7 +145,7 @@ class _SettingsPageState extends State<SettingsPage> {
         key:ValueKey('servers|${current?.url}|${_servers.length}'),
         initialValue:current?.url,
         isExpanded:true,
-        decoration:InputDecoration(labelText:S.t('servers.saved'),helperText:current==null?S.t('servers.newHelp'):null,border:const OutlineInputBorder()),
+        decoration:_field(help:current==null?S.t('servers.newHelp'):null).copyWith(labelText:S.t('servers.saved')),
         items:[for(final s in _servers)DropdownMenuItem(value:s.url,child:Text('${s.label} · ${s.shortAddress}',overflow:TextOverflow.ellipsis))],
         onChanged:(v){final s=v==null?null:findServer(_servers,v);if(s!=null)_chooseServer(s);},
       )),
@@ -208,7 +210,7 @@ class _SettingsPageState extends State<SettingsPage> {
         key:ValueKey('$current|${_events.length}'),
         initialValue:current.isEmpty?null:current,
         isExpanded:true,
-        decoration:InputDecoration(labelText:S.t('settings.event'),helperText:help,border:const OutlineInputBorder()),
+        decoration:_field(label:S.t('settings.event'),help:help),
         items:items,
         onChanged:(v)=>setState(()=>_event.text=v??''),
         validator:(_)=>_required(_event.text),
@@ -261,120 +263,191 @@ class _SettingsPageState extends State<SettingsPage> {
     if(mounted)setState(()=>_saving=false);
   }
 
-  @override
-  Widget build(BuildContext context)=>Scaffold(
-    appBar:AppBar(title:Text(widget.firstRun?S.t('settings.firstRun'):S.t('settings.title')),automaticallyImplyLeading:!widget.firstRun),
-    body:SafeArea(child:Center(child:ConstrainedBox(
-      constraints:const BoxConstraints(maxWidth:560),
-      child:Form(key:_form,child:ListView(padding:const EdgeInsets.all(20),children:[
-        if(widget.firstRun)...[
-          Text(S.t('settings.intro'),style:Theme.of(context).textTheme.bodyLarge),
-          const SizedBox(height:20),
+  /// Tabs of the screen (« Charte graphique épurée »); the first setup only
+  /// shows what is needed to start.
+  List<String> get _tabs=>widget.firstRun
+    ?['general','profile','display','about']
+    :['general','profile','display','notifications','diagnostics','about'];
+  int _tab=0;
+
+  /// One setting per line: bold label and grey help on the left (under it
+  /// on a phone), the control on the right.
+  Widget _row(String label,{String? help,required Widget child}){
+    final t=Theme.of(context);
+    final head=Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+      Text(label,style:t.textTheme.titleSmall?.copyWith(fontWeight:FontWeight.w600)),
+      if(help!=null)Padding(padding:const EdgeInsets.only(top:2),child:Text(help,style:t.textTheme.bodySmall?.copyWith(color:t.colorScheme.onSurfaceVariant))),
+    ]);
+    return Column(children:[
+      Padding(padding:const EdgeInsets.symmetric(vertical:14),child:LayoutBuilder(builder:(context,c)=>c.maxWidth>=600
+        ? Row(crossAxisAlignment:CrossAxisAlignment.start,children:[Expanded(flex:2,child:head),const SizedBox(width:24),Expanded(flex:3,child:child)])
+        : Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[head,const SizedBox(height:8),child]))),
+      const Divider(height:1),
+    ]);
+  }
+
+  /// Compact field; its label stays inside (read by screen readers and the
+  /// end-to-end tests).
+  InputDecoration _field({String? label,String? hint,String? help})=>InputDecoration(isDense:true,labelText:label,hintText:hint,helperText:help,helperMaxLines:3,
+    border:OutlineInputBorder(borderRadius:BorderRadius.circular(8)));
+
+  /// A text field on its own line (label inside the field).
+  Widget _fieldRow(Widget child)=>Padding(padding:const EdgeInsets.only(top:14),child:child);
+
+  /// Read-only value with an optional text action on the right (« Ouvrir »).
+  Widget _value(String text,{String? action,VoidCallback? onAction})=>Row(children:[
+    Expanded(child:SelectableText(text)),
+    if(action!=null)TextButton(onPressed:onAction,child:Text(action)),
+  ]);
+
+  Widget _generalTab()=>Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+    if(widget.firstRun)Padding(padding:const EdgeInsets.only(top:12),child:Text(S.t('settings.intro'))),
+    _fieldRow(Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+      _serverPicker(),
+      Focus(
+        // Leaving the server field reloads the events of that server.
+        onFocusChange:(f){if(!f)_loadEvents();},
+        child:TextFormField(
+          controller:_server,
+          decoration:_field(label:S.t('settings.server'),hint:defaultServerUrl,help:S.t('settings.serverHelp')),
+          keyboardType:TextInputType.url,autocorrect:false,validator:_url,
+          onFieldSubmitted:(_)=>_loadEvents(),
+          onChanged:(_)=>setState((){}),
+        ),
+      ),
+      _accessRow(),
+    ])),
+    _fieldRow(widget.loadEvents!=null?_eventPicker():TextFormField(
+      controller:_event,decoration:_field(label:S.t('settings.event')),autocorrect:false,validator:_required)),
+    _fieldRow(TextFormField(
+      controller:_device,decoration:_field(label:S.t('settings.device'),hint:'TERRAIN-01',help:S.t('settings.deviceHelp')),autocorrect:false,validator:_required)),
+    const SizedBox(height:8),
+  ]);
+
+  Widget _profileTab()=>Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+    _fieldRow(TextFormField(
+      controller:_callsign,decoration:_field(label:S.t('settings.callsign'),hint:'F4ABC-7',help:S.t('settings.callsignHelp')),
+      autocorrect:false,textCapitalization:TextCapitalization.characters,validator:_callsignCheck)),
+    const SizedBox(height:8),
+    _row(S.t('settings.aprsConsent'),help:S.t('settings.aprsConsentHelp'),child:Align(alignment:Alignment.centerRight,
+      child:Switch(value:_aprsConsent,onChanged:(v)=>setState(()=>_aprsConsent=v)))),
+    // Colour of every new drawing (existing objects keep theirs).
+    _row(S.t('settings.drawColor'),help:S.t('settings.drawColorHelp'),child:Wrap(spacing:8,runSpacing:8,children:[for(final c in drawingPalette)Semantics(
+      label:S.t('color.$c'),selected:c==_drawColor,button:true,
+      child:InkWell(customBorder:const CircleBorder(),onTap:()=>setState(()=>_drawColor=c),child:Container(
+        width:34,height:34,
+        decoration:BoxDecoration(color:Color(c),shape:BoxShape.circle,border:Border.all(color:c==_drawColor?Theme.of(context).colorScheme.primary:Colors.black26,width:c==_drawColor?3:1)),
+        child:c==_drawColor?Icon(Icons.check,size:18,color:c==0xFFFFFFFF||c==0xFFFDD835?Colors.black:Colors.white):null,
+      )),
+    )])),
+  ]);
+
+  Widget _displayTab()=>Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+    // Applied at once, kept on the device (not part of the saved form).
+    _row(S.t('settings.theme'),help:S.t('settings.themeHelp'),child:ValueListenableBuilder<ThemeMode>(valueListenable:themeMode,
+      builder:(context,mode,_)=>Align(alignment:Alignment.centerLeft,child:SegmentedButton<ThemeMode>(
+        showSelectedIcon:false,
+        segments:[
+          ButtonSegment(value:ThemeMode.light,icon:const Icon(Icons.light_mode_outlined,size:18),label:Text(S.t('settings.themeDay'))),
+          ButtonSegment(value:ThemeMode.dark,icon:const Icon(Icons.dark_mode_outlined,size:18),label:Text(S.t('settings.themeNight'))),
+          ButtonSegment(value:ThemeMode.system,icon:const Icon(Icons.brightness_auto_outlined,size:18),label:Text(S.t('settings.themeAuto'))),
         ],
-        _serverPicker(),
-        Focus(
-          // Leaving the server field reloads the events of that server.
-          onFocusChange:(f){if(!f)_loadEvents();},
-          child:TextFormField(
-            controller:_server,
-            decoration:InputDecoration(labelText:S.t('settings.server'),hintText:defaultServerUrl,helperText:S.t('settings.serverHelp'),border:const OutlineInputBorder()),
-            keyboardType:TextInputType.url,autocorrect:false,validator:_url,
-            onFieldSubmitted:(_)=>_loadEvents(),
-            onChanged:(_)=>setState((){}),
-          ),
-        ),
-        _accessRow(),
-        const SizedBox(height:16),
-        if(widget.loadEvents!=null)...[
-          _eventPicker(),
-          // Manual identifier kept as a fallback (decision b).
-          ExpansionTile(
-            tilePadding:EdgeInsets.zero,
-            initiallyExpanded:_eventsError!=null,
-            title:Text(S.t('settings.eventAdvanced'),style:Theme.of(context).textTheme.bodyMedium),
-            children:[TextFormField(
-              controller:_event,
-              decoration:InputDecoration(labelText:S.t('settings.eventId'),helperText:S.t('settings.eventIdHelp'),border:const OutlineInputBorder()),
-              autocorrect:false,onChanged:(_)=>setState((){}),
-            ),const SizedBox(height:8)],
-          ),
-        ]else TextFormField(
-          controller:_event,
-          decoration:InputDecoration(labelText:S.t('settings.event'),border:const OutlineInputBorder()),
-          autocorrect:false,validator:_required,
-        ),
-        const SizedBox(height:16),
-        TextFormField(
-          controller:_device,
-          decoration:InputDecoration(labelText:S.t('settings.device'),hintText:'TERRAIN-01',helperText:S.t('settings.deviceHelp'),border:const OutlineInputBorder()),
-          autocorrect:false,validator:_required,
-        ),
-        const SizedBox(height:16),
-        DropdownButtonFormField<String>(
-          initialValue:_language,
-          decoration:InputDecoration(labelText:S.t('settings.language'),border:const OutlineInputBorder()),
-          items:[
-            DropdownMenuItem(value:'system',child:Text(S.t('settings.languageSystem'))),
-            const DropdownMenuItem(value:'fr',child:Text('Français')),
-            const DropdownMenuItem(value:'en',child:Text('English')),
-          ],
-          onChanged:(v)=>setState(()=>_language=v??'system'),
-        ),
-        const SizedBox(height:16),
-        TextFormField(
-          controller:_callsign,
-          decoration:InputDecoration(labelText:S.t('settings.callsign'),hintText:'F4ABC-7',helperText:S.t('settings.callsignHelp'),border:const OutlineInputBorder()),
-          autocorrect:false,textCapitalization:TextCapitalization.characters,validator:_callsignCheck,
-        ),
-        SwitchListTile(
-          contentPadding:EdgeInsets.zero,
-          value:_aprsConsent,onChanged:(v)=>setState(()=>_aprsConsent=v),
-          title:Text(S.t('settings.aprsConsent')),subtitle:Text(S.t('settings.aprsConsentHelp')),
-        ),
-        if(NotificationService.supportsDndBypass)SwitchListTile(
-          contentPadding:EdgeInsets.zero,
-          value:_bypassDnd,
-          onChanged:(v) async {
-            setState(()=>_bypassDnd=v);
-            if(!v)return;
-            final granted=await NotificationService().enableDndBypass();
-            if(!granted&&context.mounted){
-              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(S.t('settings.dndPending'))));
-            }
-          },
-          title:Text(S.t('settings.dndBypass')),subtitle:Text(S.t('settings.dndBypassHelp')),
-        ),
-        const SizedBox(height:8),
-        // Profile: colour of every new drawing (existing objects keep theirs).
-        InputDecorator(
-          decoration:InputDecoration(labelText:S.t('settings.drawColor'),helperText:S.t('settings.drawColorHelp'),border:const OutlineInputBorder()),
-          child:Wrap(spacing:8,runSpacing:8,children:[for(final c in drawingPalette)Semantics(
-            label:S.t('color.$c'),selected:c==_drawColor,button:true,
-            child:InkWell(customBorder:const CircleBorder(),onTap:()=>setState(()=>_drawColor=c),child:Container(
-              width:34,height:34,
-              decoration:BoxDecoration(color:Color(c),shape:BoxShape.circle,border:Border.all(color:c==_drawColor?Theme.of(context).colorScheme.primary:Colors.black26,width:c==_drawColor?3:1)),
-              child:c==_drawColor?Icon(Icons.check,size:18,color:c==0xFFFFFFFF||c==0xFFFDD835?Colors.black:Colors.white):null,
-            )),
-          )]),
-        ),
-        const SizedBox(height:24),
-        FilledButton.icon(onPressed:_saving?null:_save,icon:const Icon(Icons.check),label:Text(S.t('common.save'))),
-        const SizedBox(height:16),
-        if(!widget.firstRun&&widget.onOpenLogbook!=null)ListTile(
-          leading:const Icon(Icons.bug_report_outlined),
-          title:Text(S.t('settings.diagnostics')),
-          trailing:const Icon(Icons.chevron_right),
-          onTap:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>DiagnosticsPage(
-            eventId:widget.initial.eventId,onOpenLogbook:widget.onOpenLogbook!))),
-        ),
-        ListTile(
-          leading:const Icon(Icons.info_outline),
-          title:Text(S.t('about.title')),
-          trailing:const Icon(Icons.chevron_right),
-          onTap:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>const SarcadeAboutPage())),
-        ),
-        SelectableText('SARCADE $appVersion${appBuild.isEmpty?'':' · $appBuild'}',textAlign:TextAlign.center,style:Theme.of(context).textTheme.bodySmall),
-      ])),
-    ))),
-  );
+        selected:{mode},
+        onSelectionChanged:(v){themeMode.value=v.first;widget.onThemeChanged?.call(v.first);},
+      )))),
+    _fieldRow(DropdownButtonFormField<String>(
+      initialValue:_language,isExpanded:true,
+      decoration:_field(label:S.t('settings.language')),
+      items:[
+        DropdownMenuItem(value:'system',child:Text(S.t('settings.languageSystem'))),
+        const DropdownMenuItem(value:'fr',child:Text('Français')),
+        const DropdownMenuItem(value:'en',child:Text('English')),
+      ],
+      onChanged:(v)=>setState(()=>_language=v??'system'),
+    )),
+  ]);
+
+  Widget _notificationsTab()=>Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+    if(NotificationService.supportsDndBypass)_row(S.t('settings.dndBypass'),help:S.t('settings.dndBypassHelp'),child:Align(alignment:Alignment.centerRight,
+      child:Switch(value:_bypassDnd,onChanged:(v) async {
+        setState(()=>_bypassDnd=v);
+        if(!v)return;
+        final granted=await NotificationService().enableDndBypass();
+        if(!granted&&mounted){
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(S.t('settings.dndPending'))));
+        }
+      }))),
+    _row(S.t('wakeup.test'),help:S.t('settings.wakeupWhere'),child:const SizedBox.shrink()),
+  ]);
+
+  /// Active session only: what is shown does not depend on unsaved edits.
+  Widget _diagnosticsTab()=>Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+    Padding(padding:const EdgeInsets.only(top:12),child:Text(S.t('diagnostics.description'))),
+    _row(S.t('diagnostics.event'),child:_value(widget.initial.eventId)),
+    _row(S.t('diagnostics.server'),child:_value(widget.initial.serverUrl)),
+    _row(S.t('diagnostics.device'),child:_value(widget.initial.deviceId)),
+    _row(S.t('map.logbook'),help:S.t('diagnostics.activeEvent',{'event':widget.initial.eventId}),
+      child:_value('',action:S.t('diagnostics.open'),onAction:widget.onOpenLogbook)),
+    _row(S.t('diagnostics.version'),child:_value('SARCADE $appVersion${appBuild.isEmpty?'':' · $appBuild'}')),
+  ]);
+
+  Widget _tabBody(String id)=>switch(id){
+    'general'=>_generalTab(),'profile'=>_profileTab(),'display'=>_displayTab(),
+    'notifications'=>_notificationsTab(),'diagnostics'=>_diagnosticsTab(),
+    _=>const Padding(padding:EdgeInsets.only(top:16),child:SarcadeAboutContent()),
+  };
+
+  /// Status line under the title: the active session, « • » separated.
+  String get _status=>[
+    if(widget.initial.serverUrl.isNotEmpty)Uri.tryParse(widget.initial.serverUrl)?.host??widget.initial.serverUrl,
+    if(widget.initial.eventId.isNotEmpty)S.t('settings.statusEvent',{'v':widget.initial.eventId}),
+    if(widget.initial.deviceId.isNotEmpty)S.t('settings.statusDevice',{'v':widget.initial.deviceId}),
+  ].join('  •  ');
+
+  Future<void> _trySave() async {
+    // A refused field may sit in a hidden tab: show the first one.
+    final general=_url(_server.text)!=null||_required(_event.text)!=null||_required(_device.text)!=null;
+    if(general&&_tab!=0){
+      setState(()=>_tab=0);
+    }else if(!general&&_callsignCheck(_callsign.text)!=null){
+      setState(()=>_tab=_tabs.indexOf('profile'));
+    }
+    await WidgetsBinding.instance.endOfFrame;
+    if(mounted)await _save();
+  }
+
+  @override
+  Widget build(BuildContext context){
+    final t=Theme.of(context);
+    final save=Padding(padding:const EdgeInsets.only(right:12),child:FilledButton(
+      style:FilledButton.styleFrom(visualDensity:VisualDensity.compact,padding:const EdgeInsets.symmetric(horizontal:18),shape:const StadiumBorder()),
+      onPressed:_saving?null:_trySave,child:Text(S.t('common.save'))));
+    return Scaffold(
+      appBar:AppBar(automaticallyImplyLeading:!widget.firstRun,actions:[save]),
+      body:SafeArea(child:Center(child:ConstrainedBox(
+        constraints:const BoxConstraints(maxWidth:900),
+        child:Form(key:_form,child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+          Padding(padding:const EdgeInsets.fromLTRB(20,0,20,4),child:Text(widget.firstRun?S.t('settings.firstRun'):S.t('settings.title'),
+            style:t.textTheme.headlineMedium)),
+          Padding(padding:const EdgeInsets.symmetric(horizontal:20),child:Text(S.t(widget.firstRun?'settings.subtitleFirst':'settings.subtitle'),
+            style:t.textTheme.bodyMedium?.copyWith(color:t.colorScheme.onSurfaceVariant))),
+          if(!widget.firstRun&&_status.isNotEmpty)Padding(padding:const EdgeInsets.fromLTRB(20,8,20,0),child:Text(_status,
+            style:t.textTheme.bodySmall?.copyWith(color:t.colorScheme.onSurfaceVariant))),
+          const SizedBox(height:8),
+          // Underlined tabs; every tab stays built so that the form keeps
+          // and validates all its fields.
+          DefaultTabController(key:ValueKey(_tabs.length),length:_tabs.length,initialIndex:_tab,child:Builder(builder:(context){
+            final c=DefaultTabController.of(context);
+            if(c.index!=_tab)c.animateTo(_tab);
+            return TabBar(isScrollable:true,tabAlignment:TabAlignment.start,
+              onTap:(i)=>setState(()=>_tab=i),
+              tabs:[for(final id in _tabs)Tab(text:S.t('settings.tab.$id'))]);
+          })),
+          const Divider(height:1),
+          Expanded(child:IndexedStack(index:_tab,children:[for(final id in _tabs)ListView(
+            padding:const EdgeInsets.fromLTRB(20,0,20,24),children:[_tabBody(id)])])),
+        ])),
+      ))),
+    );
+  }
 }

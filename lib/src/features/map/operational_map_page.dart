@@ -87,7 +87,7 @@ class OperationalMapPage extends StatefulWidget {
 class _OperationalMapPageState extends State<OperationalMapPage> {
   final _map=MapController(); final _realtime=RealtimeService(); final _location=LocationService(); final _notifications=NotificationService(); final _uuid=const Uuid();
   final Map<String,SarcadePosition> _positions={}; final Map<String,SarcadePoi> _pois={}; final Map<String,ReferenceSite> _references={};
-  StreamSubscription? _rtSub; Timer? _syncUiTimer; bool _started=false, _starting=false; bool _showPanel=true; bool _showReferencePanel=false; bool _showHighPoints=true; bool _showRelays=true; String? _selectedDevice; ReferenceSite? _selectedReference; List<SarcadePosition> _trace=[]; bool _traceLoading=false; late final OfflineSyncService _sync; bool _layoutInitialized=false;
+  StreamSubscription? _rtSub; Timer? _syncUiTimer; bool _started=false, _starting=false; bool _showPanel=true; bool _showReferencePanel=false; bool _showHighPoints=false; bool _showRelays=false; /* off at start: decision of the project owner, 28 Oct 2026 */ String? _selectedDevice; ReferenceSite? _selectedReference; List<SarcadePosition> _trace=[]; bool _traceLoading=false; late final OfflineSyncService _sync; bool _layoutInitialized=false;
   late final DrawingController _drawing; bool _drawingTools=false; final _mapKey=GlobalKey();
   late final TrackingService _tracking; late final OperationsService _ops; bool _updatePageShown=false;
   late final RoutesController _routes; late final NavigationController _nav; late final RoadGraphService _graphs;
@@ -564,8 +564,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       try{
         final token=await fcmToken();
         if(token==null)return false;
-        await widget.api.registerWakeToken(widget.eventId,widget.deviceId,'fcm',token);
-        _fcmRefresh??=fcmTokenRefresh().listen((t)=>unawaited(widget.api.registerWakeToken(widget.eventId,widget.deviceId,'fcm',t).catchError((_){})));
+        await widget.api.registerWakeToken(widget.eventId,widget.deviceId,fcmPlatform,token);
+        _fcmRefresh??=fcmTokenRefresh().listen((t)=>unawaited(widget.api.registerWakeToken(widget.eventId,widget.deviceId,fcmPlatform,t).catchError((_){})));
         _fcmForeground??=fcmForeground().listen((_)=>unawaited(_sync.syncNow()));
         return true;
       }catch(e){
@@ -969,11 +969,6 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
 
   bool _darkTiles(BuildContext context)=>Theme.of(context).brightness==Brightness.dark&&!_basemap.id.contains('photo')&&!_basemap.id.contains('sat');
 
-  void _toggleDayNight(){
-    final next=Theme.of(context).brightness==Brightness.dark?ThemeMode.light:ThemeMode.dark;
-    themeMode.value=next;
-    unawaited(widget.store.setPreference('theme_mode',themeModeName(next)));
-  }
 
   /// Filter chips under the search (Google Maps), kept per event.
   bool get _showOperators=>widget.store.preference('show_ops:${widget.eventId}')!='0';
@@ -1624,7 +1619,6 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         _RailAction(Icons.folder_copy_outlined,S.t('map.files'),openFiles),
       ],
       if(isPco(widget.deviceId))_RailAction(Icons.settings_input_antenna,S.t('aprs.title'),openAprs),
-      _RailAction(Theme.of(context).brightness==Brightness.dark?Icons.light_mode_outlined:Icons.dark_mode_outlined,S.t('ui.dayNight'),_toggleDayNight),
       if(widget.onSettings!=null)_RailAction(Icons.settings_outlined,S.t('map.settings'),widget.onSettings!),
     ];
     void openMoreSheet()=>showModalBottomSheet<void>(context:context,showDragHandle:true,builder:(c)=>SafeArea(child:Column(mainAxisSize:MainAxisSize.min,children:[
