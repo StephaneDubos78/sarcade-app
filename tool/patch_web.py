@@ -152,6 +152,12 @@ def main() -> int:
     INDEX.write_text(html, encoding="utf-8")
     SERVICE_WORKER.write_text(SW_JS.replace("__BUILD__", "dev").replace("__MAIN_JS__", "main.dart.js"), encoding="utf-8")
     BOOTSTRAP.write_text(BOOTSTRAP_JS, encoding="utf-8")
+    # SARCADE icon (assets/icon/generated, tool/make_app_icons.py).
+    import shutil
+    gen = Path("assets/icon/generated/web")
+    for name in ("Icon-192.png", "Icon-512.png", "Icon-maskable-192.png", "Icon-maskable-512.png"):
+        shutil.copyfile(gen / name, Path("web/icons") / name)
+    shutil.copyfile(gen / "favicon.png", Path("web/favicon.png"))
     print(f"patched {MANIFEST}, {INDEX} and wrote {SERVICE_WORKER}, {BOOTSTRAP}")
     return 0
 

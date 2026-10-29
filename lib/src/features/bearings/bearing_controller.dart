@@ -63,12 +63,15 @@ class BearingController extends ChangeNotifier {
   void _stopSensors(){taking=false; _gps?.cancel(); _acc?.cancel(); _mag?.cancel(); _gps=_acc=_mag=null; _gravity=_field=null;}
 
   /// The bearing being taken, as it would be saved.
+  /// Colour of this operator, kept with each bearing.
+  int? operatorColor;
+
   Bearing? draft({String target='',int strength=0,String comment='',String search=''}){
     final p=position, az=trueDeg; if(p==null||az==null)return null;
     final now=DateTime.now().toUtc();
     return Bearing(id:'draft',eventId:eventId,origin:p,azimuthDeg:az,strength:strength,target:target,comment:comment,search:search,
       method:manualDeg!=null?'manual':'compass',magneticDeg:manualDeg==null?magneticDeg:null,declinationDeg:manualDeg==null?declinationDeg:null,
-      accuracyM:accuracyM,takenAt:now,createdBy:actorId,updatedBy:actorId,updatedAt:now);
+      accuracyM:accuracyM,operatorColor:operatorColor,takenAt:now,createdBy:actorId,updatedBy:actorId,updatedAt:now);
   }
 
   Future<Bearing?> save({String target='',int strength=0,String comment='',String search=''}) async {

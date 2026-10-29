@@ -16,14 +16,14 @@ List<Widget> buildBearingLayers({required Iterable<Bearing> bearings,Bearing? dr
   final groups=bySearch(bearings);
   final cones=<Polygon>[], lines=<Polyline<Bearing>>[], markers=<Marker>[], circles=<CircleMarker>[];
   void add(Bearing b,{bool live=false}){
-    final c=Color(byOperator?operatorColor(b.createdBy):searchColor(b.search)); final (l,r)=b.cone;
+    final c=Color(byOperator?(b.operatorColor??operatorColor(b.createdBy)):searchColor(b.search)); final (l,r)=b.cone;
     cones.add(Polygon(points:[b.origin,l,r],color:c.withValues(alpha:live?0.16:0.10),borderColor:c.withValues(alpha:0.35),borderStrokeWidth:1));
     lines.add(Polyline<Bearing>(points:[b.origin,b.end],color:c,strokeWidth:live?3.5:2.2,hitValue:live?null:b));
   }
   for(final b in bearings){add(b);}
   if(draft!=null)add(draft,live:true);
   for(final b in bearings){
-    final line=Color(byOperator?operatorColor(b.createdBy):searchColor(b.search)), op=Color(operatorColor(b.createdBy));
+    final op=Color(b.operatorColor??operatorColor(b.createdBy)), line=byOperator?op:Color(searchColor(b.search));
     markers.add(Marker(point:b.origin,width:30,height:30,child:Tooltip(message:['${b.azimuthDeg.toStringAsFixed(0).padLeft(3,'0')}°',b.createdBy,if(b.search.isNotEmpty)b.search].join(' · '),
       child:GestureDetector(onTap:()=>onTapBearing(b),child:Container(alignment:Alignment.center,
         decoration:BoxDecoration(color:op,shape:BoxShape.circle,border:Border.all(color:line,width:2.5)),
