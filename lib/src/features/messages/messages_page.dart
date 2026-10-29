@@ -350,18 +350,21 @@ class _MessagesPageState extends State<MessagesPage>{
        final last=lastBy[k]; final n=_unreadIn(k,by,acks);
        return ListTile(selected:k==_conv,selectedTileColor:s.primaryContainer.withValues(alpha:0.45),
          leading:_convIcon(k,by,r:22),
-         title:Row(children:[
-           Expanded(child:Text(_convName(k,by),maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(fontWeight:FontWeight.w600))),
+         title:Text(_convName(k,by),maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(fontWeight:FontWeight.w600)),
+         subtitle:last==null?null:Text('${last.senderId==widget.actorId?S.t('messages.you'):last.senderId} : ${last.body}',maxLines:1,overflow:TextOverflow.ellipsis),
+         // Time on the right, unread count in SARCADE blue, star of the
+         // favourites (long press or right click to add or remove).
+         trailing:Column(mainAxisAlignment:MainAxisAlignment.center,crossAxisAlignment:CrossAxisAlignment.end,mainAxisSize:MainAxisSize.min,children:[
            if(last!=null)Text(_hm(last.createdAt),style:TextStyle(fontSize:12,color:n>0?s.primary:s.onSurfaceVariant)),
+           const SizedBox(height:4),
+           Row(mainAxisSize:MainAxisSize.min,children:[
+             if(fav.contains(k))const Icon(Icons.star,size:16,color:Colors.amber),
+             if(n>0)Container(margin:const EdgeInsets.only(left:4),padding:const EdgeInsets.symmetric(horizontal:7,vertical:2),
+               decoration:BoxDecoration(color:s.primary,borderRadius:BorderRadius.circular(12)),
+               child:Text('$n',style:TextStyle(color:s.onPrimary,fontSize:11,fontWeight:FontWeight.w700))),
+           ]),
          ]),
-         subtitle:Row(children:[
-           Expanded(child:Text(last==null?'':'${last.senderId==widget.actorId?S.t('messages.you'):last.senderId} : ${last.body}',maxLines:1,overflow:TextOverflow.ellipsis)),
-           if(n>0)Container(margin:const EdgeInsets.only(left:6),padding:const EdgeInsets.symmetric(horizontal:7,vertical:2),
-             decoration:BoxDecoration(color:s.primary,borderRadius:BorderRadius.circular(12)),
-             child:Text('$n',style:TextStyle(color:s.onPrimary,fontSize:11,fontWeight:FontWeight.w700))),
-         ]),
-         trailing:IconButton(tooltip:S.t(fav.contains(k)?'messages.unfav':'messages.fav'),visualDensity:VisualDensity.compact,iconSize:18,
-           onPressed:()=>_toggleFavConv(k),icon:Icon(fav.contains(k)?Icons.star:Icons.star_border,color:fav.contains(k)?Colors.amber:s.onSurfaceVariant)),
+         onLongPress:()=>_toggleFavConv(k),
          onTap:()=>_open(k));
      })])),
    ]);
