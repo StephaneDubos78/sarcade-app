@@ -9,15 +9,28 @@ import 'tv_view.dart';
 /// 29 October 2026): pair the screen opened on tv.sarcade.org by scanning
 /// its QR code (Android, iPhone) or typing its code, then list and revoke
 /// the screens of the event.
-class TvScreensPage extends StatefulWidget {
+class TvScreensPage extends StatelessWidget {
   final SarcadeApi api; final String eventId;
-  /// « Scanner le QR code » of Paramètres › Affichage: the camera opens at once.
+  /// The camera opens at once.
   final bool scanOnOpen;
   const TvScreensPage({super.key,required this.api,required this.eventId,this.scanOnOpen=false});
-  @override State<TvScreensPage> createState()=>_TvScreensPageState();
+  @override Widget build(BuildContext context)=>Scaffold(appBar:AppBar(title:Text(S.t('tv.menu'))),
+    body:ListView(padding:const EdgeInsets.all(16),children:[
+      Text(S.t('tv.help'),style:Theme.of(context).textTheme.bodyLarge),
+      const SizedBox(height:16),
+      TvScreensPanel(api:api,eventId:eventId,scanOnOpen:scanOnOpen),
+    ]));
 }
 
-class _TvScreensPageState extends State<TvScreensPage> {
+/// The content of « Afficher sur une TV », also shown directly in
+/// Paramètres › Affichage (no more « Gérer les écrans », 29 Oct 2026).
+class TvScreensPanel extends StatefulWidget {
+  final SarcadeApi api; final String eventId; final bool scanOnOpen;
+  const TvScreensPanel({super.key,required this.api,required this.eventId,this.scanOnOpen=false});
+  @override State<TvScreensPanel> createState()=>_TvScreensPanelState();
+}
+
+class _TvScreensPanelState extends State<TvScreensPanel> {
   List<Map<String,dynamic>>? _list; bool _busy=false; bool _offline=false;
 
   @override void initState(){
@@ -108,27 +121,21 @@ class _TvScreensPageState extends State<TvScreensPage> {
   @override
   Widget build(BuildContext context){
     final t=Theme.of(context); final list=_list;
-    return Scaffold(appBar:AppBar(title:Text(S.t('tv.menu'))),
-      body:AbsorbPointer(absorbing:_busy,child:ListView(padding:const EdgeInsets.all(16),children:[
-        Text(S.t('tv.help'),style:t.textTheme.bodyLarge),
-        const SizedBox(height:16),
-        if(canScanTvQr)...[
-          FilledButton.icon(onPressed:_scan,icon:const Icon(Icons.qr_code_scanner),label:Text(S.t('tv.scan')),
-            style:FilledButton.styleFrom(minimumSize:const Size.fromHeight(52))),
-          const SizedBox(height:8),
-        ],
-        OutlinedButton.icon(onPressed:_type,icon:const Icon(Icons.keyboard_outlined),label:Text(S.t('tv.type')),
-          style:OutlinedButton.styleFrom(minimumSize:const Size.fromHeight(52))),
+    return AbsorbPointer(absorbing:_busy,child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,mainAxisSize:MainAxisSize.min,children:[
+        Wrap(spacing:8,runSpacing:8,children:[
+          if(canScanTvQr)FilledButton.icon(onPressed:_scan,icon:const Icon(Icons.qr_code_scanner),label:Text(S.t('tv.scan'))),
+          OutlinedButton.icon(onPressed:_type,icon:const Icon(Icons.keyboard_outlined),label:Text(S.t('tv.type'))),
+        ]),
         if(_busy)const Padding(padding:EdgeInsets.only(top:16),child:LinearProgressIndicator()),
-        const SizedBox(height:24),
+        const SizedBox(height:16),
         Text(S.t('tv.list'),style:t.textTheme.titleMedium),
         SwitchListTile(contentPadding:EdgeInsets.zero,value:_messages,onChanged:(v)=>setState(()=>_messages=v),
           title:Text(S.t('tv.messagesPanel')),subtitle:Text(S.t('tv.messagesPanelHelp'))),
-        if(_offline)ListTile(leading:const Icon(Icons.cloud_off),title:Text(S.t('event.offline')),
+        if(_offline)ListTile(contentPadding:EdgeInsets.zero,leading:const Icon(Icons.cloud_off),title:Text(S.t('event.offline')),
           trailing:TextButton(onPressed:_load,child:Text(S.t('common.retry'))))
         else if(list==null)const Padding(padding:EdgeInsets.all(16),child:Center(child:CircularProgressIndicator()))
-        else if(list.isEmpty)ListTile(title:Text(S.t('tv.none')))
-        else for(final d in list)ListTile(
+        else if(list.isEmpty)ListTile(contentPadding:EdgeInsets.zero,title:Text(S.t('tv.none')))
+        else for(final d in list)ListTile(contentPadding:EdgeInsets.zero,
           leading:Icon(d['active']==true?Icons.tv:Icons.tv_off,color:d['active']==true?Colors.green:null),
           title:Text('${S.t('tv.code')} ${d['code']??''}'),subtitle:Text(S.t('tv.until',{'t':_when(d['expires'])})),
           trailing:d['active']==true?PopupMenuButton<String>(
@@ -138,6 +145,6 @@ class _TvScreensPageState extends State<TvScreensPage> {
               PopupMenuItem(value:'auto',child:ListTile(leading:const Icon(Icons.fit_screen),title:Text(S.t('tv.auto')))),
               PopupMenuItem(value:'revoke',child:ListTile(leading:const Icon(Icons.tv_off),title:Text(S.t('tv.revoke')))),
             ]):null),
-      ])));
+      ]));
   }
 }
