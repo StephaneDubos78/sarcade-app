@@ -14,6 +14,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:integration_test/integration_test.dart';
 import 'package:sarcade_app/main.dart' as app;
+import 'package:sarcade_app/src/features/settings/settings_page.dart' show debugLastSaveTrace;
 import 'package:sarcade_app/src/l10n/strings.dart';
 
 const server = String.fromEnvironment('SARCADE_E2E_URL', defaultValue: 'http://10.0.2.2:8000');
@@ -102,11 +103,14 @@ void main() {
     // S.t follows the language chosen by the app at start (device language).
     await t.pump(const Duration(seconds: 2));
     await pumpUntil(t, find.text(S.t('settings.server')));
+    final s1 = screenTexts();
     await t.enterText(field('settings.server'), server);
     await t.pump();
+    final s2 = screenTexts();
     // Leaving the field loads the events of that server.
     FocusManager.instance.primaryFocus?.unfocus();
     await t.pump(const Duration(seconds: 1));
+    fail('DIAG\nS1=$s1\nS2=$s2\nS3=${screenTexts()}\nSAVE=$debugLastSaveTrace');
     // The list loads when the server is entered (a spinner replaces the
     // refresh button meanwhile); reload until the test event is offered.
     var listed = false;
