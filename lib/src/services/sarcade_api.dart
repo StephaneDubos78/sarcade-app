@@ -168,6 +168,11 @@ class SarcadeApi {
     final r=await _client.post(Uri.parse('$baseUrl/api/v0.1/tv/approve'),headers:_json,body:jsonEncode({'code':code,'event_id':eventId}));
     if(r.statusCode!=200) throw SarcadeHttpException('tv_approve',r.statusCode,r.body);
   }
+  /// « Envoyer ma vue »: [view] null gives the TV its automatic framing back.
+  Future<void> sendDisplayView(String eventId,String displayId,Map<String,dynamic>? view) async {
+    final r=await _client.put(Uri.parse('$baseUrl/api/v0.1/events/$eventId/displays/$displayId/view'),headers:_json,body:jsonEncode({'view':view}));
+    if(r.statusCode!=200) throw SarcadeHttpException('display_view',r.statusCode,r.body);
+  }
   Future<List<Map<String,dynamic>>> displays(String eventId) async {
     final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/events/$eventId/displays'));
     if(r.statusCode!=200) throw SarcadeHttpException('displays',r.statusCode,r.body);
