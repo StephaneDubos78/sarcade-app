@@ -71,3 +71,16 @@ int authorColor(String id){
   var h=0; for(final c in id.codeUnits){h=(h*31+c)&0x7FFFFFFF;}
   return palette[h%palette.length];
 }
+
+/// Date separator of the chat (« Aujourd'hui », « Hier », « 27/10/2026 »):
+/// null for the same day as the message before.
+String dayKey(DateTime t){final l=t.toLocal();return '${l.year}-${l.month}-${l.day}';}
+String dayLabel(DateTime t,DateTime now,{required String today,required String yesterday}){
+  final l=t.toLocal(), n=now.toLocal();
+  final d=DateTime(l.year,l.month,l.day), td=DateTime(n.year,n.month,n.day);
+  final diff=td.difference(d).inDays;
+  if(diff==0)return today;
+  if(diff==1)return yesterday;
+  String two(int v)=>v.toString().padLeft(2,'0');
+  return '${two(l.day)}/${two(l.month)}/${l.year}';
+}

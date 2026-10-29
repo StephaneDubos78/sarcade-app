@@ -18,6 +18,7 @@ import '../../services/notification_service.dart';
 import '../../services/sarcade_api.dart';
 import 'photo_attachment.dart';
 import '../dictation/dictation_button.dart';
+import '../bearings/bearing_models.dart' show operatorInitials;
 
 class MessagesPage extends StatefulWidget {
  final SarcadeApi api; final String eventId,actorId; final OfflineSyncService sync; final LocalStore store;
@@ -293,6 +294,28 @@ class _MessagesPageState extends State<MessagesPage>{
    m.senderId!=widget.actorId&&conversationOf(m,widget.actorId,by)==key
    &&!(acks[m.id]??const []).any((a)=>a.actorId==widget.actorId&&a.status!='received')).length;
 
+ /// Chat colours (« Messages plus graphiques », 29 Oct 2026): plain light
+ /// beige background, pale green bubbles for mine, white for the others;
+ /// the same roles at night.
+ bool get _night=>Theme.of(context).brightness==Brightness.dark;
+ Color get _chatBg=>_night?const Color(0xFF0B141A):const Color(0xFFEFEAE2);
+ Color get _mineBg=>_night?const Color(0xFF005C4B):const Color(0xFFD9FDD3);
+ Color get _otherBg=>_night?const Color(0xFF202C33):Colors.white;
+
+ /// Conversation list filters and search (computer).
+ String _filter='all'; String _search='';
+ Set<String> get _favConvs=>(widget.store.preference('msg_fav:${widget.eventId}')??'').split('|').where((s)=>s.isNotEmpty).toSet();
+ Future<void> _toggleFavConv(String k) async {
+   final f=_favConvs; if(!f.remove(k))f.add(k);
+   await widget.store.setPreference('msg_fav:${widget.eventId}',f.isEmpty?null:f.join('|'));
+   if(mounted)setState((){});
+ }
+
+ /// Round pastille of a person: the 2–3 letters of its map marker, in its
+ /// operator colour.
+ Widget _personAvatar(String id,{double r=15})=>CircleAvatar(radius:r,backgroundColor:Color(authorColor(id)),foregroundColor:Colors.white,
+   child:Text(operatorInitials(id),style:TextStyle(fontSize:r*0.72,fontWeight:FontWeight.w700)));
+
  Widget _convIcon(String key,Map<String,CommGroup> by,{double r=18}){
    final g=groupOf(key);
    final color=key==allKey?const Color(0xFF546E7A):g!=null?Color(by[g]?.color??0xFF546E7A):Color(authorColor(peerOf(key)!));
@@ -301,19 +324,50 @@ class _MessagesPageState extends State<MessagesPage>{
      child:icon!=null?Icon(icon,size:r):Text(peerOf(key)!.characters.take(2).toString().toUpperCase(),style:TextStyle(fontSize:r*0.7,fontWeight:FontWeight.w700)));
  }
 
- /// Computer: list of the conversations on the left (WhatsApp Web).
+ /// Computer: list of the conversations on the left (WhatsApp Web): chips
+ /// Toutes / Non lues / Favoris and a round search on top; pastille, name,
+ /// « Auteur : texte », time on the right, unread count in SARCADE blue.
  Widget _convList(Map<String,CommGroup> by,Map<String,List<SarcadeAck>> acks){
-   final t=Theme.of(context);
+   final t=Theme.of(context); final s=t.colorScheme;
    final lastBy=<String,SarcadeMessage>{};
    for(final m in _eventMessages){final k=conversationOf(m,widget.actorId,by);final l=lastBy[k];if(l==null||m.createdAt.isAfter(l.createdAt))lastBy[k]=m;}
-   return ListView(children:[for(final k in _conversations(by))Builder(builder:(_){
-     final last=lastBy[k]; final n=_unreadIn(k,by,acks);
-     return ListTile(selected:k==_conv,selectedTileColor:t.colorScheme.primaryContainer.withValues(alpha:0.4),
-       leading:_convIcon(k,by),title:Text(_convName(k,by),maxLines:1,overflow:TextOverflow.ellipsis),
-       subtitle:last==null?null:Text('${last.senderId==widget.actorId?S.t('messages.you'):last.senderId} : ${last.body}',maxLines:1,overflow:TextOverflow.ellipsis),
-       trailing:n==0?null:Badge(label:Text('$n')),
-       onTap:()=>_open(k));
-   })]);
+   final fav=_favConvs; final q=_search.trim().toLowerCase();
+   final keys=_conversations(by).where((k){
+     if(_filter=='unread'&&_unreadIn(k,by,acks)==0)return false;
+     if(_filter=='fav'&&!fav.contains(k))return false;
+     if(q.isEmpty)return true;
+     return _convName(k,by).toLowerCase().contains(q)||(lastBy[k]?.body.toLowerCase().contains(q)??false);
+   }).toList();
+   Widget chip(String id,String label)=>Padding(padding:const EdgeInsets.only(right:6),child:ChoiceChip(label:Text(label),selected:_filter==id,showCheckmark:false,
+     onSelected:(_)=>setState(()=>_filter=id)));
+   return Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+     Padding(padding:const EdgeInsets.fromLTRB(12,10,12,6),child:TextField(onChanged:(v)=>setState(()=>_search=v),
+       decoration:InputDecoration(isDense:true,prefixIcon:const Icon(Icons.search),hintText:S.t('messages.search'),filled:true,
+         fillColor:s.surfaceContainerHigh,border:OutlineInputBorder(borderRadius:BorderRadius.circular(24),borderSide:BorderSide.none)))),
+     Padding(padding:const EdgeInsets.fromLTRB(12,0,12,6),child:Row(children:[
+       chip('all',S.t('messages.filterAll')),chip('unread',S.t('messages.filterUnread')),chip('fav',S.t('messages.filterFav'))])),
+     Expanded(child:ListView(children:[for(final k in keys)Builder(builder:(_){
+       final last=lastBy[k]; final n=_unreadIn(k,by,acks);
+       return ListTile(selected:k==_conv,selectedTileColor:s.primaryContainer.withValues(alpha:0.45),
+         leading:_convIcon(k,by,r:22),
+         title:Text(_convName(k,by),maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(fontWeight:FontWeight.w600)),
+         subtitle:last==null?null:Text('${last.senderId==widget.actorId?S.t('messages.you'):last.senderId} : ${last.body}',maxLines:1,overflow:TextOverflow.ellipsis),
+         // Time on the right, unread count in SARCADE blue, star of the
+         // favourites (long press or right click to add or remove).
+         trailing:Column(mainAxisAlignment:MainAxisAlignment.center,crossAxisAlignment:CrossAxisAlignment.end,mainAxisSize:MainAxisSize.min,children:[
+           if(last!=null)Text(_hm(last.createdAt),style:TextStyle(fontSize:12,color:n>0?s.primary:s.onSurfaceVariant)),
+           const SizedBox(height:4),
+           Row(mainAxisSize:MainAxisSize.min,children:[
+             if(fav.contains(k))const Icon(Icons.star,size:16,color:Colors.amber),
+             if(n>0)Container(margin:const EdgeInsets.only(left:4),padding:const EdgeInsets.symmetric(horizontal:7,vertical:2),
+               decoration:BoxDecoration(color:s.primary,borderRadius:BorderRadius.circular(12)),
+               child:Text('$n',style:TextStyle(color:s.onPrimary,fontSize:11,fontWeight:FontWeight.w700))),
+           ]),
+         ]),
+         onLongPress:()=>_toggleFavConv(k),
+         onTap:()=>_open(k));
+     })])),
+   ]);
  }
 
  /// Phone: the conversations as chips above the chat.
@@ -356,36 +410,67 @@ class _MessagesPageState extends State<MessagesPage>{
    final t=Theme.of(context); final s=t.colorScheme;
    final mine=m.senderId==widget.actorId;
    final photos=m.attachments.where((a)=>a.isImage).toList();
-   final urgent=m.priority!='routine';
+   final urgent=m.priority!='routine'; final immediate=m.priority=='immediate';
+   final prio=immediate?s.error:const Color(0xFFE8710A);
    final sum=ackSummary(m.senderId,ma);
    final several=peerOf(_conv)==null;
+   final grey=_night?const Color(0xFF8696A0):const Color(0xFF667781);
+   final myAck=ma.where((a)=>a.actorId==widget.actorId).map((a)=>a.status).toSet();
+   final needsAnswer=!mine&&immediate&&!myAck.contains('accepted')&&!myAck.contains('rejected');
    final meta=Row(mainAxisSize:MainAxisSize.min,children:[
-     if(urgent)Padding(padding:const EdgeInsets.only(right:6),child:Text(S.t('priority.${m.priority}'),
-       style:TextStyle(fontSize:11,fontWeight:FontWeight.w700,color:m.priority=='immediate'?s.error:Colors.orange))),
-     Text(_hm(m.createdAt),style:TextStyle(fontSize:11,color:s.onSurfaceVariant)),
+     Text(_hm(m.createdAt),style:TextStyle(fontSize:11,color:grey)),
      if(mine)...[const SizedBox(width:4),_ticks(m,ma)],
    ]);
    final body=Column(crossAxisAlignment:CrossAxisAlignment.start,mainAxisSize:MainAxisSize.min,children:[
+     if(urgent)Padding(padding:const EdgeInsets.only(bottom:3),child:Container(padding:const EdgeInsets.symmetric(horizontal:6,vertical:1),
+       decoration:BoxDecoration(color:prio.withValues(alpha:0.14),borderRadius:BorderRadius.circular(6)),
+       child:Text(S.t('priority.${m.priority}').toUpperCase(),style:TextStyle(fontSize:10,fontWeight:FontWeight.w800,color:prio,letterSpacing:0.4)))),
      if(showAuthor&&!mine)Padding(padding:const EdgeInsets.only(bottom:2),child:Text(m.senderId,
        style:TextStyle(fontWeight:FontWeight.w700,fontSize:13,color:Color(authorColor(m.senderId))))),
      if(photos.isNotEmpty)Padding(padding:const EdgeInsets.only(bottom:6),child:Wrap(spacing:6,runSpacing:6,children:[
        for(final p in photos)_PhotoThumb(key:ValueKey(p.fileId),attachment:p,api:widget.api,store:widget.store,eventId:widget.eventId),
      ])),
-     Text(m.body,style:_unreadAtOpen.contains(m.id)?const TextStyle(fontWeight:FontWeight.bold):null),
+     Text(m.body,style:TextStyle(fontSize:15,height:1.3,color:s.onSurface,fontWeight:_unreadAtOpen.contains(m.id)?FontWeight.bold:null)),
      const SizedBox(height:2),
      Align(alignment:Alignment.bottomRight,widthFactor:1,child:meta),
      // Sent to several people: who read and received it, detail on touch.
      if(mine&&several&&sum.received>0)InkWell(onTap:()=>_showInfo(m,ma),child:Padding(padding:const EdgeInsets.only(top:2),
-       child:Text(S.t('messages.ackSummary',{'r':sum.read,'n':sum.received}),style:const TextStyle(fontSize:11,color:Colors.blue)))),
+       child:Text(S.t('messages.ackSummary',{'r':sum.read,'n':sum.received}),style:const TextStyle(fontSize:11,color:Color(0xFF53BDEB))))),
+     // Immediate: the acknowledgement stays one touch away.
+     if(needsAnswer)Padding(padding:const EdgeInsets.only(top:6),child:Wrap(spacing:6,children:[
+       FilledButton(style:FilledButton.styleFrom(backgroundColor:s.error,foregroundColor:s.onError,visualDensity:VisualDensity.compact),
+         onPressed:()=>_ack(m,'accepted'),child:Text(S.t('order.accept'))),
+       OutlinedButton(style:OutlinedButton.styleFrom(visualDensity:VisualDensity.compact),onPressed:()=>_ack(m,'rejected'),child:Text(S.t('order.refuse'))),
+     ])),
    ]);
+   const r=Radius.circular(10);
    final bubble=GestureDetector(onLongPress:()=>_actions(m,ma,mine),onSecondaryTap:()=>_actions(m,ma,mine),
-     child:Container(margin:EdgeInsets.fromLTRB(mine?48:8,2,mine?8:48,2),padding:const EdgeInsets.fromLTRB(10,6,10,6),
-       decoration:BoxDecoration(color:mine?s.primaryContainer:s.surfaceContainerHigh,borderRadius:BorderRadius.only(
-         topLeft:const Radius.circular(14),topRight:const Radius.circular(14),
-         bottomLeft:Radius.circular(mine?14:4),bottomRight:Radius.circular(mine?4:14)),
-         border:urgent?Border.all(color:m.priority=='immediate'?s.error:Colors.orange,width:1.5):null),
+     child:Container(margin:EdgeInsets.fromLTRB(mine?56:0,1,mine?0:56,1),padding:const EdgeInsets.fromLTRB(9,6,9,5),
+       decoration:BoxDecoration(color:mine?_mineBg:_otherBg,
+         // Small tail on the first bubble of a series.
+         borderRadius:BorderRadius.only(topLeft:!mine&&showAuthor?const Radius.circular(2):r,topRight:mine&&showAuthor?const Radius.circular(2):r,bottomLeft:r,bottomRight:r),
+         border:urgent?Border(left:BorderSide(color:prio,width:4)):null,
+         boxShadow:const [BoxShadow(blurRadius:1,offset:Offset(0,1),color:Color(0x22000000))]),
        child:body));
-   return Align(alignment:mine?Alignment.centerRight:Alignment.centerLeft,child:ConstrainedBox(constraints:const BoxConstraints(maxWidth:560),child:MergeSemantics(child:bubble)));
+   // Others in a channel: the pastille before the first message of a series.
+   final avatar=!mine&&several?Padding(padding:const EdgeInsets.only(right:6,top:2),
+     child:showAuthor?_personAvatar(m.senderId):const SizedBox(width:30)):null;
+   return Padding(padding:EdgeInsets.fromLTRB(10,showAuthor?6:1,10,1),child:Align(alignment:mine?Alignment.centerRight:Alignment.centerLeft,
+     child:ConstrainedBox(constraints:const BoxConstraints(maxWidth:600),child:MergeSemantics(child:Row(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.start,children:[
+       ?avatar,
+       Flexible(child:bubble),
+     ])))));
+ }
+
+ static const _emojis=['👍','👌','✅','❌','📍','📡','📻','🚗','🚶','⛰️','🌧️','☀️','⚠️','🆘','🔋','📶','🙏','😀','😅','👏'];
+ Future<void> _pickEmoji() async {
+   final e=await showModalBottomSheet<String>(context:context,showDragHandle:true,builder:(c)=>SafeArea(child:Padding(padding:const EdgeInsets.fromLTRB(12,0,12,12),
+     child:Wrap(spacing:4,runSpacing:4,children:[for(final x in _emojis)InkWell(borderRadius:BorderRadius.circular(8),onTap:()=>Navigator.pop(c,x),
+       child:Padding(padding:const EdgeInsets.all(8),child:Text(x,style:const TextStyle(fontSize:26))))]))));
+   if(e==null)return;
+   final sel=_text.selection; final v=_text.text;
+   final at=sel.isValid?sel.start:v.length;
+   _text.value=TextEditingValue(text:v.replaceRange(at,sel.isValid?sel.end:v.length,e),selection:TextSelection.collapsed(offset:at+e.length));
  }
 
  /// Predefined messages (ATAK 6): the list of the PCO for the event, else
@@ -410,12 +495,19 @@ class _MessagesPageState extends State<MessagesPage>{
 
  Widget _composer(){
    final s=Theme.of(context).colorScheme;
-   return SafeArea(child:Padding(padding:const EdgeInsets.fromLTRB(6,4,6,6),child:Row(crossAxisAlignment:CrossAxisAlignment.end,children:[
-     IconButton(tooltip:S.t('quick.title'),onPressed:_sendQuickMessage,icon:const Icon(Icons.bolt)),
-     IconButton(tooltip:S.t('messages.photo'),onPressed:_picking?null:_photo,
-       icon:_picking?const SizedBox(width:20,height:20,child:CircularProgressIndicator(strokeWidth:2)):const Icon(Icons.add_circle_outline)),
-     Expanded(child:Container(padding:const EdgeInsets.only(left:14,right:4),decoration:BoxDecoration(color:s.surfaceContainerHighest,borderRadius:BorderRadius.circular(24)),
+   return Material(color:_night?const Color(0xFF202C33):const Color(0xFFF0F2F5),child:SafeArea(child:Padding(padding:const EdgeInsets.fromLTRB(6,6,6,6),child:Row(crossAxisAlignment:CrossAxisAlignment.end,children:[
+     // « + »: photo or predefined message (one button: room for the field
+     // on a phone).
+     _picking?const Padding(padding:EdgeInsets.all(12),child:SizedBox(width:20,height:20,child:CircularProgressIndicator(strokeWidth:2)))
+       :PopupMenuButton<String>(tooltip:S.t('messages.attach'),icon:const Icon(Icons.add),
+         onSelected:(v){if(v=='photo'){_photo();}else{_sendQuickMessage();}},
+         itemBuilder:(_)=>[
+           PopupMenuItem(value:'photo',child:ListTile(leading:const Icon(Icons.photo_camera_outlined),title:Text(S.t('messages.photo')))),
+           PopupMenuItem(value:'quick',child:ListTile(leading:const Icon(Icons.bolt),title:Text(S.t('quick.title')))),
+         ]),
+     Expanded(child:Container(padding:const EdgeInsets.only(left:4,right:4),decoration:BoxDecoration(color:_night?const Color(0xFF2A3942):Colors.white,borderRadius:BorderRadius.circular(24)),
        child:Row(crossAxisAlignment:CrossAxisAlignment.end,children:[
+         IconButton(tooltip:S.t('messages.emoji'),visualDensity:VisualDensity.compact,onPressed:_pickEmoji,icon:const Icon(Icons.emoji_emotions_outlined)),
          Expanded(child:Focus(onKeyEvent:_onKey,child:TextField(controller:_text,maxLength:2048,minLines:1,maxLines:widget.initialText==null?5:7,
            decoration:InputDecoration(hintText:S.t('messages.hint'),counterText:'',border:InputBorder.none,
              helperText:_enterSends?S.t('messages.enterHint'):null)))),
@@ -424,10 +516,10 @@ class _MessagesPageState extends State<MessagesPage>{
      const SizedBox(width:4),
      DropdownButtonHideUnderline(child:DropdownButton<String>(value:_priority,borderRadius:BorderRadius.circular(12),
        items:[for(final p in const ['routine','urgent','immediate'])DropdownMenuItem(value:p,child:Text(S.t('priority.$p'),
-         style:TextStyle(fontSize:13,color:p=='immediate'?s.error:p=='urgent'?Colors.orange:null)))],
+         style:TextStyle(fontSize:13,color:p=='immediate'?s.error:p=='urgent'?const Color(0xFFE8710A):null)))],
        onChanged:(v)=>setState(()=>_priority=v!))),
      IconButton.filled(tooltip:S.t('messages.send'),onPressed:_send,icon:const Icon(Icons.send)),
-   ])));
+   ]))));
  }
 
  Widget _chat(Map<String,CommGroup> by,Map<String,List<SarcadeAck>> acks){
@@ -440,17 +532,24 @@ class _MessagesPageState extends State<MessagesPage>{
      if(group!=null&&(group.description.isNotEmpty||group.managers.isNotEmpty))Padding(padding:const EdgeInsets.fromLTRB(14,4,14,4),child:Align(alignment:Alignment.centerLeft,child:Text(
        [if(group.description.isNotEmpty)group.description,if(group.radioChannel.isNotEmpty)group.radioChannel,S.t('groups.managers',{'names':group.managers.join(', ')})].join(' · '),
        style:Theme.of(context).textTheme.bodySmall))),
-     Expanded(child:Stack(children:[
+     Expanded(child:Container(color:_chatBg,child:Stack(children:[
        if(messages.isEmpty)Center(child:Text(S.t('messages.empty'),style:TextStyle(color:Theme.of(context).colorScheme.onSurfaceVariant))),
        ListView.builder(controller:_scroll,padding:const EdgeInsets.symmetric(vertical:8),itemCount:messages.length,itemBuilder:(c,i){
          final m=messages[i], ma=acks[m.id]??[];
          if(i>_maxBuilt)_maxBuilt=i;
          if(m.senderId!=widget.actorId)_autoRead(m,ma);
-         final sameAuthor=i>0&&messages[i-1].senderId==m.senderId;
+         final newDay=i==0||dayKey(messages[i-1].createdAt)!=dayKey(m.createdAt);
+         final sameAuthor=!newDay&&i>0&&messages[i-1].senderId==m.senderId;
          final b=_bubble(m,ma,showAuthor:showAuthor&&!sameAuthor);
-         if(i!=firstUnread)return b;
+         if(i!=firstUnread&&!newDay)return b;
          return Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
-           Padding(key:_separatorKey,padding:const EdgeInsets.symmetric(vertical:6),child:Center(child:Chip(
+           if(newDay)Padding(padding:const EdgeInsets.symmetric(vertical:8),child:Center(child:Container(
+             padding:const EdgeInsets.symmetric(horizontal:12,vertical:5),
+             decoration:BoxDecoration(color:_night?const Color(0xFF182229):Colors.white,borderRadius:BorderRadius.circular(8),
+               boxShadow:const [BoxShadow(blurRadius:1,offset:Offset(0,1),color:Color(0x1A000000))]),
+             child:Text(dayLabel(m.createdAt,DateTime.now(),today:S.t('messages.today'),yesterday:S.t('messages.yesterday')),
+               style:TextStyle(fontSize:12,color:_night?const Color(0xFF8696A0):const Color(0xFF54656F)))))),
+           if(i==firstUnread)Padding(key:_separatorKey,padding:const EdgeInsets.symmetric(vertical:6),child:Center(child:Chip(
              label:Text(S.t('messages.unreadSeparator',{'n':_unreadAtOpen.length})),visualDensity:VisualDensity.compact))),
            b,
          ]);
@@ -458,7 +557,7 @@ class _MessagesPageState extends State<MessagesPage>{
        if(!_atBottom)Positioned(right:12,bottom:12,child:Badge(
          isLabelVisible:below>0,label:Text('$below'),
          child:FloatingActionButton.small(heroTag:null,tooltip:S.t('messages.toBottom'),onPressed:()=>_toBottom(),child:const Icon(Icons.keyboard_arrow_down)))),
-     ])),
+     ]))),
      if(group!=null&&!_canWrite)Material(color:Theme.of(context).colorScheme.surfaceContainerHighest,child:Padding(padding:const EdgeInsets.all(12),
        child:Row(children:[const Icon(Icons.campaign_outlined),const SizedBox(width:8),Expanded(child:Text(group.archived?S.t('groups.archivedNotice'):S.t('groups.cannotSend')))])))
      else _composer(),
@@ -483,7 +582,7 @@ class _MessagesPageState extends State<MessagesPage>{
        ]),
        body:wide
          ? Row(children:[
-             SizedBox(width:320,child:_convList(by,acks)),
+             SizedBox(width:360,child:_convList(by,acks)),
              const VerticalDivider(width:1),
              Expanded(child:Column(children:[
                Material(elevation:0,child:ListTile(leading:_convIcon(_conv,by),title:Text(_convName(_conv,by),style:Theme.of(context).textTheme.titleMedium))),

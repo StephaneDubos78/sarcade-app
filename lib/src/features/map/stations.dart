@@ -21,6 +21,10 @@ Freshness freshness(DateTime time,DateTime now,{int ageingMin=2,int staleMin=10}
   return Freshness.stale;
 }
 
+/// Platform sent by the application (« android ») as shown (« Android »).
+String platformLabel(String p)=>switch(p.toLowerCase()){
+  'android'=>'Android','ios'=>'iPhone','web'=>'Web','windows'=>'Windows','linux'=>'Linux','macos'=>'Mac',_=>p};
+
 /// « 12 s », « 6 min », « 2 h », « 3 j ».
 String ageLabel(DateTime time,DateTime now){
   final d=now.difference(time);

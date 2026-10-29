@@ -271,6 +271,13 @@ class SarcadeApi {
     final r=await _client.put(Uri.parse('$baseUrl/api/v0.1/signals/defaults'),headers:_json,body:body);
     if(r.statusCode!=200) throw SarcadeHttpException('signal_defaults',r.statusCode,r.body);
   }
+  /// Devices of the event: platform, version and last contact (PCO list,
+  /// operator sheet).
+  Future<List<Map<String,dynamic>>> devices(String eventId) async {
+    final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/events/$eventId/devices'));
+    if(r.statusCode!=200) throw SarcadeHttpException('devices',r.statusCode);
+    return (jsonDecode(r.body) as List).map((e)=>Map<String,dynamic>.from(e as Map)).toList();
+  }
   Future<List<Map<String,dynamic>>> moveOrders(String eventId) async {
     final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/events/$eventId/move-orders'));
     if(r.statusCode!=200) throw SarcadeHttpException('move_orders',r.statusCode);

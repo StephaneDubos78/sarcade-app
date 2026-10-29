@@ -36,15 +36,44 @@ ThemeData nightTheme(){
   return _base(scheme);
 }
 
-ThemeData dayTheme()=>_base(ColorScheme.fromSeed(seedColor:const Color(0xFF0E7490),brightness:Brightness.light));
+/// Day: « touches de bleu, style Play Console » (validated on 29 Oct 2026):
+/// dark icons and labels, blue for actions, light blue for what is
+/// selected, grey-blue cards; unread badges stay red.
+class PlayBlue {
+  static const primary=Color(0xFF0B57D0), selected=Color(0xFFC2E7FF), onSelected=Color(0xFF001D35);
+  static const card=Color(0xFFF0F4F9), cardHigh=Color(0xFFE9EEF6), ink=Color(0xFF1F1F1F), inkMuted=Color(0xFF444746);
+}
 
-ThemeData _base(ColorScheme scheme)=>ThemeData(useMaterial3:true,colorScheme:scheme,
-  scaffoldBackgroundColor:scheme.brightness==Brightness.dark?SarcadeColors.ground:scheme.surface,
-  cardTheme:CardThemeData(color:scheme.surfaceContainer,shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(16),side:BorderSide(color:scheme.outlineVariant))),
-  chipTheme:ChipThemeData(shape:StadiumBorder(side:BorderSide(color:scheme.outline))),
-  floatingActionButtonTheme:FloatingActionButtonThemeData(backgroundColor:scheme.surfaceContainerHigh,foregroundColor:scheme.onSurface,
+ThemeData dayTheme()=>_base(ColorScheme.fromSeed(seedColor:PlayBlue.primary,brightness:Brightness.light).copyWith(
+  primary:PlayBlue.primary,onPrimary:Colors.white,
+  primaryContainer:PlayBlue.selected,onPrimaryContainer:PlayBlue.onSelected,
+  secondaryContainer:PlayBlue.selected,onSecondaryContainer:PlayBlue.onSelected,
+  surface:Colors.white,onSurface:PlayBlue.ink,onSurfaceVariant:PlayBlue.inkMuted,
+  surfaceContainerLowest:Colors.white,surfaceContainerLow:PlayBlue.card,surfaceContainer:PlayBlue.card,
+  surfaceContainerHigh:PlayBlue.cardHigh,surfaceContainerHighest:const Color(0xFFDDE3EA),
+  error:const Color(0xFFD93025)));
+
+ThemeData _base(ColorScheme scheme){
+  final day=scheme.brightness==Brightness.light;
+  return ThemeData(useMaterial3:true,colorScheme:scheme,
+  scaffoldBackgroundColor:day?scheme.surface:SarcadeColors.ground,
+  // Cards and groups: grey-blue background, round corners (no border by day).
+  cardTheme:CardThemeData(color:scheme.surfaceContainer,shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(16),
+    side:day?BorderSide.none:BorderSide(color:scheme.outlineVariant))),
+  // Chips and filters: light blue when selected.
+  chipTheme:ChipThemeData(shape:StadiumBorder(side:BorderSide(color:day?scheme.outlineVariant:scheme.outline)),
+    selectedColor:scheme.secondaryContainer,checkmarkColor:scheme.onSecondaryContainer),
+  // Main action: a full blue pill; secondary actions: blue text.
+  filledButtonTheme:FilledButtonThemeData(style:FilledButton.styleFrom(shape:const StadiumBorder())),
+  outlinedButtonTheme:OutlinedButtonThemeData(style:OutlinedButton.styleFrom(shape:const StadiumBorder(),foregroundColor:scheme.primary)),
+  textButtonTheme:TextButtonThemeData(style:TextButton.styleFrom(foregroundColor:scheme.primary)),
+  segmentedButtonTheme:SegmentedButtonThemeData(style:SegmentedButton.styleFrom(selectedBackgroundColor:scheme.secondaryContainer,selectedForegroundColor:scheme.onSecondaryContainer)),
+  tabBarTheme:TabBarThemeData(labelColor:scheme.primary,indicatorColor:scheme.primary,unselectedLabelColor:scheme.onSurfaceVariant),
+  badgeTheme:const BadgeThemeData(backgroundColor:Color(0xFFD93025)),
+  floatingActionButtonTheme:FloatingActionButtonThemeData(backgroundColor:day?Colors.white:scheme.surfaceContainerHigh,foregroundColor:scheme.onSurface,
     shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(14),side:BorderSide(color:scheme.outlineVariant))),
-);
+  );
+}
 
 /// Panel floating over the map: rounded, bordered, nearly opaque (no blur:
 /// too slow in the web app and on old phones).

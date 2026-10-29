@@ -54,7 +54,7 @@ class OperationsService extends ChangeNotifier {
       final pending=store.pending();
       final t=tracking(); final o=operator();
       final answer=await api.heartbeat(eventId,deviceId,{
-        'label':deviceId,'platform':platform,'app_version':appVersion,
+        'label':deviceId,'platform':platform,'app_version':appVersionFull,
         'pending_count':pending.length,
         'oldest_pending_at':oldestPending(pending)?.toUtc().toIso8601String(),
         'tracking_enabled':t.enabled,'tracking_interval_s':t.intervalS,
