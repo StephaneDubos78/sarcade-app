@@ -112,3 +112,10 @@ Section sectionOf(DateTime time,DateTime now,{int activeMin=10,int oldMin=120}){
 /// Favourites kept on the device, « a|b|c ».
 Set<String> parseFavourites(String? v)=>v==null||v.isEmpty?<String>{}:v.split('|').where((s)=>s.isNotEmpty).toSet();
 String encodeFavourites(Set<String> f)=>(f.toList()..sort()).join('|');
+
+/// State of the link with the server (« Pastille des liaisons simplifiée »):
+/// direct (everything at once), slowed (no realtime, updates about every
+/// minute), cut (offline, sent later).
+enum ServerLink{direct,slowed,cut}
+ServerLink serverLink({required bool? syncOk,required bool realtime})=>
+  syncOk==false?ServerLink.cut:realtime?ServerLink.direct:ServerLink.slowed;

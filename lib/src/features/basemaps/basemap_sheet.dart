@@ -6,7 +6,8 @@ import 'basemap_models.dart';
 /// chosen by the PCO, and the offline packages served by the local server.
 Future<void> showBasemapSheet(BuildContext context,{required List<Basemap> catalog,required Basemap current,
     required String eventDefault,required bool preferOffline,
-    required void Function(String id) onChoose,required ValueChanged<bool> onPreferOffline}) {
+    required void Function(String id) onChoose,required ValueChanged<bool> onPreferOffline,
+    List<Widget> Function(BuildContext context,StateSetter refresh)? layers}) {
   var offline=preferOffline;
   return showModalBottomSheet<void>(context:context,showDragHandle:true,isScrollControlled:true,builder:(c)=>StatefulBuilder(builder:(c,set){
     return SafeArea(child:ConstrainedBox(constraints:BoxConstraints(maxHeight:MediaQuery.sizeOf(c).height*0.8),child:ListView(shrinkWrap:true,children:[
@@ -19,7 +20,7 @@ Future<void> showBasemapSheet(BuildContext context,{required List<Basemap> catal
           if(b.hasOfflinePackage)S.t('basemap.offlineAvailable'),
           b.attribution,
         ].join(' · ')),
-        onTap:(){onChoose(b.id);Navigator.pop(c);},
+        onTap:(){onChoose(b.id);if(layers==null){Navigator.pop(c);}else{set((){});}},
       ),
       if(catalog.any((b)=>b.hasOfflinePackage))SwitchListTile(
         value:offline,
@@ -27,6 +28,9 @@ Future<void> showBasemapSheet(BuildContext context,{required List<Basemap> catal
         title:Text(S.t('basemap.preferOffline')),
         subtitle:Text(S.t('basemap.preferOfflineHelp')),
       ),
+      // « Panneau des couches » (28 Oct 2026): what is shown on the map, in
+      // the same panel as the base map.
+      if(layers!=null)...layers(c,set),
     ])));
   }));
 }

@@ -22,7 +22,7 @@ Icon=sarcade
 Categories=Utility;Network;
 Terminal=false
 DESKTOP
-python3 tool/make_icon.py "$APPDIR/sarcade.png" 256
+cp assets/icon/generated/sarcade-256.png "$APPDIR/sarcade.png"
 curl -fsSL -o build/appimagetool https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
 chmod +x build/appimagetool
 ARCH=x86_64 build/appimagetool --appimage-extract-and-run "$APPDIR" sarcade-linux-x86_64.AppImage

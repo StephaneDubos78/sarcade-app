@@ -12,7 +12,7 @@ Application **Flutter** de SARCADE (Android, iPhone, Windows, Linux, web/PWA) po
 4. Commandes pour le porteur : **un bloc copiable par machine**, avec le **résultat attendu**.
 5. Une branche et une PR par sujet ; **fusion après accord du porteur et CI verte**. Éviter de fusionner deux PR à quelques secondes d'intervalle.
    **Une fusion n'est pas une recette** : après fusion, la carte du Kanban va en « À recetter » ; elle ne passe en « Validé » que sur confirmation du porteur.
-6. Commits signés `SDUBOS Consulting <github@sdubos.com>`.
+6. Commits signés `SDUBOS Consulting <github@sdubos.com>` et **certifiés DCO** : `git commit -s` ajoute `Signed-off-by: SDUBOS Consulting <github@sdubos.com>` (contrôle « DCO » de la CI, voir `CONTRIBUTING.md`).
 7. Mettre le coffre à jour (note, Kanban, fiche de test) après chaque étape.
 
 ## Construire et tester

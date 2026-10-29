@@ -42,6 +42,12 @@ void main() {
     expect(traceWithin(h, now, 1).single.deviceId, 'y');
     expect(parseFavourites(encodeFavourites({'b', 'a'})), {'a', 'b'});
   });
+  test('link with the server: direct, slowed or cut', () {
+    expect(serverLink(syncOk: true, realtime: true), ServerLink.direct);
+    expect(serverLink(syncOk: true, realtime: false), ServerLink.slowed);
+    expect(serverLink(syncOk: null, realtime: false), ServerLink.slowed);
+    expect(serverLink(syncOk: false, realtime: true), ServerLink.cut);
+  });
   test('sections by freshness: active, without news, old', () {
     final now = DateTime.utc(2026, 10, 29, 12);
     expect(sectionOf(now.subtract(const Duration(minutes: 9)), now), Section.active);

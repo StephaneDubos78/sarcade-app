@@ -63,9 +63,9 @@ test.describe.serial('PCO (web) and a field terminal', () => {
         + `\nscreen: ${screen.replace(/\s+/g, ' ').slice(0, 1200)}\nconsole:\n${consoleLines.slice(-25).join('\n')}`);
     }
 
-    // It acknowledges; the PCO sees « ACK: Received ».
+    // It acknowledges; the PCO sees « received by 1 » under its bubble.
     await field.ack(received.payload.id, 'received');
-    await expect(messageCard(page, body, 'Received')).toBeVisible({ timeout: 60_000 });
+    await expect(messageCard(page, body, 'received by 1')).toBeVisible({ timeout: 60_000 });
     await testInfo.attach('pco-ack', { body: await page.screenshot(), contentType: 'image/png' });
   });
 

@@ -121,13 +121,14 @@ async function sendMessage(page, body, { priority = 'Urgent' } = {}) {
   }).toPass({ timeout: 60_000 });
 }
 
-/** The message card, found by its text and, optionally, its ACK line.
+/** The message bubble, found by its text and, optionally, its acknowledgement summary.
  * Flutter exposes a card either as a group whose accessible name holds its
  * lines (cards with a menu) or as plain text nodes: both are accepted. The
  * ACK pattern stops at the first « ACK: » after the text, i.e. the same card. */
 function messageCard(page, body, ack) {
   const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const re = new RegExp(esc(body) + (ack ? `(?:(?!ACK:)[\\s\\S])*ACK: ${esc(ack)}` : ''));
+  // Bubble (28 Oct 2026): « ✓✓ read by 0 · received by 1 » under the text.
+  const re = new RegExp(esc(body) + (ack ? `[\\s\\S]{0,300}${esc(ack)}` : ''));
   return page.getByRole('group', { name: re })
     .or(page.locator('flt-semantics').filter({ hasText: re }))
     .first();
