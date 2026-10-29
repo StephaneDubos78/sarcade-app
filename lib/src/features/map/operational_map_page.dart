@@ -60,6 +60,7 @@ import '../navigation/road_graph_service.dart';
 import '../basemaps/basemap_models.dart';
 import '../basemaps/basemap_sheet.dart';
 import '../weather/weather_page.dart';
+import '../weather/weather_models.dart';
 import '../measure/coordinates.dart';
 import '../measure/external_maps.dart';
 import '../measure/measure_controller.dart';
@@ -349,6 +350,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     final choice=await showModalBottomSheet<String>(context:context,showDragHandle:true,builder:(c)=>SafeArea(child:Column(mainAxisSize:MainAxisSize.min,children:[
       ListTile(leading:const Icon(Icons.straighten),title:Text(S.t('measure.here')),onTap:()=>Navigator.pop(c,'measure')),
       ListTile(leading:const Icon(Icons.directions),title:Text(S.t('nav.goHere')),onTap:()=>Navigator.pop(c,'nav')),
+      ListTile(leading:const Icon(Icons.add_road),title:Text(S.t('routes.toHere')),onTap:()=>Navigator.pop(c,'route')),
       ListTile(leading:const Icon(Icons.open_in_new),title:Text(S.t('ext.open')),onTap:()=>Navigator.pop(c,'ext')),
       ListTile(leading:const Icon(Icons.cloud_outlined),title:Text(S.t('weather.here')),onTap:()=>Navigator.pop(c,'weather')),
       ListTile(leading:const Icon(Icons.track_changes),title:Text(S.t('bearings.fromHere')),onTap:()=>Navigator.pop(c,'bearing')),
@@ -357,7 +359,22 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     if(choice=='measure')await _measureTo(point,label);
     if(choice=='ext'&&mounted)await _openElsewhere(point,label);
     if(choice=='nav')await _navigateTo(point,label);
+    if(choice=='route')await _routeToHere(point);
     if(choice=='weather')_openWeather(point:(lat:point.latitude,lon:point.longitude,label:label));
+  }
+
+  /// « Itinéraire jusqu'ici » in one gesture: a route from my position to
+  /// the point, legs on the paths, opened in the routes panel.
+  Future<void> _routeToHere(LatLng point) async {
+    final me=_positions[widget.deviceId];
+    final from=me==null?_mapCentre():LatLng(me.lat,me.lon);
+    if(from==null)return;
+    final r=await _routes.createRoute(name:S.t('routes.toHereName',{'time':'${DateTime.now().hour.toString().padLeft(2,'0')}:${DateTime.now().minute.toString().padLeft(2,'0')}'}),profile:'foot',legMode:'paths');
+    await _routes.addWaypoint(r,from);
+    await _routes.addWaypoint(_routes.route(r.id)??r,point);
+    if(!mounted)return;
+    setState((){_showRoutesPanel=true;_showPanel=false;_showReferencePanel=false;_selectedRouteId=r.id;});
+    _fitPoints([from,point]);
   }
 
   void _initMeasure(){
@@ -1196,6 +1213,26 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     ]));
 
 
+  /// Weather pill on the map (« Météo enrichie »): the hour to come from the
+  /// last forecast of the event, red when a vigilance is orange or red; a
+  /// touch opens the weather.
+  Widget? _weatherPill(){
+    final j=widget.store.cachedJson('weather:${widget.eventId}');
+    if(j==null)return null;
+    final r=WeatherReport.fromJson(j);
+    final next=r.upcoming(DateTime.now(),n:1);
+    if(next.isEmpty)return null;
+    final h=next.first; final s=Theme.of(context).colorScheme;
+    final alert=(r.vigilance?.colorId??1)>=3;
+    return Material(color:Colors.transparent,child:InkWell(borderRadius:BorderRadius.circular(16),onTap:()=>_openWeather(),
+      child:Container(height:32,padding:const EdgeInsets.symmetric(horizontal:10),
+        decoration:BoxDecoration(color:alert?vigilanceColor(r.vigilance!.colorId):s.surface.withValues(alpha:0.92),borderRadius:BorderRadius.circular(16),border:Border.all(color:s.outline)),
+        child:Row(mainAxisSize:MainAxisSize.min,children:[
+          Icon(weatherIcon(weatherKey(h.weatherCode)),size:16),const SizedBox(width:4),
+          Text([if(h.temperatureC!=null)'${h.temperatureC!.round()}°',if(h.windKmh!=null)'${windDirection(h.windDirectionDeg)} ${h.windKmh!.round()} km/h'].join(' · '),style:const TextStyle(fontSize:12)),
+        ]))));
+  }
+
 
   /// Links pill (« Pastille des liaisons simplifiée », 28 Oct 2026): one
   /// « Liaison avec le serveur », Directe / Ralentie / Coupée, blue, orange
@@ -1752,7 +1789,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     double panelWidth(double w)=>compact?(screenWidth*0.85).clamp(0.0,w):w;
     void toggleOperators()=>setState((){_deskPage=null;_deskId=null;_showPanel=!_showPanel;if(_showPanel)_showReferencePanel=false;});
     void toggleRoutes()=>setState((){_deskPage=null;_deskId=null;_showRoutesPanel=!_showRoutesPanel;if(_showRoutesPanel){_showPanel=false;_showReferencePanel=false;}else{_drawingRouteId=null;}});
-    void openFiles()=>_openDesk('files',()=>FilesPage(api:widget.api,eventId:widget.eventId,actorId:widget.deviceId));
+    void openFiles()=>_openDesk('files',()=>FilesPage(api:widget.api,eventId:widget.eventId,actorId:widget.deviceId,store:widget.store));
     void openAprs()=>_openDesk('aprs',()=>AprsPage(api:widget.api,eventId:widget.eventId,actorId:widget.deviceId));
     void openMessages()=>_openMessages();
     void showMap()=>setState((){_tab=0;_deskPage=null;_deskId=null;_showPanel=false;_showReferencePanel=false;_showRoutesPanel=false;_drawingRouteId=null;});
@@ -1824,6 +1861,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           onDrawClosure:()=>setState((){_drawingClosure=true;_drawingRouteId=null;_closureDraft.clear();}),
           onNavigate:_navigateTo,
           onFocus:_fitPoints,
+          onSend:(text)=>Navigator.push(context,MaterialPageRoute(builder:(_)=>MessagesPage(api:widget.api,eventId:widget.eventId,
+            actorId:widget.deviceId,sync:_sync,store:widget.store,initialText:text))),
         ))),
         // Reference: the detailed sheet of a high point or a relay only;
         // filters by the chips, search by the search bar.
@@ -1912,7 +1951,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
             ],
           ]),
           // Phone: filters in one button; computer: chips visible.
-          if(!_drawingTools)Padding(padding:const EdgeInsets.only(top:8),child:Wrap(spacing:8,runSpacing:8,children:[if(!compact)_trackingBadge(),?_staleBanner()])),
+          if(!_drawingTools)Padding(padding:const EdgeInsets.only(top:8),child:Wrap(spacing:8,runSpacing:8,children:[if(!compact)_trackingBadge(),?_weatherPill(),?_staleBanner()])),
           if(_drawing.isDrawing)Padding(padding:const EdgeInsets.only(top:8),child:DraftBar(controller:_drawing)),
           if(_drawing.selected!=null)Padding(padding:const EdgeInsets.only(top:8),child:SelectionBar(controller:_drawing,onEditLabel:_editSelectedLabel)),
           if(_drawingClosure)Padding(padding:const EdgeInsets.only(top:8),child:Card(child:Padding(padding:const EdgeInsets.symmetric(horizontal:12,vertical:6),child:Row(mainAxisSize:MainAxisSize.min,children:[
