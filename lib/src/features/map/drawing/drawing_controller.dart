@@ -29,6 +29,8 @@ int autoColor(Iterable<int> usedByOthers){
   return candidates.firstWhere((c)=>count[c]==least);
 }
 const drawingWidths=<double>[2,4,7];
+/// Transparency choices of a drawn object (selection bar).
+const drawingOpacities=<double>[1,0.75,0.5,0.25];
 
 /// One undoable action: the state of each touched object before and after.
 /// A null value means the object did not exist. Undo only touches these
@@ -208,6 +210,7 @@ class DrawingController extends ChangeNotifier {
   void setStrokeWidth(double w){strokeWidth=w;_changeSelected((f)=>f.copyWith(strokeWidth:w));}
   void setLabel(String label){_changeSelected((f)=>f.copyWith(label:label.trim()));}
   void toggleGeofence(){_changeSelected((f)=>f.copyWith(geofence:!f.geofence));}
+  void setOpacity(double o){_changeSelected((f)=>f.copyWith(opacity:o.clamp(0.1,1.0)));}
 
   void deleteSelected(){
     final f=selected;

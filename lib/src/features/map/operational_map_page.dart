@@ -1179,22 +1179,45 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   bool get _showDrawings=>widget.store.preference('show_draw:${widget.eventId}')!='0';
   Future<void> _setShown(String key,bool v) async {await widget.store.setPreference('$key:${widget.eventId}',v?null:'0');if(mounted)setState((){});}
   /// Sections of the layers panel: Terrain, Opération, Référentiel ADRASEC.
+  /// Transparency of a map layer (Couches panel), kept on this device:
+  /// ops (operators and points), draw (drawings), brg (bearings), ref (reference).
+  double _layerOpacity(String k)=>double.tryParse(widget.store.preference('opacity:$k')??'')?.clamp(0.1,1.0)??1.0;
+  Future<void> _setLayerOpacity(String k,double v) async {
+    await widget.store.setPreference('opacity:$k',v>=0.99?null:v.toStringAsFixed(2));
+    if(mounted)setState((){});
+  }
+  Widget _faded(String k,Widget layer){final o=_layerOpacity(k);return o>=1?layer:Opacity(opacity:o,child:layer);}
+  List<Widget> _fadedAll(String k,List<Widget> layers)=>[for(final l in layers)_faded(k,l)];
+
   List<Widget> _layerSections(BuildContext c,StateSetter refresh){
     Widget head(String t)=>Padding(padding:const EdgeInsets.fromLTRB(16,16,16,4),child:Text(t,style:Theme.of(c).textTheme.titleSmall));
     Widget toggle(String label,bool on,Future<void> Function(bool) set)=>SwitchListTile(dense:true,title:Text(label),value:on,
       onChanged:(v) async {await set(v);refresh((){});});
+    Widget opacity(String k){
+      final o=_layerOpacity(k);
+      return Padding(padding:const EdgeInsets.only(left:16,right:16,bottom:4),child:Row(children:[
+        Icon(Icons.opacity,size:18,color:Theme.of(c).colorScheme.onSurfaceVariant),const SizedBox(width:8),
+        Text(S.t('layers.opacity'),style:Theme.of(c).textTheme.bodySmall),
+        Expanded(child:Slider(value:o,min:0.1,max:1,divisions:9,onChanged:(v) async {await _setLayerOpacity(k,v);refresh((){});})),
+        SizedBox(width:44,child:Text('${(o*100).round()} %',textAlign:TextAlign.end,style:Theme.of(c).textTheme.bodySmall)),
+      ]));
+    }
     return [
       head(S.t('layers.terrain')),
       toggle(S.t('chips.operators'),_showOperators,(v)=>_setShown('show_ops',v)),
       toggle('APRS',_showAprs,(v) async =>setState(()=>_showAprs=v)),
       toggle(S.t('chips.withoutInternet'),_withoutInternetOnly,(v) async =>setState(()=>_withoutInternetOnly=v)),
+      opacity('ops'),
       head(S.t('layers.operation')),
       toggle(S.t('chips.drawings'),_showDrawings,(v)=>_setShown('show_draw',v)),
+      opacity('draw'),
       toggle(S.t('chips.bearings'),_showBearings,(v)=>_setShown('show_brg',v)),
+      opacity('brg'),
       _bearingColorBy(refresh),
       head(S.t('layers.reference')),
       toggle(S.t('refs.highPoints'),_showHighPoints,(v) async =>setState(()=>_showHighPoints=v)),
       toggle(S.t('refs.relays'),_showRelays,(v) async =>setState(()=>_showRelays=v)),
+      opacity('ref'),
       const SizedBox(height:12),
     ];
   }
@@ -1952,16 +1975,16 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
             tileBuilder:_darkTiles(context)?darkModeTileBuilder:null),
           if(_trace.length>1)PolylineLayer(polylines:_traceSegments().map((segment)=>Polyline(points:segment.map((p)=>LatLng(p.lat,p.lon)).toList(),strokeWidth:4,color:Theme.of(context).colorScheme.secondary)).toList()),
           // Reference sites below the drawn objects, grouped when zoomed out.
-          ReferenceClusterLayer(sites:_references.values.where((r)=>(r.isHighPoint&&_showHighPoints)||(r.isRelay&&_showRelays)).toList(),onSelect:_selectReference),
-          if(_showDrawings)...buildDrawingLayers(_drawing),
-          if(_showBearings||_bearings.taking||_adjusting!=null)...buildBearingLayers(bearings:_showBearings?_bearings.all.where((b)=>b.id!=_adjusting?.id):const <Bearing>[],draft:_bearingDraft()??_adjusting,byOperator:_brgByOperator,hits:_bearingHits,
-            onTapBearing:_showBearingSheet,onTapZone:(c,_)=>_onLongPress(c)),
+          _faded('ref',ReferenceClusterLayer(sites:_references.values.where((r)=>(r.isHighPoint&&_showHighPoints)||(r.isRelay&&_showRelays)).toList(),onSelect:_selectReference)),
+          if(_showDrawings)..._fadedAll('draw',buildDrawingLayers(_drawing)),
+          if(_showBearings||_bearings.taking||_adjusting!=null)..._fadedAll('brg',buildBearingLayers(bearings:_showBearings?_bearings.all.where((b)=>b.id!=_adjusting?.id):const <Bearing>[],draft:_bearingDraft()??_adjusting,byOperator:_brgByOperator,hits:_bearingHits,
+            onTapBearing:_showBearingSheet,onTapZone:(c,_)=>_onLongPress(c))),
           ..._variantLayers(),
           ...buildRouteLayers(_routes,selectedRouteId:_selectedRouteId,itinerary:_nav.itinerary?.geometry??const [],draftClosure:_closureDraft,
             onWaypointTap:(w)=>setState((){_showRoutesPanel=true;_showPanel=false;_showReferencePanel=false;_selectedRouteId=w.routeId;})),
           ...buildMoveOrderLayers(isPco(widget.deviceId)?_moveOrders:[?_myOrder],_positionOf,_showMoveOrder),
           ...buildMeasureLayers(_measure,_coordFormat),
-          MarkerLayer(markers:markers),
+          _faded('ops',MarkerLayer(markers:markers)),
           if(_me!=null)MarkerLayer(markers:[Marker(point:_me!,width:22,height:22,child:Container(decoration:BoxDecoration(color:Colors.blue,shape:BoxShape.circle,border:Border.all(color:Colors.white,width:3),boxShadow:const [BoxShadow(blurRadius:4,color:Colors.black26)])))]),
           if(_trace.isNotEmpty)MarkerLayer(markers:[for(final t in _trace)Marker(point:LatLng(t.lat,t.lon),width:8,height:8,
             child:Container(decoration:BoxDecoration(color:Theme.of(context).colorScheme.secondary,shape:BoxShape.circle)))]),
