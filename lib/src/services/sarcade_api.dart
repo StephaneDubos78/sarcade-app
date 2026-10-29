@@ -210,6 +210,12 @@ class SarcadeApi {
     if(r.statusCode!=200) throw SarcadeHttpException('displays',r.statusCode,r.body);
     return [for(final d in jsonDecode(r.body) as List)Map<String,dynamic>.from(d as Map)];
   }
+  /// « Retirer le bandeau SOS » of a screen: the person who paired it or an
+  /// administrator (403 otherwise).
+  Future<void> clearDisplayAlert(String eventId,String id) async {
+    final r=await _client.post(Uri.parse('$baseUrl/api/v0.1/events/$eventId/displays/$id/alert/clear'));
+    if(r.statusCode!=200) throw SarcadeHttpException('display_alert_clear',r.statusCode,r.body);
+  }
   Future<void> revokeDisplay(String eventId,String id) async {
     final r=await _client.delete(Uri.parse('$baseUrl/api/v0.1/events/$eventId/displays/$id'));
     if(r.statusCode!=204) throw SarcadeHttpException('display_revoke',r.statusCode,r.body);

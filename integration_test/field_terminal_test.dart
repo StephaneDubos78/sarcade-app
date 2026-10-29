@@ -159,6 +159,10 @@ void main() {
       await t.pump(const Duration(seconds: 1));
     }
     await t.tap(find.byTooltip(S.t('map.messages')));
+    // Phone (29 Oct 2026, like WhatsApp): the list of the conversations
+    // first, its last message in the line; a touch opens the conversation.
+    await pumpUntil(t, find.textContaining('E2E urgent from PCO $run'));
+    await t.tap(find.textContaining('E2E urgent from PCO $run').first);
     await pumpUntil(t, find.text('E2E urgent from PCO $run'));
 
     // 3. Field → PCO: message written in the app reaches the server.
