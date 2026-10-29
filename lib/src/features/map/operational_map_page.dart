@@ -54,6 +54,7 @@ import '../../l10n/strings.dart';
 import '../../operations/event_settings.dart';
 import '../../operations/operations_service.dart';
 import '../../operations/operations_widgets.dart';
+import 'sos_alert.dart';
 import '../../operations/tracking_service.dart';
 import '../navigation/navigation_controller.dart';
 import '../navigation/road_graph_service.dart';
@@ -534,6 +535,18 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
 
   // --- Distress (ATAK 4) and résection (ATAK 2) ---
   bool get _inDistress=>widget.store.preference('distress:${widget.eventId}')=='1';
+
+  /// SOS of other operators not closed yet, with « Couper le son » (sos_alert.dart).
+  Widget? _sosAlert(){
+    final open=openDistress(widget.store.messages().map(SarcadeMessage.fromJson).where((m)=>m.eventId==widget.eventId),widget.deviceId).values.toList();
+    if(open.isEmpty)return null;
+    final key='sosMuted:${widget.eventId}';
+    return SosAlertBanner(open:open,muted:sosMuted(open,widget.store.preference(key)),onOpen:_openMessages,onMute:() async {
+      for(final m in open){await _notifications.answered(m.id,'read');}
+      await widget.store.setPreference(key,sosMuteKey(open));
+      if(mounted)setState((){});
+    });
+  }
 
   /// Immediate message to everyone with the position: every device is
   /// woken; kept until the operator ends it explicitly.
@@ -2080,6 +2093,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       onPopInvokedWithResult:(didPop,_){if(!didPop&&_tab!=0)_goTab(0);},
       child:Scaffold(
       body:SafeArea(bottom:false,child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+        ?_sosAlert(),
         OperationsBanners(settings:_ops.settings,update:_ops.update,
           alert:syncAlert(_sync.currentItems,DateTime.now(),_ops.settings.syncAlertMinutes),
           heldPhotos:_sync.lowBandwidth?widget.store.pendingUploads().length:0,
