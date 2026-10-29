@@ -344,8 +344,32 @@ class _SettingsPageState extends State<SettingsPage> {
   /// readers and the end-to-end tests).
   Widget _compact(Widget field)=>Align(alignment:Alignment.centerLeft,child:ConstrainedBox(constraints:const BoxConstraints(maxWidth:420),child:field));
 
-  Widget _generalTab()=>Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
-    if(widget.firstRun)Padding(padding:const EdgeInsets.only(top:12),child:Text(S.t('settings.intro'))),
+  /// First setup: the plain form of before (fields one under the other),
+  /// kept as it is for the end-to-end tests of the first run.
+  Widget _firstRunTab()=>Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+    Padding(padding:const EdgeInsets.only(top:12),child:Text(S.t('settings.intro'))),
+    Padding(padding:const EdgeInsets.only(top:14),child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+      Focus(
+        // Leaving the server field reloads the events of that server.
+        onFocusChange:(f){if(!f)_loadEvents();},
+        child:TextFormField(
+          controller:_server,
+          decoration:_field(label:S.t('settings.server'),hint:defaultServerUrl,help:S.t('settings.serverHelp')),
+          keyboardType:TextInputType.url,autocorrect:false,validator:_url,
+          onFieldSubmitted:(_)=>_loadEvents(),
+          onChanged:(_)=>setState((){}),
+        ),
+      ),
+      _accessRow(),
+    ])),
+    Padding(padding:const EdgeInsets.only(top:14),child:widget.loadEvents!=null?_eventPicker():TextFormField(
+      controller:_event,decoration:_field(label:S.t('settings.event')),autocorrect:false,validator:_required)),
+    Padding(padding:const EdgeInsets.only(top:14),child:TextFormField(
+      controller:_device,decoration:_field(label:S.t('settings.device'),hint:'TERRAIN-01',help:S.t('settings.deviceHelp')),autocorrect:false,validator:_required)),
+    const SizedBox(height:8),
+  ]);
+
+  Widget _generalTab()=>widget.firstRun?_firstRunTab():Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
     _row(S.t('settings.serverRow'),help:S.t('settings.serverHelp'),child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
       if(_serverList)_serverPicker()
       else Focus(
@@ -518,7 +542,7 @@ class _SettingsPageState extends State<SettingsPage> {
         onCancel:widget.firstRun?null:_cancel),
       body:SafeArea(child:Center(child:ConstrainedBox(
         constraints:const BoxConstraints(maxWidth:900),
-        child:Form(key:_form,onChanged:_touch,child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+        child:Form(key:_form,onChanged:widget.firstRun?null:_touch,child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
           Padding(padding:const EdgeInsets.fromLTRB(20,0,20,4),child:Text(widget.firstRun?S.t('settings.firstRun'):S.t('settings.title'),
             style:t.textTheme.headlineMedium)),
           Padding(padding:const EdgeInsets.symmetric(horizontal:20),child:Text(S.t(widget.firstRun?'settings.subtitleFirst':'settings.subtitle'),
