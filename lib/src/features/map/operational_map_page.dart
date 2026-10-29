@@ -142,10 +142,33 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
 
   void _openMessages(){
     if(_isCompact){_goTab(1);return;}
-    Navigator.push(context,MaterialPageRoute(builder:(_)=>MessagesPage(api:widget.api,eventId:widget.eventId,
-      actorId:widget.deviceId,sync:_sync,store:widget.store)));
+    _openDesk('messages',()=>MessagesPage(key:const ValueKey('desk-messages'),api:widget.api,eventId:widget.eventId,
+      actorId:widget.deviceId,sync:_sync,store:widget.store));
   }
-  @override void initState(){super.initState();_initNotificationActions();unawaited(requestPersistentStorage());_sync=OfflineSyncService(api:widget.api,store:widget.store,eventId:widget.eventId,onRemoteChange:_onRemoteChange);_initDrawing();_initBearings();_loadLocal();_initRoutes();_initMeasure();_sync.start();_initOperations();_loadBasemaps();_initWebUpdate();unawaited(_loadMyPreferences());_syncUiTimer=Timer.periodic(const Duration(seconds:2),(t){if(t.tick%3==0)_drainAnswers();if(mounted)setState((){});});AccessManager.instance.addListener(_onAccessChanged);_start();}
+
+  /// Computer: screen shown beside the rail (the rail stays); phone: a
+  /// new screen as before.
+  Widget? _deskPage; String? _deskId;
+  void _openDesk(String id,Widget Function() build){
+    if(_isCompact){Navigator.push(context,MaterialPageRoute(builder:(_)=>build()));return;}
+    setState((){
+      if(_deskId==id){_deskId=null;_deskPage=null;return;}
+      _deskId=id;_deskPage=build();
+    });
+  }
+  @override void initState(){super.initState();_initNotificationActions();unawaited(requestPersistentStorage());_sync=OfflineSyncService(api:widget.api,store:widget.store,eventId:widget.eventId,onRemoteChange:_onRemoteChange);_initDrawing();_initBearings();_loadLocal();_initRoutes();_initMeasure();_sync.start();_initOperations();_loadBasemaps();_initWebUpdate();unawaited(_loadMyPreferences());_syncUiTimer=Timer.periodic(const Duration(seconds:2),(t){if(t.tick%3==0)_drainAnswers();if(mounted)setState((){});});AccessManager.instance.addListener(_onAccessChanged);_start();unawaited(_loadRoles());}
+
+  /// Rights given by the server for the checked email (PCO, administrator).
+  Future<void> _loadRoles() async {
+    myActorId=widget.deviceId;
+    try{
+      final me=await widget.api.me();
+      myRoles={for(final r in (me?['roles'] as List?)??const [])'$r'};
+      if(mounted)setState((){});
+    }catch(e){
+      debugPrint('SARCADE rights not read: $e');
+    }
+  }
   bool _validPosition(SarcadePosition p){
     final t=p.time.toUtc(), now=DateTime.now().toUtc();
     return t.isAfter(DateTime.utc(2020)) && t.isBefore(now.add(const Duration(days:1)));
@@ -231,6 +254,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     // Each opening of the tools starts from the profile colour.
     if(_drawingTools){_drawing.selectTool(null);}else{
       _drawing.color=_profileDrawColor;
+      _bearings.operatorColor=_profileDrawColor;
       // Drawing with the drawings hidden shows nothing (28 Oct 2026): shown again.
       if(!_showDrawings)unawaited(_setShown('show_draw',true));
     }
@@ -313,9 +337,9 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
 
   void _openWeather({({double lat,double lon,String label})? point}){
     final mine=_positions[widget.deviceId];
-    Navigator.push(context,MaterialPageRoute(builder:(_)=>WeatherPage(api:widget.api,store:widget.store,eventId:widget.eventId,
+    _openDesk('weather',()=>WeatherPage(key:ValueKey('desk-weather-${point?.label}'),api:widget.api,store:widget.store,eventId:widget.eventId,
       actorId:widget.deviceId,lowBandwidth:_ops.settings.lowBandwidth,point:point,
-      fallback:mine==null?null:(lat:mine.lat,lon:mine.lon))));
+      fallback:mine==null?null:(lat:mine.lat,lon:mine.lon)));
   }
 
   /// Long press on the map: navigate to the point or see its weather.
@@ -803,7 +827,18 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     _drawing.addListener(_onDrawingChanged);
   }
   /// Colour of new drawings chosen in the profile (Paramètres).
-  int get _profileDrawColor=>defaultDrawColor(widget.store.storedConfig()?['draw_color'] as int?);
+  /// Without a chosen colour, one given automatically for the event: the
+  /// least used by the others, kept so that it does not change.
+  int get _profileDrawColor{
+    final chosen=widget.store.storedConfig()?['draw_color'] as int?;
+    if(chosen!=null)return chosen;
+    final key='auto_color:${widget.eventId}';
+    final kept=int.tryParse(widget.store.preference(key)??'');
+    if(kept!=null)return kept;
+    final c=autoColor(_drawing.features.where((f)=>f.createdBy!=null&&f.createdBy!=widget.deviceId).map((f)=>f.color));
+    unawaited(widget.store.setPreference(key,'$c'));
+    return c;
+  }
   void _onDrawingChanged(){if(mounted)setState((){});}
 
   // Local edits: stored at once, then sent through the Outbox (ADR-001).
@@ -1113,7 +1148,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     final now=DateTime.now().toUtc(); final fav=_favourites;
     final shown=_favouritesOnly?sorted.where((p)=>fav.contains(p.deviceId)):sorted;
     final by={for(final x in Section.values)x:<SarcadePosition>[]};
-    for(final p in shown){by[sectionOf(p.time.toUtc(),now)]!.add(p);}
+    for(final p in shown){by[sectionOf(p.time.toUtc(),now,oldMin:_oldMin)]!.add(p);}
     final t=Theme.of(context);
     Widget head(String label,int n,{VoidCallback? onTap,bool? open})=>InkWell(onTap:onTap,child:Padding(
       padding:const EdgeInsets.fromLTRB(16,12,8,4),child:Row(children:[
@@ -1162,29 +1197,31 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
 
 
 
-  /// One pill for the links (Meshtastic, MeshCore): a dot per link, amber
-  /// when one fails; a tap gives the detail and « Synchroniser ».
+  /// Links pill (« Pastille des liaisons simplifiée », 28 Oct 2026): one
+  /// « Liaison avec le serveur », Directe / Ralentie / Coupée, blue, orange
+  /// or red; details only when useful.
   Widget _linksPill(){
     final access=AccessManager.instance.requiredFor(widget.api.baseUrl);
-    final links=<(String,bool?)>[(S.t('links.server'),_started?_sync.lastSyncOk:null),(S.t('links.realtime'),_started?_realtime.connected:null),
-      if(access)(S.t('links.access'),false)];
-    final n=linksCount([for(final l in links)l.$2]);
+    final state=_started?serverLink(syncOk:_sync.lastSyncOk,realtime:_realtime.connected):null;
     final scheme=Theme.of(context).colorScheme;
-    Widget dot(bool? ok)=>Container(width:9,height:9,margin:const EdgeInsets.symmetric(horizontal:2),
-      decoration:BoxDecoration(color:ok==null?scheme.outline:ok?scheme.primary:scheme.tertiary,borderRadius:BorderRadius.circular(ok==false?2:5)));
-    return Tooltip(message:'${S.t('links.title')} : ${n.ok}/${n.total} · $_statusLine',child:Material(color:Colors.transparent,child:InkWell(
+    final colour=switch(state){ServerLink.direct=>scheme.primary,ServerLink.slowed=>Colors.orange,ServerLink.cut=>scheme.error,null=>scheme.outline};
+    final label=state==null?S.t('links.starting'):S.t('links.${state.name}');
+    Widget dot()=>Container(width:10,height:10,decoration:BoxDecoration(color:colour,shape:BoxShape.circle));
+    final unsent=_sync.unsent;
+    return Tooltip(message:'${S.t('links.serverLink')} : $label',child:Material(color:Colors.transparent,child:InkWell(
       borderRadius:BorderRadius.circular(24),
       onTap:()=>showModalBottomSheet<void>(context:context,showDragHandle:true,builder:(c)=>SafeArea(child:Column(mainAxisSize:MainAxisSize.min,children:[
-        for(final l in links)ListTile(leading:dot(l.$2),title:Text(l.$1),trailing:Text(l.$2==null?'—':l.$2!?S.t('links.ok'):S.t('links.down'))),
-        ListTile(leading:const Icon(Icons.info_outline),title:Text(_statusLine)),
+        ListTile(leading:dot(),title:Text(S.t('links.serverLink')),trailing:Text(label,style:TextStyle(color:colour,fontWeight:FontWeight.w600)),
+          subtitle:state==null||state==ServerLink.direct?null:Text(S.t('links.${state.name}Help'))),
+        if(unsent>0||_sync.inFlight>0||state!=ServerLink.direct)ListTile(leading:const Icon(Icons.info_outline),title:Text(_statusLine)),
         ListTile(leading:const Icon(Icons.sync),title:Text(S.t('map.sync')),onTap:() async {Navigator.pop(c);await _sync.syncNow();if(mounted)setState((){});}),
-        ListTile(leading:const Icon(Icons.outbox_outlined),title:Text('${S.t('unsent.title')} (${_sync.unsent})'),onTap:(){Navigator.pop(c);_openUnsent();}),
+        ListTile(leading:const Icon(Icons.outbox_outlined),title:Text('${S.t('unsent.title')} ($unsent)'),onTap:(){Navigator.pop(c);_openUnsent();}),
         if(isWebPlatform||fcmAvailable)ListTile(leading:const Icon(Icons.notifications_active_outlined),title:Text(S.t('wakeup.test')),subtitle:Text(S.t('wakeup.testHelp')),
           onTap:(){Navigator.pop(c);unawaited(_testWakeup());}),
-        if(access)ListTile(leading:const Icon(Icons.lock_outline),title:Text(S.t('access.signIn')),onTap:(){Navigator.pop(c);_signIn();}),
+        if(access)ListTile(leading:const Icon(Icons.lock_outline),title:Text(S.t('links.signInAgain')),onTap:(){Navigator.pop(c);_signIn();}),
       ]))),
-      child:Container(height:48,padding:const EdgeInsets.symmetric(horizontal:12),decoration:glass(context,radius:24),
-        child:Row(mainAxisSize:MainAxisSize.min,children:[for(final l in links)dot(l.$2)])),
+      child:Container(height:48,padding:const EdgeInsets.symmetric(horizontal:14),decoration:glass(context,radius:24),
+        child:Row(mainAxisSize:MainAxisSize.min,children:[dot(),const SizedBox(width:8),Text(label,style:const TextStyle(fontSize:13))])),
     )));
   }
 
@@ -1218,6 +1255,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   bool _withoutInternetOnly=false;
   List<SarcadePosition> _history=[]; int _traceHours=1; SarcadePosition? _scrub;
   int get _ageingMin=>(_ops.settings.raw['position_ageing_min'] as num?)?.toInt()??2;
+  /// « Anciens » after this many minutes (Paramètres › Événement, 2 h by default).
+  int get _oldMin=>(_ops.settings.raw['position_old_min'] as num?)?.toInt()??120;
   int get _staleMin=>(_ops.settings.raw['position_stale_min'] as num?)?.toInt()??10;
   Set<String> get _favourites=>parseFavourites(widget.store.preference('favourites'));
   Future<void> _toggleFavourite(String id) async {
@@ -1234,6 +1273,13 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     try{
       final p=await widget.api.myPreferences();
       if(p==null)return;
+      // Preferred colour of the person, kept by the server (every event).
+      final colour=p['color'];
+      final stored=widget.store.storedConfig();
+      if(colour is int&&stored!=null&&stored['draw_color']!=colour){
+        await widget.store.saveConfig({...stored,'draw_color':colour});
+        _drawing.color=colour;_bearings.operatorColor=colour;
+      }
       final remote=p['favourites'];
       if(remote is List){
         await widget.store.setPreference('favourites',encodeFavourites({for(final x in remote)'$x'}));
@@ -1342,6 +1388,9 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
             Text(details.join(' · '),style:TextStyle(fontSize:12,color:f==Freshness.fresh?s.onSurfaceVariant:s.tertiary)),
           ])),
           IconButton(tooltip:S.t(fav?'favourites.remove':'favourites.add'),onPressed:()=>_toggleFavourite(p.deviceId),icon:Icon(fav?Icons.star:Icons.star_border,color:fav?s.tertiary:null)),
+          // « Discuter »: direct chat with this operator (not with myself, not an APRS station).
+          if(!p.isAprs&&p.deviceId!=widget.deviceId)IconButton(tooltip:S.t('operators.chat'),onPressed:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>MessagesPage(
+            api:widget.api,eventId:widget.eventId,actorId:widget.deviceId,sync:_sync,store:widget.store,initialPeer:p.deviceId))),icon:const Icon(Icons.chat_outlined)),
           IconButton(tooltip:S.t('common.close'),onPressed:()=>setState((){_selectedDevice=null;_trace=[];_history=[];_scrub=null;}),icon:const Icon(Icons.close)),
         ]),
         const SizedBox(height:8),
@@ -1428,6 +1477,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       if(!Bearing.isBearing(j)||j['deleted']==true)continue;
       try{_bearings.applyRemote(Bearing.fromJson(j));}catch(_){}
     }
+    _bearings.operatorColor=_profileDrawColor;
     _bearings.addListener((){
       // Taking a bearing shows the « Relevés » filter again if it was off.
       if(_bearings.taking&&!_showBearings)unawaited(_setShown('show_brg',true));
@@ -1692,7 +1742,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     final sorted=_positions.values.where((p)=>(p.isAprs?_showAprs:_showOperators)&&(!_withoutInternetOnly||worksWithoutInternet(p)||p.deviceId==widget.deviceId)).toList()..sort((a,b)=>a.deviceId.compareTo(b.deviceId));
     final markers=<Marker>[
       // Old stations stay in the list and the search, not on the map.
-      ..._stationMarkers(sorted.where((p)=>p.deviceId==widget.deviceId||sectionOf(p.time.toUtc(),DateTime.now().toUtc())!=Section.old).toList()),
+      ..._stationMarkers(sorted.where((p)=>p.deviceId==widget.deviceId||sectionOf(p.time.toUtc(),DateTime.now().toUtc(),oldMin:_oldMin)!=Section.old).toList()),
       ..._pois.values.map((p)=>Marker(point:LatLng(p.lat,p.lon),width:40,height:40,child:Tooltip(message:p.label??p.kind,child:const Icon(Icons.location_on,size:38,color:Colors.red)))),
     ];
     final selected=_selectedDevice==null?null:_positions[_selectedDevice];
@@ -1700,12 +1750,12 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     final compact=screenWidth<_compactWidth;
     // On a phone a panel takes most of the width, leaving a strip of map visible.
     double panelWidth(double w)=>compact?(screenWidth*0.85).clamp(0.0,w):w;
-    void toggleOperators()=>setState((){_showPanel=!_showPanel;if(_showPanel)_showReferencePanel=false;});
-    void toggleRoutes()=>setState((){_showRoutesPanel=!_showRoutesPanel;if(_showRoutesPanel){_showPanel=false;_showReferencePanel=false;}else{_drawingRouteId=null;}});
-    void openFiles()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>FilesPage(api:widget.api,eventId:widget.eventId,actorId:widget.deviceId)));
-    void openAprs()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>AprsPage(api:widget.api,eventId:widget.eventId,actorId:widget.deviceId)));
+    void toggleOperators()=>setState((){_deskPage=null;_deskId=null;_showPanel=!_showPanel;if(_showPanel)_showReferencePanel=false;});
+    void toggleRoutes()=>setState((){_deskPage=null;_deskId=null;_showRoutesPanel=!_showRoutesPanel;if(_showRoutesPanel){_showPanel=false;_showReferencePanel=false;}else{_drawingRouteId=null;}});
+    void openFiles()=>_openDesk('files',()=>FilesPage(api:widget.api,eventId:widget.eventId,actorId:widget.deviceId));
+    void openAprs()=>_openDesk('aprs',()=>AprsPage(api:widget.api,eventId:widget.eventId,actorId:widget.deviceId));
     void openMessages()=>_openMessages();
-    void showMap()=>setState((){_tab=0;_showPanel=false;_showReferencePanel=false;_showRoutesPanel=false;_drawingRouteId=null;});
+    void showMap()=>setState((){_tab=0;_deskPage=null;_deskId=null;_showPanel=false;_showReferencePanel=false;_showRoutesPanel=false;_drawingRouteId=null;});
     // Phone: an entry of « Plus » that works on the map comes back to it.
     void onMap(VoidCallback f){if(_tab!=0)_goTab(0);f();}
     void takeBearing()=>onMap(()=>_bearings.startTaking());
@@ -1730,9 +1780,9 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     final rail=<_RailAction>[
       _RailAction(Icons.groups_outlined,S.t('tabs.teams'),toggleOperators,selected:_showPanel),
       _RailAction(Icons.route,S.t('routes.menu'),toggleRoutes,selected:_showRoutesPanel),
-      _RailAction(Icons.track_changes,S.t('bearings.take'),()=>_bearings.startTaking()),
-      _RailAction(Icons.folder_copy_outlined,S.t('map.files'),openFiles),
-      _RailAction(Icons.cloud_outlined,S.t('weather.menu'),()=>_openWeather()),
+      _RailAction(Icons.track_changes,S.t('bearings.take'),(){setState((){_deskPage=null;_deskId=null;});_bearings.startTaking();}),
+      _RailAction(Icons.folder_copy_outlined,S.t('map.files'),openFiles,selected:_deskId=='files'),
+      _RailAction(Icons.cloud_outlined,S.t('weather.menu'),()=>_openWeather(),selected:_deskId=='weather'),
       _RailAction(Icons.more_horiz,S.t('tabs.more'),openMoreSheet),
     ];
     final messagesButton=IconButton(tooltip:S.t('map.messages'),onPressed:openMessages,icon:_messagesIcon(),
@@ -1762,7 +1812,10 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           ]))),
         Expanded(child:IndexedStack(index:compact?_tab:0,children:[_withDrawingShortcuts(Row(children:[
         // Computer: rail on the left (mock-up V2).
-        if(!compact)_Rail(messages:messagesButton,actions:rail,onMap:showMap,mapSelected:!_showPanel&&!_showReferencePanel&&!_showRoutesPanel),
+        if(!compact)_Rail(messages:messagesButton,actions:rail,onMap:showMap,mapSelected:_deskPage==null&&!_showPanel&&!_showReferencePanel&&!_showRoutesPanel),
+        // Computer: Messages, Fichiers, APRS… open beside the rail, which
+        // stays visible (« rail toujours visible », 28 Oct 2026).
+        Expanded(child:IndexedStack(index:!compact&&_deskPage!=null?1:0,sizing:StackFit.expand,children:[Row(children:[
         if(_showRoutesPanel)SizedBox(width:panelWidth(360),child:Material(elevation:3,child:RoutesPanel(
           controller:_routes,api:widget.api,actorId:widget.deviceId,selectedRouteId:_selectedRouteId,drawingRouteId:_drawingRouteId,
           groups:widget.store.groups(widget.eventId).map(CommGroup.fromJson).toList(),
@@ -1893,7 +1946,11 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
             }),
         ])))),
       ]))
-      ])),
+      
+        ]),
+        _deskPage??const SizedBox.shrink(),
+        ])),
+])),
         // Phone: the other tabs, built at their first visit then kept.
         if(compact)...[
           _builtTabs.contains(1)?MessagesPage(api:widget.api,eventId:widget.eventId,actorId:widget.deviceId,sync:_sync,store:widget.store,active:_tab==1):const SizedBox.shrink(),
