@@ -112,3 +112,7 @@ class PendingAnswer {
     return out;
   }
 }
+
+/// Identity of a notification launch (Android reports the same one again
+/// on later starts by the icon).
+String launchKey(int? id,String? actionId,String? payload)=>'${id??''}|${actionId??''}|${payload??''}';
