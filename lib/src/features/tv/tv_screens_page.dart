@@ -11,14 +11,19 @@ import 'tv_view.dart';
 /// the screens of the event.
 class TvScreensPage extends StatefulWidget {
   final SarcadeApi api; final String eventId;
-  const TvScreensPage({super.key,required this.api,required this.eventId});
+  /// « Scanner le QR code » of Paramètres › Affichage: the camera opens at once.
+  final bool scanOnOpen;
+  const TvScreensPage({super.key,required this.api,required this.eventId,this.scanOnOpen=false});
   @override State<TvScreensPage> createState()=>_TvScreensPageState();
 }
 
 class _TvScreensPageState extends State<TvScreensPage> {
   List<Map<String,dynamic>>? _list; bool _busy=false; bool _offline=false;
 
-  @override void initState(){super.initState();_load();}
+  @override void initState(){
+    super.initState();_load();
+    if(widget.scanOnOpen&&canScanTvQr)WidgetsBinding.instance.addPostFrameCallback((_){if(mounted)_scan();});
+  }
 
   Future<void> _load() async {
     try{

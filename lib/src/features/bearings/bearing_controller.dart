@@ -74,9 +74,9 @@ class BearingController extends ChangeNotifier {
       accuracyM:accuracyM,operatorColor:operatorColor,takenAt:now,createdBy:actorId,updatedBy:actorId,updatedAt:now);
   }
 
-  Future<Bearing?> save({String target='',int strength=0,String comment='',String search=''}) async {
+  Future<Bearing?> save({String target='',int strength=0,String comment='',String search='',bool exercise=false,double? frequencyMhz}) async {
     final d=draft(target:target,strength:strength,comment:comment,search:search); if(d==null)return null;
-    final b=Bearing.fromJson({...d.toJson(),'id':const Uuid().v4()});
+    final b=Bearing.fromJson({...d.copyWith(exercise:exercise,frequencyMhz:frequencyMhz,updatedBy:d.updatedBy,updatedAt:d.updatedAt).toJson(),'id':const Uuid().v4()});
     _all[b.id]=b; stopTaking();
     await onSave(b,isNew:true);
     return b;

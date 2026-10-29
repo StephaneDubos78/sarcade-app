@@ -70,9 +70,9 @@ class _SarcadeAppState extends State<SarcadeApp> {
     await _rememberServer(c.serverUrl,eventId:c.eventId,deviceId:c.deviceId);
     final wasSetup=_needsSetup;
     // Same session: language or operator settings changed, the map stays.
-    if(c.sessionKey==_config.sessionKey&&!wasSetup){setState((){_config=c;_applyLanguage();});_navigator.currentState?.pop();return;}
+    if(c.sessionKey==_config.sessionKey&&!wasSetup){setState((){_config=c;_applyLanguage();});_navigator.currentState?.maybePop();return;}
     setState((){_config=c;_needsSetup=false;_applyLanguage();});
-    if(!wasSetup)_navigator.currentState?.pop();
+    if(!wasSetup)_navigator.currentState?.maybePop();
   }
 
   final _httpsTried=<String>{};
@@ -102,7 +102,7 @@ class _SarcadeAppState extends State<SarcadeApp> {
     waitingFor:(server,eventId)=>outbox.waitingFor(widget.store.pending(),server,eventId),
     sendFirst:_sendFirst,
     readServers:_readServers,saveServers:_saveServers,
-    api:firstRun?null:_apiFor(_config),
+    api:firstRun?null:_apiFor(_config),store:widget.store,
     onThemeChanged:(m)=>widget.store.setPreference('theme_mode',themeModeName(m)),
     onOpenLogbook:firstRun?null:()=>_navigator.currentState?.push(MaterialPageRoute(
       builder:(_)=>LogbookPage(api:_apiFor(_config),eventId:_config.eventId))),
@@ -147,6 +147,7 @@ class _SarcadeAppState extends State<SarcadeApp> {
           eventId:_config.eventId,deviceId:_config.deviceId,store:widget.store,
           tileUrl:_config.tileUrl,tileAttribution:_config.tileAttribution,
           onSettings:_openSettings,
+          settingsBuilder:()=>_settingsPage(firstRun:false),
           callsign:_config.callsign,aprsTxConsent:_config.aprsTxConsent,platform:_platform,
           onHttpsAvailable:_tryHttps,
         ),

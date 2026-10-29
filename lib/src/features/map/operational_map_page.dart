@@ -73,16 +73,25 @@ import '../routes/routes_layers.dart';
 import '../routes/routes_panel.dart';
 import '../tv/tv_view.dart';
 import '../orders/move_orders.dart';
+import '../bearings/signals.dart';
+import '../tools/tools_page.dart';
+import 'sos_button.dart';
+import '../tools/coordinate_converter_page.dart';
+import '../tools/resection.dart';
+import '../tools/resection_panel.dart';
+import '../tv/tv_screens_page.dart';
 
 class OperationalMapPage extends StatefulWidget {
   final SarcadeApi api; final String eventId,deviceId,tileUrl,tileAttribution; final LocalStore store; final VoidCallback? onSettings;
+  /// Computer: Paramètres opens beside the rail (decision of 29 Oct 2026).
+  final Widget Function()? settingsBuilder;
   /// Operator settings sent with the heartbeat (APRS callsign and consent).
   final String callsign; final bool aprsTxConsent;
   /// The server announced its HTTPS address (the application tries it).
   final void Function(String httpsUrl)? onHttpsAvailable;
   /// Platform name sent to the server (« windows », « android », « web »…).
   final String platform;
-  const OperationalMapPage({super.key,required this.api,required this.eventId,required this.deviceId,required this.store,required this.tileUrl,required this.tileAttribution,this.onSettings,
+  const OperationalMapPage({super.key,required this.api,required this.eventId,required this.deviceId,required this.store,required this.tileUrl,required this.tileAttribution,this.onSettings,this.settingsBuilder,
     this.callsign='',this.aprsTxConsent=false,this.platform='unknown',this.onHttpsAvailable});
   @override State<OperationalMapPage> createState()=>_OperationalMapPageState();
 }
@@ -90,7 +99,7 @@ class OperationalMapPage extends StatefulWidget {
 class _OperationalMapPageState extends State<OperationalMapPage> {
   final _map=MapController(); final _realtime=RealtimeService(); final _location=LocationService(); final _notifications=NotificationService(); final _uuid=const Uuid();
   final Map<String,SarcadePosition> _positions={}; final Map<String,SarcadePoi> _pois={}; final Map<String,ReferenceSite> _references={};
-  StreamSubscription? _rtSub; Timer? _syncUiTimer; bool _started=false, _starting=false; bool _showPanel=true; bool _showReferencePanel=false; bool _showHighPoints=false; bool _showRelays=false; /* off at start: decision of the project owner, 28 Oct 2026 */ String? _selectedDevice; ReferenceSite? _selectedReference; List<SarcadePosition> _trace=[]; bool _traceLoading=false; late final OfflineSyncService _sync; bool _layoutInitialized=false;
+  StreamSubscription? _rtSub; Timer? _syncUiTimer; bool _started=false, _starting=false; bool _showPanel=false; /* closed at start on every screen: the map first (bug of 29 Oct 2026) */ bool _showReferencePanel=false; bool _showHighPoints=false; bool _showRelays=false; /* off at start: decision of the project owner, 28 Oct 2026 */ String? _selectedDevice; ReferenceSite? _selectedReference; List<SarcadePosition> _trace=[]; bool _traceLoading=false; late final OfflineSyncService _sync; bool _layoutInitialized=false;
   late final DrawingController _drawing; bool _drawingTools=false; final _mapKey=GlobalKey();
   late final TrackingService _tracking; late final OperationsService _ops; bool _updatePageShown=false;
   late final RoutesController _routes; late final NavigationController _nav; late final RoadGraphService _graphs;
@@ -518,6 +527,12 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     return p==null?S.t('distress.noPosition'):'${p.lat.toStringAsFixed(5)}, ${p.lon.toStringAsFixed(5)}';
   }
 
+  Future<void> _sendDistress() async {
+    await _sendQuick(S.t('distress.body',{'who':widget.deviceId,'pos':_myPositionText()}));
+    await widget.store.setPreference('distress:${widget.eventId}','1');
+    if(mounted){setState((){});ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(S.t('distress.sent'))));}
+  }
+
   Future<void> _distress() async {
     if(_inDistress){
       final end=await showDialog<bool>(context:context,builder:(c)=>AlertDialog(title:Text(S.t('distress.endTitle')),
@@ -537,42 +552,84 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         _HoldButton(label:S.t('distress.hold'),onDone:()=>Navigator.pop(c,true)),
       ]));
     if(ok!=true)return;
-    await _sendQuick(S.t('distress.body',{'who':widget.deviceId,'pos':_myPositionText()}));
-    await widget.store.setPreference('distress:${widget.eventId}','1');
-    if(mounted){setState((){});ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(S.t('distress.sent'))));}
+    await _sendDistress();
   }
 
-  /// Résection: two or three known points of the reference and the azimuth
-  /// measured towards each; the position found opens the point sheet.
-  Future<void> _resection() async {
-    final refs=_references.values.toList()..sort((a,b)=>a.name.compareTo(b.name));
-    if(refs.length<2){ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(S.t('resection.noRefs'))));return;}
-    final chosen=<ReferenceSite?>[null,null,null]; final az=[TextEditingController(),TextEditingController(),TextEditingController()];
-    final ok=await showDialog<bool>(context:context,builder:(c)=>StatefulBuilder(builder:(c,set)=>AlertDialog(title:Text(S.t('resection.title')),
-      content:SingleChildScrollView(child:Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.start,children:[
-        Text(S.t('resection.help')),
-        for(var i=0;i<3;i++)Padding(padding:const EdgeInsets.only(top:8),child:Row(children:[
-          Expanded(flex:3,child:DropdownButton<ReferenceSite>(isExpanded:true,value:chosen[i],hint:Text(S.t(i<2?'resection.point':'resection.pointOptional')),
-            items:[for(final r in refs)DropdownMenuItem(value:r,child:Text(r.name,overflow:TextOverflow.ellipsis))],onChanged:(v)=>set(()=>chosen[i]=v))),
-          const SizedBox(width:8),
-          Expanded(flex:2,child:TextField(controller:az[i],keyboardType:const TextInputType.numberWithOptions(decimal:true),decoration:const InputDecoration(suffixText:'°',hintText:'000'))),
-        ])),
-      ])),
-      actions:[TextButton(onPressed:()=>Navigator.pop(c,false),child:Text(S.t('common.cancel'))),
-        FilledButton(onPressed:()=>Navigator.pop(c,true),child:Text(S.t('resection.compute')))])));
-    final sights=<({LatLng known,double azimuthDeg})>[];
-    for(var i=0;i<3;i++){
-      final r=chosen[i]; final a=double.tryParse(az[i].text.replaceAll(',','.').trim());
-      if(r!=null&&a!=null&&a>=0&&a<=360)sights.add((known:LatLng(r.lat,r.lon),azimuthDeg:a));
-    }
-    for(final t in az){t.dispose();}
-    if(ok!=true||!mounted)return;
-    final res=sights.length<2?null:resection(sights);
-    if(res==null||res.centre==null){ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(S.t('resection.none'))));return;}
-    _map.move(res.centre!,14);
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(S.t('resection.found',{'r':geo.formatDistance(res.radiusM)}))));
-    await _onLongPress(res.centre!);
+  /// Résection (menu Outils): panel beside the map.
+  void _openResection(){
+    final me=_positions[widget.deviceId];
+    _resectionCtl.around=me!=null?LatLng(me.lat,me.lon):_mapCentre();
+    setState((){_tab=0;_deskPage=null;_deskId=null;_showResection=true;_showPanel=false;_showReferencePanel=false;_showRoutesPanel=false;_drawingRouteId=null;});
   }
+
+  void _resectionPick(int i){
+    _resectionCtl.pick(i);
+    _startPick(S.t('resection.pickHint',{'n':'${i+1}'}),(p,site){
+      _resectionCtl.setKnown(i,KnownPoint(point:p,label:site?.name??formatCoordinates(p,_coordFormat,mgrsDigits:_mgrsDigits),site:site));
+    });
+  }
+
+  /// A designated point of the event (same as « Enregistrer le point »).
+  Future<void> _saveDesignated(LatLng t,String label) async {
+    final now=DateTime.now().toUtc();
+    final poi={'id':_uuid.v4(),'event_id':widget.eventId,'kind':'designated','label':label,
+      'lat':t.latitude,'lon':t.longitude,'created_at':now.toIso8601String()};
+    await widget.store.cachePoi(poi);
+    setState(()=>_pois[poi['id'] as String]=SarcadePoi.fromJson(poi));
+    await _sync.queue(objectId:poi['id'] as String,objectType:'poi',payload:poi);
+    if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(S.t('measure.poiSaved'))));
+  }
+
+  Widget _resectionPanel(double width)=>SizedBox(width:width,child:ResectionPanel(controller:_resectionCtl,
+    sites:_references.values.where((r)=>r.isHighPoint||r.isRelay).toList(),
+    canCompass:_phoneOrTablet,
+    onClose:()=>setState((){_showResection=false;_resectionCtl.result=null;}),
+    onPickOnMap:_resectionPick,
+    onFocus:(p)=>_map.move(p,14),
+    onCreatePoint:(p)=>_saveDesignated(p,S.t('resection.pointLabel',{'t':hhmm(DateTime.now())})),
+    onSendPosition:(p)=>Navigator.push(context,MaterialPageRoute(builder:(_)=>MessagesPage(api:widget.api,eventId:widget.eventId,
+      actorId:widget.deviceId,sync:_sync,store:widget.store,
+      initialText:S.t('resection.message',{'pos':formatCoordinates(p,_coordFormat,mgrsDigits:_mgrsDigits),'r':geo.formatDistance(_resectionCtl.result?.radiusM??0)})))),
+    onCopy:(p){Clipboard.setData(ClipboardData(text:formatCoordinates(p,_coordFormat,mgrsDigits:_mgrsDigits)));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(S.t('common.copied'))));},
+  ));
+
+  /// Sights and result of the résection on the map.
+  List<Widget> _resectionLayers(){
+    if(!_showResection)return const [];
+    final c=_resectionCtl; final res=c.result;
+    final known=[for(var i=0;i<3;i++)if(c.sights[i].known!=null)(i,c.sights[i].known!.point)];
+    return [
+      PolylineLayer(polylines:[for(final (a,b) in resectionLines(c))Polyline(points:[a,b],strokeWidth:2.5,color:Colors.indigo.withValues(alpha:0.85))]),
+      if(res?.centre!=null)CircleLayer(circles:[CircleMarker(point:res!.centre!,radius:res.radiusM,useRadiusInMeter:true,
+        color:const Color(0x333F51B5),borderColor:Colors.indigo,borderStrokeWidth:2)]),
+      MarkerLayer(markers:[
+        for(final (i,p) in known)Marker(point:p,width:26,height:26,child:Container(alignment:Alignment.center,
+          decoration:BoxDecoration(color:Colors.indigo,shape:BoxShape.circle,border:Border.all(color:Colors.white,width:2)),
+          child:Text('${i+1}',style:const TextStyle(color:Colors.white,fontWeight:FontWeight.w700,fontSize:12)))),
+        if(res?.centre!=null)Marker(point:res!.centre!,width:28,height:28,child:const Icon(Icons.my_location,color:Colors.indigo,size:28)),
+      ]),
+    ];
+  }
+
+  /// Menu « Outils »: tiles of the tools used less often.
+  void _openTools()=>_openDesk('tools',()=>ToolsPage(key:const ValueKey('desk-tools'),items:[
+    ToolItem(icon:Icons.my_location,title:S.t('resection.title'),subtitle:S.t('tools.resectionHelp'),color:Colors.indigo,onTap:_openResection),
+    ToolItem(icon:Icons.straighten,title:S.t('tools.measure'),subtitle:S.t('tools.measureHelp'),color:Colors.teal,
+      onTap:()=>_startPick(S.t('tools.measureHint'),(p,site)=>_measureTo(p,site?.name??S.t('nav.point')))),
+    ToolItem(icon:Icons.pin_drop_outlined,title:S.t('converter.title'),subtitle:S.t('tools.converterHelp'),color:Colors.blue,
+      onTap:()=>_openDesk('converter',()=>CoordinateConverterPage(key:const ValueKey('desk-converter'),
+        onShow:(p)=>_onMapNow((){setState(()=>_searchPin=p);_map.move(p,15);}),
+        onMeasure:(p)=>_onMapNow(()=>_measureTo(p,S.t('nav.point')))))),
+    ToolItem(icon:Icons.tv,title:S.t('tv.menu'),subtitle:S.t('tools.tvHelp'),color:Colors.deepPurple,
+      onTap:()=>_openDesk('tv',()=>TvScreensPage(key:const ValueKey('desk-tv'),api:widget.api,eventId:widget.eventId))),
+    if(isPco(widget.deviceId))ToolItem(icon:Icons.settings_input_antenna,title:S.t('aprs.title'),subtitle:S.t('tools.aprsHelp'),color:Colors.purple,
+      onTap:()=>_openDesk('aprs',()=>AprsPage(api:widget.api,eventId:widget.eventId,actorId:widget.deviceId))),
+    ToolItem(icon:Icons.cloud_outlined,title:S.t('weather.menu'),subtitle:S.t('tools.weatherHelp'),color:Colors.orange,onTap:()=>_openWeather()),
+  ]));
+
+  /// A tool acting on the map: back to the map (tab, desk closed) first.
+  void _onMapNow(VoidCallback f){setState((){_tab=0;_deskPage=null;_deskId=null;});f();}
 
   void _sendMeasure()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>MessagesPage(api:widget.api,eventId:widget.eventId,
     actorId:widget.deviceId,sync:_sync,store:widget.store,initialText:measureMessage(_measure,_coordFormat,mgrsDigits:_mgrsDigits))));
@@ -863,7 +920,10 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       rethrow;
     }
   }
-  void _selectReference(ReferenceSite site){setState((){_tab=0;_selectedReference=site;_showReferencePanel=true;_showPanel=false;});_map.move(LatLng(site.lat,site.lon),14);}
+  void _selectReference(ReferenceSite site){
+    final pick=_pickPoint;
+    if(pick!=null){setState((){_pickPoint=null;_pickHint=null;});pick(LatLng(site.lat,site.lon),site);return;}
+    setState((){_tab=0;_selectedReference=site;_showReferencePanel=true;_showPanel=false;});_map.move(LatLng(site.lat,site.lon),14);}
   String _frequency(double? value)=>value==null?'-':'${value.toStringAsFixed(3)} MHz';
   List<List<SarcadePosition>> _traceSegments(){
     if(_trace.length<2)return _trace.isEmpty?<List<SarcadePosition>>[]:[List<SarcadePosition>.from(_trace)];
@@ -1008,6 +1068,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   }
 
   Future<void> _onMapTap(TapPosition tap,LatLng point) async {
+    final pick=_pickPoint;
+    if(pick!=null){setState((){_pickPoint=null;_pickHint=null;});pick(point,null);return;}
     if(_adjusting!=null){_adjustTowards(point);return;}
     if(_pickingOrigin){setState(()=>_pickingOrigin=false);_measure.setOrigin(MeasureOrigin(point:point,label:S.t('measure.originPoint')));return;}
     final drawingRoute=_drawingRouteId==null?null:_routes.route(_drawingRouteId!);
@@ -1132,8 +1194,15 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       _fab('map-me',S.t(switch(_meMode){MeMode.off=>'map.myPosition',MeMode.follow=>'map.followMeOn',MeMode.compass=>'map.compassOn'}),
         Icon(switch(_meMode){MeMode.off=>Icons.my_location,MeMode.follow=>Icons.navigation,MeMode.compass=>Icons.explore}),_myPosition,
         background:_followMe?scheme.primary:null,foreground:_followMe?scheme.onPrimary:null),
+      if(!_isCompact&&_sosVisible)...[const SizedBox(height:16),_sosButton()],
     ]);
   }
+
+  /// SOS on the map (decision of 29 Oct 2026, 12 h 14): any operator, held
+  /// 2 s; « Fin de détresse » blinking while in distress; hidden while
+  /// drawing.
+  bool get _sosVisible=>!_drawingTools&&!_bearings.taking&&_pickPoint==null;
+  Widget _sosButton()=>SosButton(inDistress:_inDistress,onTriggered:_sendDistress,onEnd:_distress);
 
   /// Floating button of 48 × 48 px (the small ones were 40 px).
   Widget _fab(String tag,String tooltip,Widget icon,VoidCallback onPressed,{Color? background,Color? foreground})=>
@@ -1144,6 +1213,12 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   /// addresses from the server. The chosen result gets a red pin; a tap on
   /// it opens the point menu (measure, navigate, open in, weather).
   LatLng? _searchPin;
+  // --- Résection panel and « Toucher la carte » (menu Outils) ---
+  bool _showResection=false;
+  final ResectionController _resectionCtl=ResectionController();
+  void Function(LatLng point,ReferenceSite? site)? _pickPoint; String? _pickHint;
+  void _startPick(String hint,void Function(LatLng point,ReferenceSite? site) done)=>setState((){_tab=0;_deskPage=null;_deskId=null;_pickHint=hint;_pickPoint=done;});
+  void _cancelPick()=>setState((){_pickPoint=null;_pickHint=null;_resectionCtl.pick(null);});
   Iterable<Searchable> _searchables()=>[
     for(final p in _positions.values)Searchable(SearchKind.operator,p.deviceId.replaceFirst('aprs:',''),p.deviceId.startsWith('aprs:')?'APRS':S.t('search.kind.operator'),LatLng(p.lat,p.lon)),
     for(final r in _references.values)Searchable(SearchKind.reference,r.name,[r.callsign,r.subtype,r.description].whereType<String>().join(' '),LatLng(r.lat,r.lon)),
@@ -1573,6 +1648,19 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   int _brgStrength=0;
   bool get _showBearings=>widget.store.preference('show_brg:${widget.eventId}')!='0';
   String get _brgSearch=>widget.store.preference('brg_search:${widget.eventId}')??'';
+  /// Default frequencies of the server, cached for offline use.
+  List<SignalChoice> get _signalDefaults=>decodeSignals(widget.store.preference('signal_defaults'));
+  /// Signals typed with « Autre… » during this session.
+  final List<SignalChoice> _extraSignals=[];
+  List<SignalChoice> get _signalMenu=>signalMenu(_bearings.all,_signalDefaults,extra:_extraSignals);
+  SignalChoice? get _currentSignal=>_brgSearch.isEmpty?null:_signalMenu.where((s)=>s.name==_brgSearch).firstOrNull;
+  Future<void> _loadSignalDefaults() async {
+    try{
+      final body=await widget.api.signalDefaults();
+      await widget.store.setPreference('signal_defaults',body);
+      if(mounted)setState((){});
+    }catch(_){/* offline or older server: cached or built-in list */}
+  }
 
   void _initBearings(){
     _bearings=BearingController(eventId:widget.eventId,actorId:widget.deviceId,location:_location,
@@ -1590,6 +1678,12 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       try{_bearings.applyRemote(Bearing.fromJson(j));}catch(_){}
     }
     _bearings.operatorColor=_profileDrawColor;
+    unawaited(_loadSignalDefaults());
+    // Pre-selection: the last signal I used in the event.
+    if(_brgSearch.isEmpty){
+      final mine=[..._bearings.all.where((b)=>b.createdBy==widget.deviceId&&b.search.isNotEmpty)]..sort((a,b)=>b.takenAt.compareTo(a.takenAt));
+      if(mine.isNotEmpty)unawaited(widget.store.setPreference('brg_search:${widget.eventId}',mine.first.search));
+    }
     _bearings.addListener((){
       // Taking a bearing shows the « Relevés » filter again if it was off.
       if(_bearings.taking&&!_showBearings)unawaited(_setShown('show_brg',true));
@@ -1640,12 +1734,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       // takes the same again; the current one stays for the next bearings.
       Text(S.t('bearings.signal'),style:TextStyle(fontSize:12,color:s.onSurfaceVariant)),
       const SizedBox(height:4),
-      SingleChildScrollView(scrollDirection:Axis.horizontal,child:Row(children:[
-        for(final n in {if(_brgSearch.isNotEmpty)_brgSearch,...signalsByRecency(_bearings.all)})Padding(padding:const EdgeInsets.only(right:6),child:ChoiceChip(
-          avatar:Icon(Icons.circle,size:12,color:Color(searchColor(n))),label:Text(n),selected:n==_brgSearch,showCheckmark:false,
-          onSelected:(_)=>_setSignal(n==_brgSearch?'':n))),
-        ActionChip(avatar:const Icon(Icons.add,size:18),label:Text(S.t('bearings.signalNew')),onPressed:_newSignal),
-      ])),
+      _signalDropdown(),
       const SizedBox(height:10),
       Row(children:[
         Text(S.t('bearings.strength'),style:const TextStyle(fontSize:13)),const SizedBox(width:8),
@@ -1660,7 +1749,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       Row(children:[
         Expanded(child:FilledButton.icon(style:FilledButton.styleFrom(minimumSize:const Size.fromHeight(52)),
           onPressed:draft==null?null:() async {
-            final b=await _bearings.save(strength:_brgStrength,search:_brgSearch);
+            final sig=_currentSignal;
+            final b=await _bearings.save(strength:_brgStrength,search:_brgSearch,exercise:sig?.exercise??false,frequencyMhz:sig?.frequencyMhz);
             if(b!=null&&mounted){setState(()=>_brgStrength=0);
               ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(S.t('bearings.saved',{'v':b.azimuthDeg.toStringAsFixed(0).padLeft(3,'0')}))));}
           },
@@ -1685,10 +1775,53 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     _bearings.setManual(d==null||d<0||d>360?null:d);
   }
 
+  /// « Signal recherché »: one list, the signals of the event first, then
+  /// the default frequencies, « Autre… » last.
+  Widget _signalDropdown(){
+    final s=Theme.of(context).colorScheme;
+    final menu=_signalMenu;
+    final current=_brgSearch;
+    final items=[...menu,if(current.isNotEmpty&&!menu.any((m)=>m.name==current))SignalChoice(label:current)];
+    Widget row(SignalChoice c)=>Row(children:[
+      Icon(Icons.circle,size:12,color:Color(searchColor(c.name))),const SizedBox(width:8),
+      Flexible(child:Text(c.name,overflow:TextOverflow.ellipsis)),
+      if(c.exercise)...[const SizedBox(width:6),const ExerciseBadge()],
+    ]);
+    return DropdownButtonHideUnderline(child:Container(padding:const EdgeInsets.symmetric(horizontal:10),
+      decoration:BoxDecoration(border:Border.all(color:s.outlineVariant),borderRadius:BorderRadius.circular(12)),
+      child:DropdownButton<String>(isExpanded:true,value:current.isEmpty?null:current,hint:Text(S.t('bearings.signalChoose')),
+        items:[
+          for(final c in items)DropdownMenuItem(value:c.name,child:row(c)),
+          DropdownMenuItem(value:_otherSignal,child:Row(children:[Icon(Icons.add,size:18,color:s.primary),const SizedBox(width:6),
+            Text(S.t('bearings.signalOther'),style:TextStyle(color:s.primary,fontWeight:FontWeight.w600))])),
+        ],
+        onChanged:(v){if(v==_otherSignal){_newSignal();}else if(v!=null){_setSignal(v);}})));
+  }
+  static const _otherSignal='\u0000other';
+
+  /// « Autre… »: frequency, optional label, real or exercise.
   Future<void> _newSignal() async {
-    final v=await _askText(title:S.t('bearings.signalNew'),initial:'');
-    if(v==null||v.trim().isEmpty)return;
-    await _setSignal(v.trim());
+    final f=TextEditingController(), l=TextEditingController(); var exercise=false;
+    final ok=await showDialog<bool>(context:context,builder:(c)=>StatefulBuilder(builder:(c,set)=>AlertDialog(
+      title:Text(S.t('bearings.signalNew')),
+      content:Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+        TextField(controller:f,autofocus:true,keyboardType:const TextInputType.numberWithOptions(decimal:true),
+          decoration:InputDecoration(labelText:S.t('bearings.signalFreq'),suffixText:'MHz',hintText:'121,375')),
+        const SizedBox(height:8),
+        TextField(controller:l,maxLength:50,decoration:InputDecoration(labelText:S.t('bearings.signalLabel'))),
+        SegmentedButton<bool>(segments:[ButtonSegment(value:false,label:Text(S.t('bearings.signalReal'))),ButtonSegment(value:true,label:Text(S.t('bearings.signalExercise')))],
+          selected:{exercise},onSelectionChanged:(v)=>set(()=>exercise=v.first)),
+      ]),
+      actions:[TextButton(onPressed:()=>Navigator.pop(c,false),child:Text(S.t('common.cancel'))),
+        FilledButton(onPressed:()=>Navigator.pop(c,true),child:Text(S.t('common.ok')))])));
+    final freq=parseMhz(f.text), label=l.text.trim();
+    f.dispose(); l.dispose();
+    if(ok!=true)return;
+    if(freq==null&&label.isEmpty){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(S.t('bearings.signalInvalid'))));return;}
+    final sig=SignalChoice(label:label,frequencyMhz:freq,exercise:exercise);
+    _extraSignals.removeWhere((x)=>x.name==sig.name);
+    _extraSignals.insert(0,sig);
+    await _setSignal(sig.name);
   }
 
   /// Details of a bearing; change or delete for its author or the PCO.
@@ -1697,7 +1830,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     final l=b.takenAt.toLocal(); String two(int v)=>v.toString().padLeft(2,'0');
     final choice=await showModalBottomSheet<String>(context:context,showDragHandle:true,builder:(c)=>SafeArea(child:Padding(padding:const EdgeInsets.fromLTRB(20,0,20,12),
       child:Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.start,children:[
-        Text('${b.azimuthDeg.toStringAsFixed(0).padLeft(3,'0')}° ${S.t('bearings.true')}',style:const TextStyle(fontSize:32,fontWeight:FontWeight.w600)),
+        Row(children:[Text('${b.azimuthDeg.toStringAsFixed(0).padLeft(3,'0')}° ${S.t('bearings.true')}',style:const TextStyle(fontSize:32,fontWeight:FontWeight.w600)),
+          if(b.exercise)...[const SizedBox(width:10),const ExerciseBadge()]]),
         Text([if(b.search.isNotEmpty)b.search,b.createdBy,'${two(l.day)}/${two(l.month)} ${two(l.hour)}:${two(l.minute)}',if(b.strength>0)'S${b.strength}',
           S.t('bearings.method.${b.method}')].join(' · ')),
         if(b.comment.isNotEmpty)Padding(padding:const EdgeInsets.only(top:6),child:Text(b.comment)),
@@ -1848,7 +1982,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     child:child,
   );
 
-  @override void dispose(){if(currentMapView==_tvView)currentMapView=null;_headingSub?.cancel();_webUpdateTimer?.cancel();_saveViewTimer?.cancel();_bearings.dispose();_positionsTimer?.cancel();_meSub?.cancel();_mapEvents?.cancel();AccessManager.instance.removeListener(_onAccessChanged);_fcmRefresh?.cancel();_fcmForeground?.cancel();_opensSub?.cancel();_answersSub?.cancel();_rtSub?.cancel();_tracking.removeListener(_onOperationsChanged);_ops.removeListener(_onOperationsChanged);_tracking.dispose();_ops.dispose();_routes.removeListener(_onRoutesChanged);_nav.removeListener(_onNavigationChanged);_variantHits.dispose();_bearingHits.dispose();_routes.dispose();_nav.dispose();_graphs.removeListener(_onRoutesChanged);_graphs.dispose();_measure.removeListener(_onRoutesChanged);_measure.dispose();_syncUiTimer?.cancel();_sync.dispose();_realtime.dispose();_drawing.dispose();widget.api.close();super.dispose();}
+  @override void dispose(){if(currentMapView==_tvView)currentMapView=null;_headingSub?.cancel();_webUpdateTimer?.cancel();_saveViewTimer?.cancel();_bearings.dispose();_positionsTimer?.cancel();_meSub?.cancel();_mapEvents?.cancel();AccessManager.instance.removeListener(_onAccessChanged);_fcmRefresh?.cancel();_fcmForeground?.cancel();_opensSub?.cancel();_answersSub?.cancel();_rtSub?.cancel();_tracking.removeListener(_onOperationsChanged);_ops.removeListener(_onOperationsChanged);_tracking.dispose();_ops.dispose();_routes.removeListener(_onRoutesChanged);_nav.removeListener(_onNavigationChanged);_variantHits.dispose();_bearingHits.dispose();_routes.dispose();_nav.dispose();_graphs.removeListener(_onRoutesChanged);_graphs.dispose();_measure.removeListener(_onRoutesChanged);_measure.dispose();_syncUiTimer?.cancel();_sync.dispose();_realtime.dispose();_drawing.dispose();_resectionCtl.dispose();widget.api.close();super.dispose();}
 
   /// Current view, for « Envoyer ma vue » on a TV (Paramètres › Affichage › Écrans).
   TvView? _tvView(){
@@ -1869,41 +2003,42 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     final compact=screenWidth<_compactWidth;
     // On a phone a panel takes most of the width, leaving a strip of map visible.
     double panelWidth(double w)=>compact?(screenWidth*0.85).clamp(0.0,w):w;
-    void toggleOperators()=>setState((){_deskPage=null;_deskId=null;_showPanel=!_showPanel;if(_showPanel)_showReferencePanel=false;});
-    void toggleRoutes()=>setState((){_deskPage=null;_deskId=null;_showRoutesPanel=!_showRoutesPanel;if(_showRoutesPanel){_showPanel=false;_showReferencePanel=false;}else{_drawingRouteId=null;}});
+    void toggleOperators()=>setState((){_deskPage=null;_deskId=null;_showPanel=!_showPanel;if(_showPanel){_showReferencePanel=false;_showResection=false;}});
+    void toggleRoutes()=>setState((){_deskPage=null;_deskId=null;_showRoutesPanel=!_showRoutesPanel;if(_showRoutesPanel){_showPanel=false;_showReferencePanel=false;_showResection=false;}else{_drawingRouteId=null;}});
     void openFiles()=>_openDesk('files',()=>FilesPage(api:widget.api,eventId:widget.eventId,actorId:widget.deviceId,store:widget.store));
-    void openAprs()=>_openDesk('aprs',()=>AprsPage(api:widget.api,eventId:widget.eventId,actorId:widget.deviceId));
     void openMessages()=>_openMessages();
-    void showMap()=>setState((){_tab=0;_deskPage=null;_deskId=null;_showPanel=false;_showReferencePanel=false;_showRoutesPanel=false;_drawingRouteId=null;});
+    void showMap()=>setState((){_tab=0;_deskPage=null;_deskId=null;_showPanel=false;_showReferencePanel=false;_showRoutesPanel=false;_showResection=false;_drawingRouteId=null;});
+    void openSettings(){
+      final b=widget.settingsBuilder;
+      if(!compact&&b!=null){_openDesk('settings',b);}else{widget.onSettings?.call();}
+    }
     // Phone: an entry of « Plus » that works on the map comes back to it.
     void onMap(VoidCallback f){if(_tab!=0)_goTab(0);f();}
     void takeBearing()=>onMap(()=>_bearings.startTaking());
     void openRoutes()=>onMap((){if(!_showRoutesPanel)toggleRoutes();});
-    // « Plus » (note « Navigation et menus simplifiés »): phone screen, and
-    // last entry of the rail on a computer.
+    // Phone « Plus » screen (note « Navigation et menus simplifiés »);
+    // « Outils » gathers Résection, Mesure, convertisseur, TV, APRS, Météo
+    // (decision of 29 Oct 2026, 13 h 14).
     final more=<_RailAction>[
-      if(compact)...[
-        _RailAction(Icons.route,S.t('routes.menu'),openRoutes),
-        _RailAction(Icons.cloud_outlined,S.t('weather.menu'),()=>_openWeather()),
-        _RailAction(Icons.folder_copy_outlined,S.t('map.files'),openFiles),
-      ],
-      _RailAction(Icons.my_location_outlined,S.t('resection.title'),()=>onMap(_resection)),
+      _RailAction(Icons.route,S.t('routes.menu'),openRoutes),
+      _RailAction(Icons.folder_copy_outlined,S.t('map.files'),openFiles),
+      _RailAction(Icons.handyman_outlined,S.t('tools.title'),_openTools),
       _RailAction(Icons.sos,_inDistress?S.t('distress.end'):S.t('distress.title'),_distress),
-      if(isPco(widget.deviceId))_RailAction(Icons.settings_input_antenna,S.t('aprs.title'),openAprs),
       if(widget.onSettings!=null)_RailAction(Icons.settings_outlined,S.t('map.settings'),widget.onSettings!),
     ];
-    void openMoreSheet()=>showModalBottomSheet<void>(context:context,showDragHandle:true,builder:(c)=>SafeArea(child:Column(mainAxisSize:MainAxisSize.min,children:[
-      for(final a in more)ListTile(minTileHeight:56,leading:Icon(a.icon),title:Text(a.label),onTap:(){Navigator.pop(c);a.onTap();}),
-    ])));
-    // Computer: 8 entries (Carte and Messages are drawn by the rail itself).
+    // Computer: every entry visible, no « … » (decision of 29 Oct 2026,
+    // 12 h 17); Carte and Messages are drawn by the rail itself, Paramètres
+    // at the bottom.
     final rail=<_RailAction>[
       _RailAction(Icons.groups_outlined,S.t('tabs.teams'),toggleOperators,selected:_showPanel),
       _RailAction(Icons.route,S.t('routes.menu'),toggleRoutes,selected:_showRoutesPanel),
       _RailAction(Icons.track_changes,S.t('bearings.take'),(){setState((){_deskPage=null;_deskId=null;});_bearings.startTaking();}),
       _RailAction(Icons.folder_copy_outlined,S.t('map.files'),openFiles,selected:_deskId=='files'),
-      _RailAction(Icons.cloud_outlined,S.t('weather.menu'),()=>_openWeather(),selected:_deskId=='weather'),
-      _RailAction(Icons.more_horiz,S.t('tabs.more'),openMoreSheet),
+      _RailAction(Icons.handyman_outlined,S.t('tools.title'),_openTools,
+        selected:_showResection||const {'tools','converter','tv','aprs','weather'}.contains(_deskId)),
     ];
+    final railBottom=(widget.onSettings!=null||widget.settingsBuilder!=null)
+      ?_RailAction(Icons.settings_outlined,S.t('map.settings'),openSettings,selected:_deskId=='settings'):null;
     final messagesButton=IconButton(tooltip:S.t('map.messages'),onPressed:openMessages,icon:_messagesIcon(),
       style:IconButton.styleFrom(fixedSize:const Size(48,48)));
     return PopScope(
@@ -1931,10 +2066,11 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           ]))),
         Expanded(child:IndexedStack(index:compact?_tab:0,children:[_withDrawingShortcuts(Row(children:[
         // Computer: rail on the left (mock-up V2).
-        if(!compact)_Rail(messages:messagesButton,actions:rail,onMap:showMap,mapSelected:_deskPage==null&&!_showPanel&&!_showReferencePanel&&!_showRoutesPanel),
+        if(!compact)_Rail(messages:messagesButton,actions:rail,bottom:railBottom,onMap:showMap,mapSelected:_deskPage==null&&!_showPanel&&!_showReferencePanel&&!_showRoutesPanel&&!_showResection),
         // Computer: Messages, Fichiers, APRS… open beside the rail, which
         // stays visible (« rail toujours visible », 28 Oct 2026).
         Expanded(child:IndexedStack(index:!compact&&_deskPage!=null?1:0,sizing:StackFit.expand,children:[Row(children:[
+        if(_showResection&&_pickPoint==null)_resectionPanel(panelWidth(380)),
         if(_showRoutesPanel)SizedBox(width:panelWidth(360),child:Material(elevation:3,child:RoutesPanel(
           controller:_routes,api:widget.api,actorId:widget.deviceId,selectedRouteId:_selectedRouteId,drawingRouteId:_drawingRouteId,
           groups:widget.store.groups(widget.eventId).map(CommGroup.fromJson).toList(),
@@ -1992,6 +2128,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
             onWaypointTap:(w)=>setState((){_showRoutesPanel=true;_showPanel=false;_showReferencePanel=false;_selectedRouteId=w.routeId;})),
           ...buildMoveOrderLayers(isPco(widget.deviceId)?_moveOrders:[?_myOrder],_positionOf,_showMoveOrder),
           ...buildMeasureLayers(_measure,_coordFormat),
+          ..._resectionLayers(),
           _faded('ops',MarkerLayer(markers:markers)),
           if(_me!=null)MarkerLayer(markers:[Marker(point:_me!,width:22,height:22,child:Container(decoration:BoxDecoration(color:Colors.blue,shape:BoxShape.circle,border:Border.all(color:Colors.white,width:3),boxShadow:const [BoxShadow(blurRadius:4,color:Colors.black26)])))]),
           if(_trace.isNotEmpty)MarkerLayer(markers:[for(final t in _trace)Marker(point:LatLng(t.lat,t.lon),width:8,height:8,
@@ -2012,6 +2149,12 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           borderRadius:BorderRadius.circular(16),child:InkWell(borderRadius:BorderRadius.circular(16),onTap:_distress,child:Padding(padding:const EdgeInsets.symmetric(horizontal:14,vertical:10),
             child:Row(mainAxisSize:MainAxisSize.min,children:[Icon(Icons.sos,color:Theme.of(context).colorScheme.onError),const SizedBox(width:8),
               Text(S.t('distress.active'),style:TextStyle(color:Theme.of(context).colorScheme.onError,fontWeight:FontWeight.w700))]))))))
+        else if(_pickPoint!=null)Positioned(top:8,left:8,right:8,child:Align(alignment:Alignment.topCenter,child:ConstrainedBox(constraints:const BoxConstraints(maxWidth:520),
+          child:Container(padding:const EdgeInsets.fromLTRB(14,6,6,6),decoration:glass(context,border:Theme.of(context).colorScheme.primary),child:Row(children:[
+            Icon(Icons.touch_app_outlined,color:Theme.of(context).colorScheme.primary),const SizedBox(width:10),
+            Expanded(child:Text(_pickHint??'',style:const TextStyle(fontWeight:FontWeight.w600))),
+            TextButton(onPressed:_cancelPick,child:Text(S.t('common.cancel'))),
+          ])))))
         else if(_adjusting!=null)Positioned(top:8,left:8,right:8,child:Align(alignment:Alignment.topCenter,child:ConstrainedBox(constraints:const BoxConstraints(maxWidth:520),child:_adjustBanner())))
         else if(_bearings.taking)Positioned(top:8,left:8,right:8,child:Align(alignment:Alignment.topCenter,child:ConstrainedBox(constraints:const BoxConstraints(maxWidth:520),child:_bearingHud())))
         else Positioned(top:8,left:8,right:8,child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
@@ -2045,6 +2188,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           ])))),
         ])),
         Positioned(right:12,bottom:compact?60:24,child:_mapButtons()),
+        if(compact&&_sosVisible&&selected==null)Positioned(left:12,bottom:100,child:_sosButton()),
         // Phone: « Suivi actif » just above the tab bar.
         if(compact&&!_bearings.taking&&selected==null)Positioned(left:12,bottom:12,child:_trackingBadge()),
         if(_bearings.taking)Positioned(left:0,right:0,bottom:16,child:Center(child:ConstrainedBox(constraints:const BoxConstraints(maxWidth:520),child:Padding(padding:const EdgeInsets.symmetric(horizontal:12),child:_bearingTakeSheet()))))
@@ -2098,21 +2242,27 @@ class _RailAction {
 /// Computer: vertical rail on the left, 9 entries (note « Navigation et
 /// menus simplifiés »): Carte, Messages, then [actions], « Plus » last.
 class _Rail extends StatelessWidget {
-  final Widget messages; final List<_RailAction> actions; final VoidCallback onMap; final bool mapSelected;
-  const _Rail({required this.messages,required this.actions,required this.onMap,required this.mapSelected});
+  final Widget messages; final List<_RailAction> actions; final _RailAction? bottom; final VoidCallback onMap; final bool mapSelected;
+  const _Rail({required this.messages,required this.actions,required this.onMap,required this.mapSelected,this.bottom});
   @override Widget build(BuildContext context){
     final scheme=Theme.of(context).colorScheme;
-    Widget button(IconData icon,String label,VoidCallback onTap,{bool selected=false})=>Padding(padding:const EdgeInsets.symmetric(vertical:3),
+    Widget button(IconData icon,String label,VoidCallback onTap,{bool selected=false})=>Padding(padding:const EdgeInsets.symmetric(vertical:2),
       child:IconButton(tooltip:label,onPressed:onTap,isSelected:selected,
         style:IconButton.styleFrom(fixedSize:const Size(48,48),shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(14)),
           backgroundColor:selected?scheme.primaryContainer:null,foregroundColor:selected?scheme.primary:scheme.onSurfaceVariant),
         icon:Icon(icon)));
     return Container(width:72,margin:const EdgeInsets.fromLTRB(8,8,0,8),decoration:glass(context),
-      child:SingleChildScrollView(padding:const EdgeInsets.symmetric(vertical:10),child:Column(children:[
-        button(Icons.map_outlined,S.t('tabs.map'),onMap,selected:mapSelected),
-        Padding(padding:const EdgeInsets.symmetric(vertical:3),child:messages),
-        for(final a in actions)button(a.icon,a.label,a.onTap,selected:a.selected),
-      ])));
+      child:Column(children:[
+        Expanded(child:SingleChildScrollView(padding:const EdgeInsets.symmetric(vertical:8),child:Column(children:[
+          button(Icons.map_outlined,S.t('tabs.map'),onMap,selected:mapSelected),
+          Padding(padding:const EdgeInsets.symmetric(vertical:2),child:messages),
+          for(final a in actions)button(a.icon,a.label,a.onTap,selected:a.selected),
+        ]))),
+        if(bottom!=null)...[
+          const Divider(height:1,indent:14,endIndent:14),
+          Padding(padding:const EdgeInsets.symmetric(vertical:6),child:button(bottom!.icon,bottom!.label,bottom!.onTap,selected:bottom!.selected)),
+        ],
+      ]));
   }
 }
 

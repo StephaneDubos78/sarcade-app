@@ -260,6 +260,17 @@ class SarcadeApi {
     return (jsonDecode(r.body) as List).map((e)=>Map<String,dynamic>.from(e as Map)).toList();
   }
   /// Move orders of the PCO to the operators (404 on an older server).
+  /// Default frequencies of the bearing tool (server setting, editable by
+  /// the administrator): the raw JSON body {"signals":[…]}.
+  Future<String> signalDefaults() async {
+    final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/signals/defaults'));
+    if(r.statusCode!=200) throw SarcadeHttpException('signal_defaults',r.statusCode);
+    return r.body;
+  }
+  Future<void> saveSignalDefaults(String body) async {
+    final r=await _client.put(Uri.parse('$baseUrl/api/v0.1/signals/defaults'),headers:_json,body:body);
+    if(r.statusCode!=200) throw SarcadeHttpException('signal_defaults',r.statusCode,r.body);
+  }
   Future<List<Map<String,dynamic>>> moveOrders(String eventId) async {
     final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/events/$eventId/move-orders'));
     if(r.statusCode!=200) throw SarcadeHttpException('move_orders',r.statusCode);

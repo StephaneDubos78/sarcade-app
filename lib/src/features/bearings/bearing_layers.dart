@@ -24,7 +24,7 @@ List<Widget> buildBearingLayers({required Iterable<Bearing> bearings,Bearing? dr
   if(draft!=null)add(draft,live:true);
   for(final b in bearings){
     final op=Color(b.operatorColor??operatorColor(b.createdBy)), line=byOperator?op:Color(searchColor(b.search));
-    markers.add(Marker(point:b.origin,width:30,height:30,child:Tooltip(message:['${b.azimuthDeg.toStringAsFixed(0).padLeft(3,'0')}°',b.createdBy,if(b.search.isNotEmpty)b.search].join(' · '),
+    markers.add(Marker(point:b.origin,width:30,height:30,child:Tooltip(message:['${b.azimuthDeg.toStringAsFixed(0).padLeft(3,'0')}°',b.createdBy,if(b.search.isNotEmpty)b.search,if(b.exercise)'EXERCICE'].join(' · '),
       child:GestureDetector(onTap:()=>onTapBearing(b),child:Container(alignment:Alignment.center,
         decoration:BoxDecoration(color:op,shape:BoxShape.circle,border:Border.all(color:line,width:2.5)),
         child:Text(operatorInitials(b.createdBy),style:const TextStyle(fontSize:10,fontWeight:FontWeight.w700,color:Colors.white,height:1)))))));
@@ -38,7 +38,7 @@ List<Widget> buildBearingLayers({required Iterable<Bearing> bearings,Bearing? dr
     markers.add(Marker(point:z.centre!,width:220,height:30,alignment:Alignment.centerRight,child:GestureDetector(onTap:()=>onTapZone(z.centre!,e.key),
       child:Align(alignment:Alignment.centerLeft,child:Container(padding:const EdgeInsets.symmetric(horizontal:8,vertical:3),
         decoration:BoxDecoration(color:const Color(0xF21A0B0F),borderRadius:BorderRadius.circular(6),border:Border.all(color:const Color(0xFFFF4D5E))),
-        child:Text(S.t('bearings.zone',{'r':geo.formatDistance(z.radiusM),'n':z.bearings}),style:const TextStyle(fontSize:11,color:Color(0xFFFFC2C8))))))));
+        child:Text([if(e.value.any((b)=>b.exercise))'EXERCICE',S.t('bearings.zone',{'r':geo.formatDistance(z.radiusM),'n':z.bearings})].join(' · '),style:const TextStyle(fontSize:11,color:Color(0xFFFFC2C8))))))));
   }
   return [
     if(cones.isNotEmpty)PolygonLayer(polygons:cones),
