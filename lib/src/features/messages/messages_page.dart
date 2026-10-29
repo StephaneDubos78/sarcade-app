@@ -17,6 +17,8 @@ import '../../platform/platform_services.dart';
 import '../../services/notification_service.dart';
 import '../../services/sarcade_api.dart';
 import 'photo_attachment.dart';
+import 'message_deletion.dart';
+import '../settings/quick_messages_editor.dart' show defaultQuickMessages;
 import '../dictation/dictation_button.dart';
 import '../bearings/bearing_models.dart' show operatorInitials;
 
@@ -126,7 +128,9 @@ class _MessagesPageState extends State<MessagesPage>{
      if(several&&readers>0)Padding(padding:const EdgeInsets.only(left:2),child:Text(S.t('messages.readBy',{'n':readers}),style:const TextStyle(fontSize:11,color:Colors.blue))),
    ]));
  }
- Iterable<SarcadeMessage> get _eventMessages=>widget.store.messages().map(SarcadeMessage.fromJson).where((m)=>m.eventId==widget.eventId);
+ /// « Supprimer pour moi »: hidden on this device only.
+ Set<String> get _hidden=>parseHidden(widget.store.preference(hiddenMessagesKey(widget.eventId)));
+ Iterable<SarcadeMessage> get _eventMessages{final h=_hidden;return widget.store.messages().map(SarcadeMessage.fromJson).where((m)=>m.eventId==widget.eventId&&!h.contains(m.id));}
  void _markSeen()=>unawaited(widget.store.markMessagesSeen(widget.eventId,_eventMessages.map((m)=>m.id)));
 
  /// Enter on a computer keyboard sends; Alt+Enter and Shift+Enter insert a
@@ -362,7 +366,7 @@ class _MessagesPageState extends State<MessagesPage>{
        return ListTile(selected:k==_conv,selectedTileColor:s.primaryContainer.withValues(alpha:0.45),
          leading:_convIcon(k,by,r:22),
          title:Text(_convName(k,by),maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(fontWeight:FontWeight.w600)),
-         subtitle:last==null?null:Text('${last.senderId==widget.actorId?S.t('messages.you'):last.senderId} : ${last.body}',maxLines:1,overflow:TextOverflow.ellipsis),
+         subtitle:last==null?null:Text('${last.senderId==widget.actorId?S.t('messages.you'):last.senderId} : ${last.deleted?S.t(last.deletedByPco?'messages.deletedByPco':'messages.deleted'):last.body}',maxLines:1,overflow:TextOverflow.ellipsis),
          // Time on the right, unread count in SARCADE blue, star of the
          // favourites (long press or right click to add or remove).
          trailing:Column(mainAxisAlignment:MainAxisAlignment.center,crossAxisAlignment:CrossAxisAlignment.end,mainAxisSize:MainAxisSize.min,children:[
@@ -399,16 +403,46 @@ class _MessagesPageState extends State<MessagesPage>{
  /// Long press (phone) or right click (computer): actions on a message.
  Future<void> _actions(SarcadeMessage m,List<SarcadeAck> acks,bool mine) async {
    final choice=await showModalBottomSheet<String>(context:context,showDragHandle:true,builder:(c)=>SafeArea(child:Column(mainAxisSize:MainAxisSize.min,children:[
-     if(!mine)for(final s in const ['received','read','accepted','rejected'])ListTile(leading:Icon(s=='rejected'?Icons.close:Icons.check),title:Text(S.t('ack.$s')),onTap:()=>Navigator.pop(c,s)),
-     ListTile(leading:const Icon(Icons.copy),title:Text(S.t('messages.copy')),onTap:()=>Navigator.pop(c,'copy')),
+     if(!mine&&!m.deleted)for(final s in const ['received','read','accepted','rejected'])ListTile(leading:Icon(s=='rejected'?Icons.close:Icons.check),title:Text(S.t('ack.$s')),onTap:()=>Navigator.pop(c,s)),
+     if(!m.deleted)ListTile(leading:const Icon(Icons.copy),title:Text(S.t('messages.copy')),onTap:()=>Navigator.pop(c,'copy')),
      ListTile(leading:const Icon(Icons.info_outline),title:Text(S.t('messages.info')),onTap:()=>Navigator.pop(c,'info')),
      if(!mine&&peerOf(_conv)==null)ListTile(leading:const Icon(Icons.chat_outlined),title:Text(S.t('messages.reply',{'who':m.senderId})),onTap:()=>Navigator.pop(c,'direct')),
+     ListTile(leading:const Icon(Icons.delete_outline),title:Text(S.t('messages.delete')),onTap:()=>Navigator.pop(c,'delete')),
    ])));
    if(choice==null||!mounted)return;
    if(choice=='copy'){await Clipboard.setData(ClipboardData(text:m.body));_snack(S.t('messages.copied'));return;}
    if(choice=='info'){_showInfo(m,acks);return;}
    if(choice=='direct'){_open(directKey(m.senderId));return;}
+   if(choice=='delete'){await _delete(m);return;}
    await _ack(m,choice);
+ }
+
+ /// « Supprimer pour moi » always; « Supprimer pour tous » for the author
+ /// during 2 days, for the PCO always. Offline, the deletion waits in the
+ /// Outbox like any change.
+ Future<void> _delete(SarcadeMessage m) async {
+   final pco=isPco(widget.actorId);
+   final everyone=canDeleteForEveryone(m,widget.actorId,pco:pco,now:DateTime.now());
+   final choice=await showDialog<String>(context:context,builder:(c)=>AlertDialog(
+     title:Text(S.t('messages.deleteTitle')),
+     content:Text(everyone?S.t(m.senderId==widget.actorId?'messages.deleteHelpMine':'messages.deleteHelpPco'):S.t('messages.deleteHelpMe')),
+     actions:[
+       TextButton(onPressed:()=>Navigator.pop(c),child:Text(S.t('common.cancel'))),
+       TextButton(onPressed:()=>Navigator.pop(c,'me'),child:Text(S.t('messages.deleteForMe'))),
+       if(everyone)FilledButton(style:FilledButton.styleFrom(backgroundColor:Theme.of(c).colorScheme.error,foregroundColor:Theme.of(c).colorScheme.onError),
+         onPressed:()=>Navigator.pop(c,'all'),child:Text(S.t('messages.deleteForAll'))),
+     ]));
+   if(choice==null)return;
+   if(choice=='me'){
+     await widget.store.setPreference(hiddenMessagesKey(widget.eventId),formatHidden({..._hidden,m.id}));
+     if(mounted)setState((){});
+     return;
+   }
+   final now=DateTime.now().toUtc();
+   final byPco=pco&&m.senderId!=widget.actorId;
+   await widget.store.cacheMessage(deletedMessage(m.toJson(),by:widget.actorId,byPco:byPco,at:now));
+   await widget.sync.queue(objectId:m.id,objectType:'message',action:'delete',payload:{'id':m.id,'event_id':widget.eventId,'deleted_by':widget.actorId});
+   if(mounted)setState((){});
  }
 
  Widget _bubble(SarcadeMessage m,List<SarcadeAck> ma,{required bool showAuthor}){
@@ -421,6 +455,7 @@ class _MessagesPageState extends State<MessagesPage>{
    final several=peerOf(_conv)==null;
    final grey=_night?const Color(0xFF8696A0):const Color(0xFF667781);
    final myAck=ma.where((a)=>a.actorId==widget.actorId).map((a)=>a.status).toSet();
+   if(m.deleted)return _deletedBubble(m,ma,mine:mine,showAuthor:showAuthor,grey:grey);
    final needsAnswer=!mine&&immediate&&!myAck.contains('accepted')&&!myAck.contains('rejected');
    final meta=Row(mainAxisSize:MainAxisSize.min,children:[
      Text(_hm(m.createdAt),style:TextStyle(fontSize:11,color:grey)),
@@ -467,6 +502,22 @@ class _MessagesPageState extends State<MessagesPage>{
      ])))));
  }
 
+ /// « Ce message a été supprimé » (« … par le PCO »), in italics, like WhatsApp.
+ Widget _deletedBubble(SarcadeMessage m,List<SarcadeAck> ma,{required bool mine,required bool showAuthor,required Color grey}){
+   const r=Radius.circular(10);
+   return Padding(padding:EdgeInsets.fromLTRB(10,showAuthor?6:1,10,1),child:Align(alignment:mine?Alignment.centerRight:Alignment.centerLeft,
+     child:GestureDetector(onLongPress:()=>_actions(m,ma,mine),onSecondaryTap:()=>_actions(m,ma,mine),
+       child:Container(margin:EdgeInsets.fromLTRB(mine?56:0,1,mine?0:56,1),padding:const EdgeInsets.fromLTRB(9,6,9,5),
+         decoration:BoxDecoration(color:mine?_mineBg:_otherBg,borderRadius:const BorderRadius.all(r),
+           boxShadow:const [BoxShadow(blurRadius:1,offset:Offset(0,1),color:Color(0x22000000))]),
+         child:Row(mainAxisSize:MainAxisSize.min,children:[
+           Icon(Icons.block,size:16,color:grey),const SizedBox(width:6),
+           Flexible(child:Text('${showAuthor&&!mine?'${m.senderId} · ':''}${S.t(m.deletedByPco?'messages.deletedByPco':'messages.deleted')}',
+             style:TextStyle(fontSize:14,fontStyle:FontStyle.italic,color:grey))),
+           const SizedBox(width:8),Text(_hm(m.createdAt),style:TextStyle(fontSize:11,color:grey)),
+         ])))));
+ }
+
  static const _emojis=['👍','👌','✅','❌','📍','📡','📻','🚗','🚶','⛰️','🌧️','☀️','⚠️','🆘','🔋','📶','🙏','😀','😅','👏'];
  Future<void> _pickEmoji() async {
    final e=await showModalBottomSheet<String>(context:context,showDragHandle:true,builder:(c)=>SafeArea(child:Padding(padding:const EdgeInsets.fromLTRB(12,0,12,12),
@@ -488,7 +539,7 @@ class _MessagesPageState extends State<MessagesPage>{
      final l=((e['settings'] as Map?)?['quick_messages'] as List?)?.whereType<String>().toList()??const [];
      if(l.isNotEmpty)return _quick=l;
    }catch(_){/* offline: the usual list */}
-   return _quick=[for(final k in const ['inPlace','signalHeard','signalLost','backToPco','needHelp','copy'])S.t('quick.$k')];
+   return _quick=defaultQuickMessages();
  }
  Future<void> _sendQuickMessage() async {
    final list=await _quickMessages();

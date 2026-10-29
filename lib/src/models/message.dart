@@ -11,11 +11,15 @@ class SarcadeAttachment {
 class SarcadeMessage {
  final String id,eventId,senderId,priority,body; final List<String> recipientIds; final DateTime createdAt;
  final List<SarcadeAttachment> attachments;
- const SarcadeMessage({required this.id,required this.eventId,required this.senderId,required this.recipientIds,required this.priority,required this.body,required this.createdAt,this.attachments=const []});
- factory SarcadeMessage.fromJson(Map<String,dynamic> j)=>SarcadeMessage(id:j['id'],eventId:j['event_id'],senderId:j['sender_id'],recipientIds:List<String>.from(j['recipient_ids']??[]),priority:j['priority']??'routine',body:j['body'],createdAt:DateTime.parse(j['created_at']),
-   attachments:[for(final a in (j['attachments'] as List?)??const []) if(a is Map) SarcadeAttachment.fromJson(a)]);
+ /// Deleted for everyone (by its author, or by the PCO): text and photos gone.
+ final bool deleted, deletedByPco;
+ const SarcadeMessage({required this.id,required this.eventId,required this.senderId,required this.recipientIds,required this.priority,required this.body,required this.createdAt,this.attachments=const [],this.deleted=false,this.deletedByPco=false});
+ factory SarcadeMessage.fromJson(Map<String,dynamic> j)=>SarcadeMessage(id:j['id'],eventId:j['event_id'],senderId:j['sender_id'],recipientIds:List<String>.from(j['recipient_ids']??[]),priority:j['priority']??'routine',body:(j['body']??'') as String,createdAt:DateTime.parse(j['created_at']),
+   attachments:[for(final a in (j['attachments'] as List?)??const []) if(a is Map) SarcadeAttachment.fromJson(a)],
+   deleted:j['deleted']==true,deletedByPco:j['deleted_by_pco']==true);
  Map<String,dynamic> toJson()=>{'id':id,'event_id':eventId,'sender_id':senderId,'recipient_ids':recipientIds,'priority':priority,'body':body,'created_at':createdAt.toUtc().toIso8601String(),
-   if(attachments.isNotEmpty)'attachments':[for(final a in attachments)a.toJson()]};
+   if(attachments.isNotEmpty)'attachments':[for(final a in attachments)a.toJson()],
+   if(deleted)'deleted':true,if(deletedByPco)'deleted_by_pco':true};
 }
 class SarcadeAck {
  final String id,eventId,messageId,actorId,status; final DateTime time;
