@@ -94,6 +94,24 @@ class _WeatherPageState extends State<WeatherPage> {
         if(r==null||r.isEmpty)Padding(padding:const EdgeInsets.all(20),child:Text(_loading?S.t('weather.loading'):S.t('weather.none'))),
         ListTile(leading:const Icon(Icons.wb_twilight),
           title:Text(S.t('weather.sun',{'rise':_hm(today?.sunrise??sun?.sunrise),'set':_hm(today?.sunset??sun?.sunset)}))),
+        // 24 h at a glance (« Météo enrichie », 28 Oct 2026), the sunset marked.
+        if(hours.isNotEmpty)SizedBox(height:112,child:ListView(scrollDirection:Axis.horizontal,padding:const EdgeInsets.symmetric(horizontal:12),children:[
+          for(final h in hours.take(24))Builder(builder:(c){
+            final set=today?.sunset??sun?.sunset;
+            final sunsetHere=set!=null&&!h.time.isAfter(set)&&h.time.add(const Duration(hours:1)).isAfter(set);
+            final windy=(h.gustKmh??0)>=70;
+            return Container(width:58,margin:const EdgeInsets.symmetric(horizontal:2,vertical:6),
+              decoration:BoxDecoration(borderRadius:BorderRadius.circular(12),
+                color:windy?Colors.orange.withValues(alpha:0.15):Theme.of(c).colorScheme.surfaceContainerHigh,
+                border:sunsetHere?Border.all(color:Colors.deepOrange,width:2):null),
+              child:Column(mainAxisAlignment:MainAxisAlignment.center,children:[
+                Text(_hm(h.time),style:const TextStyle(fontSize:11)),
+                Icon(sunsetHere?Icons.wb_twilight:weatherIcon(weatherKey(h.weatherCode)),size:22),
+                Text(_num(h.temperatureC,'°'),style:const TextStyle(fontWeight:FontWeight.w600)),
+                Text(h.precipitationProbability==null?'':'${h.precipitationProbability} %',style:const TextStyle(fontSize:10,color:Colors.blue)),
+              ]));
+          }),
+        ])),
         for(final h in hours)ListTile(
           dense:true,
           leading:Icon(weatherIcon(weatherKey(h.weatherCode))),

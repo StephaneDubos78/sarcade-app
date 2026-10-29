@@ -19,7 +19,6 @@ Idempotent, and fails loudly if the template changed shape.
 """
 import json
 import plistlib
-import subprocess
 import sys
 from pathlib import Path
 
@@ -93,7 +92,8 @@ def main() -> int:
 
     for old in ICONSET.glob("*.png"):
         old.unlink()
-    subprocess.run([sys.executable, "tool/make_icon.py", str(ICONSET / "icon-1024.png"), "1024"], check=True)
+    # SARCADE icon validated on 29 Oct 2026 (assets/icon, tool/make_app_icons.py).
+    (ICONSET / "icon-1024.png").write_bytes(Path("assets/icon/icon-1024.png").read_bytes())
     (ICONSET / "Contents.json").write_text(json.dumps({
         "images": [{"filename": "icon-1024.png", "idiom": "universal", "platform": "ios", "size": "1024x1024"}],
         "info": {"author": "xcode", "version": 1}}, indent=2))

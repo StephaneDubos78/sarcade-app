@@ -12,7 +12,9 @@ import '../../l10n/strings.dart';
 import '../../offline/outbox_policy.dart' show normalServer;
 import '../../operations/event_settings.dart';
 import '../../services/notification_service.dart';
-import '../../services/sarcade_api.dart' show SarcadeHttpException;
+import '../../models/comm_group.dart' show isPco;
+import '../../services/sarcade_api.dart' show SarcadeApi, SarcadeHttpException;
+import 'event_settings_section.dart';
 
 /// Operator settings: server address, event and terminal identifier,
 /// language, radio callsign. Lets one APK serve every field operator
@@ -37,8 +39,10 @@ class SettingsPage extends StatefulWidget {
   final Future<void> Function(List<SavedServer>)? saveServers;
   /// Day / night / automatic chosen: applied at once, kept by the caller.
   final void Function(ThemeMode)? onThemeChanged;
+  /// Active session, for Paramètres › Événement (PCO only).
+  final SarcadeApi? api;
   const SettingsPage({super.key,required this.initial,required this.onSave,this.firstRun=false,
-    this.loadEvents,this.cachedEvents,this.waitingFor,this.sendFirst,this.readServers,this.saveServers,this.onOpenLogbook,this.onThemeChanged});
+    this.loadEvents,this.cachedEvents,this.waitingFor,this.sendFirst,this.readServers,this.saveServers,this.onOpenLogbook,this.onThemeChanged,this.api});
   @override State<SettingsPage> createState()=>_SettingsPageState();
 }
 
@@ -267,7 +271,8 @@ class _SettingsPageState extends State<SettingsPage> {
   /// shows what is needed to start.
   List<String> get _tabs=>widget.firstRun
     ?['general','profile','display','about']
-    :['general','profile','display','notifications','diagnostics','about'];
+    :['general',if(_eventTab)'event','profile','display','notifications','diagnostics','about'];
+  bool get _eventTab=>widget.api!=null&&isPco(widget.initial.deviceId);
   int _tab=0;
 
   /// One setting per line: bold label and grey help on the left (under it
@@ -332,15 +337,35 @@ class _SettingsPageState extends State<SettingsPage> {
     _row(S.t('settings.aprsConsent'),help:S.t('settings.aprsConsentHelp'),child:Align(alignment:Alignment.centerRight,
       child:Switch(value:_aprsConsent,onChanged:(v)=>setState(()=>_aprsConsent=v)))),
     // Colour of every new drawing (existing objects keep theirs).
-    _row(S.t('settings.drawColor'),help:S.t('settings.drawColorHelp'),child:Wrap(spacing:8,runSpacing:8,children:[for(final c in drawingPalette)Semantics(
+    _row(S.t('settings.drawColor'),help:S.t('settings.drawColorHelp'),child:Wrap(spacing:8,runSpacing:8,crossAxisAlignment:WrapCrossAlignment.center,children:[
+      for(final c in [...drawingPalette,if(!drawingPalette.contains(_drawColor))_drawColor])Semantics(
       label:S.t('color.$c'),selected:c==_drawColor,button:true,
       child:InkWell(customBorder:const CircleBorder(),onTap:()=>setState(()=>_drawColor=c),child:Container(
         width:34,height:34,
         decoration:BoxDecoration(color:Color(c),shape:BoxShape.circle,border:Border.all(color:c==_drawColor?Theme.of(context).colorScheme.primary:Colors.black26,width:c==_drawColor?3:1)),
-        child:c==_drawColor?Icon(Icons.check,size:18,color:c==0xFFFFFFFF||c==0xFFFDD835?Colors.black:Colors.white):null,
+        child:c==_drawColor?Icon(Icons.check,size:18,color:Color(c).computeLuminance()>0.5?Colors.black:Colors.white):null,
       )),
-    )])),
+    ),
+      ActionChip(avatar:const Icon(Icons.palette_outlined,size:18),label:Text(S.t('settings.otherColor')),onPressed:_pickOtherColor),
+    ])),
   ]);
+
+  /// « Autre couleur »: free choice of the hue, light enough to read on
+  /// the map.
+  Future<void> _pickOtherColor() async {
+    var hue=HSVColor.fromColor(Color(_drawColor)).hue;
+    final picked=await showDialog<int>(context:context,builder:(c)=>StatefulBuilder(builder:(c,set){
+      final color=HSVColor.fromAHSV(1,hue,0.8,0.85).toColor();
+      return AlertDialog(title:Text(S.t('settings.otherColor')),content:Column(mainAxisSize:MainAxisSize.min,children:[
+        Container(width:56,height:56,decoration:BoxDecoration(color:color,shape:BoxShape.circle)),
+        Slider(value:hue,min:0,max:359,onChanged:(v)=>set(()=>hue=v)),
+      ]),actions:[
+        TextButton(onPressed:()=>Navigator.pop(c),child:Text(S.t('common.cancel'))),
+        FilledButton(onPressed:()=>Navigator.pop(c,color.toARGB32()),child:Text(S.t('common.ok'))),
+      ]);
+    }));
+    if(picked!=null&&mounted)setState(()=>_drawColor=picked);
+  }
 
   Widget _displayTab()=>Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
     // Applied at once, kept on the device (not part of the saved form).
@@ -394,6 +419,7 @@ class _SettingsPageState extends State<SettingsPage> {
   Widget _tabBody(String id)=>switch(id){
     'general'=>_generalTab(),'profile'=>_profileTab(),'display'=>_displayTab(),
     'notifications'=>_notificationsTab(),'diagnostics'=>_diagnosticsTab(),
+    'event'=>EventSettingsSection(api:widget.api!,eventId:widget.initial.eventId,actorId:widget.initial.deviceId),
     _=>const Padding(padding:EdgeInsets.only(top:16),child:SarcadeAboutContent()),
   };
 

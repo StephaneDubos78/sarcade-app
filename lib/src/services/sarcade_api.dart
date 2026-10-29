@@ -78,15 +78,40 @@ class SarcadeApi {
   }
   /// [fileId], chosen by the client, makes a retried upload idempotent
   /// (the server answers 200 with the stored file).
-  Future<SarcadeSharedFile> uploadFile(String eventId,String senderId,String name,String mimeType,List<int> bytes,{String? fileId}) async {
+  Future<SarcadeSharedFile> uploadFile(String eventId,String senderId,String name,String mimeType,List<int> bytes,{String? fileId,String? folder}) async {
     final req=http.MultipartRequest('POST',Uri.parse('$baseUrl/api/v0.1/events/$eventId/files'))
       ..fields['sender_id']=senderId
       ..fields['mime_type']=mimeType
       ..files.add(http.MultipartFile.fromBytes('file',bytes,filename:name,contentType:null));
     if(fileId!=null)req.fields['file_id']=fileId;
+    if(folder!=null)req.fields['folder']=folder;
     final streamed=await _client.send(req); final body=await streamed.stream.bytesToString();
     if(streamed.statusCode!=201&&streamed.statusCode!=200) throw SarcadeHttpException('file_upload',streamed.statusCode,body);
     return SarcadeSharedFile.fromJson(jsonDecode(body));
+  }
+  /// « Personnel » folder of the person (email checked by Cloudflare
+  /// Access): files, space used and quota; null when not available.
+  Future<({List<SarcadeSharedFile> files,int used,int quota})?> personalFiles() async {
+    final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/me/files'));
+    if(r.statusCode!=200)return null;
+    final j=jsonDecode(r.body) as Map;
+    return (files:[for(final f in (j['files'] as List))SarcadeSharedFile.fromJson(Map<String,dynamic>.from(f as Map))],
+      used:(j['used_bytes'] as num).toInt(),quota:(j['quota_bytes'] as num).toInt());
+  }
+  Future<void> uploadPersonalFile(String name,List<int> bytes) async {
+    final req=http.MultipartRequest('POST',Uri.parse('$baseUrl/api/v0.1/me/files'))
+      ..files.add(http.MultipartFile.fromBytes('file',bytes,filename:name));
+    final streamed=await _client.send(req); final body=await streamed.stream.bytesToString();
+    if(streamed.statusCode!=201) throw SarcadeHttpException('personal_upload',streamed.statusCode,body);
+  }
+  Future<List<int>> downloadPersonalFile(String fileId) async {
+    final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/me/files/$fileId/content'));
+    if(r.statusCode!=200) throw SarcadeHttpException('personal_download',r.statusCode,r.body);
+    return r.bodyBytes;
+  }
+  Future<void> deletePersonalFile(String fileId) async {
+    final r=await _client.delete(Uri.parse('$baseUrl/api/v0.1/me/files/$fileId'));
+    if(r.statusCode!=204) throw SarcadeHttpException('personal_delete',r.statusCode,r.body);
   }
   Future<List<int>> downloadFile(String eventId,String fileId) async {
     final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/events/$eventId/files/$fileId/content'));
@@ -105,6 +130,13 @@ class SarcadeApi {
     return (jsonDecode(r.body) as List).map((e)=>LogbookEntry.fromJson(e)).toList();
   }
   /// Every group of the event, archived included (the PCO sees everything).
+  /// Channels of a model added to the event (« adrasec »: PCO, Équipes
+  /// terrain, Transmissions, Logistique); returns how many were created.
+  Future<int> addGroupTemplate(String eventId,String template) async {
+    final r=await _client.post(Uri.parse('$baseUrl/api/v0.1/events/$eventId/groups/defaults?template=$template'));
+    if(r.statusCode!=200) throw SarcadeHttpException('group_template',r.statusCode,r.body);
+    return ((jsonDecode(r.body) as Map)['created'] as num?)?.toInt()??0;
+  }
   Future<List<Map<String,dynamic>>> groups(String eventId) async {
     final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/events/$eventId/groups'));
     if(r.statusCode!=200) throw SarcadeHttpException('groups',r.statusCode);
@@ -129,6 +161,29 @@ class SarcadeApi {
   Future<void> deleteAprsGroup(String id) async {
     final r=await _client.delete(Uri.parse('$baseUrl/api/v0.1/aprs/groups/$id'));
     if(r.statusCode!=204&&r.statusCode!=404) throw SarcadeHttpException('aprs_group_delete',r.statusCode);
+  }
+  /// Smart TV (« Affichage sur Smart TV »): approve the code shown by the
+  /// TV for this event; list and revoke the screens.
+  Future<void> approveDisplay(String code,String eventId) async {
+    final r=await _client.post(Uri.parse('$baseUrl/api/v0.1/tv/approve'),headers:_json,body:jsonEncode({'code':code,'event_id':eventId}));
+    if(r.statusCode!=200) throw SarcadeHttpException('tv_approve',r.statusCode,r.body);
+  }
+  Future<List<Map<String,dynamic>>> displays(String eventId) async {
+    final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/events/$eventId/displays'));
+    if(r.statusCode!=200) throw SarcadeHttpException('displays',r.statusCode,r.body);
+    return [for(final d in jsonDecode(r.body) as List)Map<String,dynamic>.from(d as Map)];
+  }
+  Future<void> revokeDisplay(String eventId,String id) async {
+    final r=await _client.delete(Uri.parse('$baseUrl/api/v0.1/events/$eventId/displays/$id'));
+    if(r.statusCode!=204) throw SarcadeHttpException('display_revoke',r.statusCode,r.body);
+  }
+
+  /// Who the server sees (email checked by Cloudflare Access) and the
+  /// rights it gives; null for an older server.
+  Future<Map<String,dynamic>?> me() async {
+    final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/me'));
+    if(r.statusCode!=200)return null;
+    return Map<String,dynamic>.from(jsonDecode(r.body) as Map);
   }
   /// Personal settings kept by the server for the email checked by
   /// Cloudflare Access; null when the server cannot (no Access, older
