@@ -37,8 +37,8 @@ void main() {
   group('Non envoyés', () {
     test('the banner says what is blocked', () {
       final photo = op('a', payload: {'body': '', 'attachments': [{'file_id': 'f1'}]});
-      expect(unsentWhat([photo]), '1 photo(s) non envoyée(s)');
-      expect(unsentWhat([op('b'), op('c'), op('d', type: 'position')]), '2 message(s) non envoyé(s) · 1 position(s) non envoyée(s)');
+      expect(unsentWhat([photo]), '1 photo non envoyée');
+      expect(unsentWhat([op('b'), op('c'), op('d', type: 'position')]), '2 messages non envoyés · 1 position non envoyée');
       expect(unsentKind(op('e', type: 'message', action: 'delete')), 'delete');
       expect(unsentKind(op('f', type: 'map_feature', payload: {'kind': 'bearing'})), 'bearing');
       expect(unsentWhat(const []), '');

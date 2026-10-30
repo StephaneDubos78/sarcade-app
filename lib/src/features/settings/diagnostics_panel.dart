@@ -7,6 +7,11 @@
 /// version, uptime, components in green / orange / red, processor, memory,
 /// disk seen from the container (alert above 80 %), last automatic update
 /// and backup. « Copier le rapport ».
+/// Single place where problems arrive (card « Diagnostic, point d'arrivée
+/// unique des problèmes », 30 Oct 2026, 12 h 47): summary « Tout
+/// fonctionne » or the problems with their action at the top; the items not
+/// sent are listed in « Liaisons »; opened from the map in a sheet
+/// ([showDiagnosticsSheet]); red dot on Paramètres ([diagnosticsAlert]).
 library;
 
 import 'dart:async';
@@ -21,6 +26,7 @@ import '../../config/version.dart';
 import '../../l10n/strings.dart';
 import '../../models/comm_group.dart' show myRoles;
 import '../../offline/sync_service.dart';
+import '../../offline/unsent_page.dart';
 import '../../platform/platform_services.dart';
 import '../../services/notification_service.dart';
 import '../../services/realtime_service.dart';
@@ -43,6 +49,27 @@ String uptimeLabel(int s){
 String percentLabel(num? pct)=>pct==null?'—':'${pct.toStringAsFixed(0)} %${pct>80?' ⚠':''}';
 
 typedef DiagLine=({String block,String label,String value,String? state});
+
+/// Lines in red or orange: the problems of the summary at the top.
+List<DiagLine> diagnosticProblems(Iterable<DiagLine> lines)=>[for(final l in lines)if(l.state=='red'||l.state=='orange')l];
+
+/// Red dot on Paramètres and on the Diagnostic tab: items not sent.
+bool diagnosticsAlert()=>(OfflineSyncService.active?.unsent??0)>0;
+
+/// Diagnostic over the map, one tap from the link dot or the red banner.
+Future<void> showDiagnosticsSheet(BuildContext context,{required SarcadeApi api,required String server,required String eventId,
+    String? actorId,bool failedAgain=false,VoidCallback? onSignIn})=>showModalBottomSheet<void>(context:context,
+  isScrollControlled:true,showDragHandle:true,useSafeArea:true,constraints:const BoxConstraints(maxWidth:720),
+  builder:(c)=>FractionallySizedBox(heightFactor:0.9,child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+    Padding(padding:const EdgeInsets.fromLTRB(20,0,8,0),child:Row(children:[
+      Expanded(child:Text(S.t('settings.tab.diagnostics'),style:Theme.of(c).textTheme.titleLarge)),
+      IconButton(tooltip:S.t('common.close'),icon:const Icon(Icons.close),onPressed:()=>Navigator.pop(c)),
+    ])),
+    Expanded(child:ListView(padding:const EdgeInsets.fromLTRB(16,0,16,24),children:[
+      DiagnosticsPanel(api:api,server:server,eventId:eventId,actorId:actorId,failedAgain:failedAgain,
+        onSignIn:onSignIn==null?null:(){Navigator.pop(c);onSignIn();}),
+    ])),
+  ])));
 
 /// Text of « Copier le rapport »: pure, tested.
 String diagnosticsReport(List<DiagLine> lines,{DateTime? at}){
@@ -87,7 +114,13 @@ String _date(Object? iso){
 
 class DiagnosticsPanel extends StatefulWidget {
   final SarcadeApi api; final String server, eventId;
-  const DiagnosticsPanel({super.key,required this.api,required this.server,required this.eventId});
+  /// Author of the deletions of items not sent (journal of the device).
+  final String? actorId;
+  /// « Envoyer » of the red banner failed again: Supprimer and Exporter shown.
+  final bool failedAgain;
+  /// « Se reconnecter » when Cloudflare Access asks for a sign-in.
+  final VoidCallback? onSignIn;
+  const DiagnosticsPanel({super.key,required this.api,required this.server,required this.eventId,this.actorId,this.failedAgain=false,this.onSignIn});
   @override State<DiagnosticsPanel> createState()=>_DiagnosticsPanelState();
 }
 
@@ -133,7 +166,6 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
       (block:dev,label:S.t('diag.network'),value:net,state:null),
       (block:dev,label:S.t('diag.gps'),value:gps,state:gpsState),
       (block:dev,label:S.t('diag.notifications'),value:S.t(notif==null?'diag.unknown':notif?'diag.allowed':'diag.refused'),state:notif==null?null:notif?'green':'orange'),
-      (block:dev,label:S.t('diag.pending'),value:'${sync?.unsent??0}',state:(sync?.unsent??0)>0?'orange':'green'),
       (block:dev,label:S.t('diag.lastSync'),value:sync?.lastServerContact==null?'—':_date(sync!.lastServerContact!.toUtc().toIso8601String()),state:sync==null?null:sync.lastSyncOk?'green':'orange'),
     ];
     final links=<DiagLine>[
@@ -153,6 +185,45 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
     }
     if(!mounted)return;
     setState((){_device=device;_links=links;_server=server;_serverError=err;_loading=false;});
+  }
+
+  /// Items not sent, read live (the list below changes it).
+  DiagLine _pendingLine(){
+    final n=OfflineSyncService.active?.unsent??0;
+    return (block:S.t('diag.links'),label:S.t('diag.pending'),value:'$n',state:n>0?'red':'green');
+  }
+
+  Future<void> _retryAll() async {
+    final sync=OfflineSyncService.active; if(sync==null)return;
+    await sync.retryAll();
+    if(mounted)setState((){});
+  }
+
+  /// « Tout fonctionne » in green, or the problems with their action.
+  Widget _summary(List<DiagLine> all){
+    final t=Theme.of(context);
+    final problems=diagnosticProblems(all);
+    if(problems.isEmpty){
+      return Card(key:const ValueKey('diag-all-good'),elevation:0,margin:const EdgeInsets.only(top:12),color:Colors.green.withValues(alpha:0.14),
+        child:Padding(padding:const EdgeInsets.all(14),child:Row(children:[
+          const Icon(Icons.check_circle,color:Colors.green),const SizedBox(width:12),
+          Expanded(child:Text(S.t('diag.allGood'),style:t.textTheme.titleSmall?.copyWith(fontWeight:FontWeight.w700))),
+        ])));
+    }
+    final pending=S.t('diag.pending'), access=S.t('diag.access');
+    Widget? action(DiagLine l)=>l.label==pending&&OfflineSyncService.active!=null
+      ?TextButton(onPressed:_retryAll,child:Text(S.t('unsent.retryAll')))
+      :l.label==access&&widget.onSignIn!=null?TextButton(onPressed:widget.onSignIn,child:Text(S.t('links.signInAgain'))):null;
+    return Card(key:const ValueKey('diag-problems'),elevation:0,margin:const EdgeInsets.only(top:12),color:t.colorScheme.errorContainer.withValues(alpha:0.5),
+      child:Padding(padding:const EdgeInsets.symmetric(vertical:6),child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+        Padding(padding:const EdgeInsets.fromLTRB(14,6,14,4),child:Text(S.t('diag.problems',{'n':problems.length}),
+          style:t.textTheme.titleSmall?.copyWith(fontWeight:FontWeight.w700))),
+        for(final l in problems)Padding(padding:const EdgeInsets.symmetric(horizontal:16,vertical:4),child:Row(children:[
+          SizedBox(width:24,child:Icon(Icons.circle,size:12,color:stateColor(l.state))),
+          Expanded(child:Text('${l.label} : ${l.value}')),
+          ?action(l),
+        ])),
+      ])));
   }
 
   Widget _block(String title,List<DiagLine> lines,{Widget? footer}){
@@ -175,7 +246,9 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
   }
 
   @override Widget build(BuildContext context){
-    final all=[..._device,..._links,..._server];
+    final sync=OfflineSyncService.active;
+    final links=_links.isEmpty?_links:[_pendingLine(),..._links];
+    final all=[..._device,...links,..._server];
     return Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
       Padding(padding:const EdgeInsets.only(top:8),child:Wrap(spacing:8,runSpacing:8,crossAxisAlignment:WrapCrossAlignment.center,children:[
         FilledButton.icon(key:const ValueKey('diag-copy'),onPressed:all.isEmpty?null:() async {
@@ -186,8 +259,10 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
         OutlinedButton.icon(onPressed:_loading?null:_load,icon:const Icon(Icons.refresh),label:Text(S.t('diag.refresh'))),
         if(_loading)const SizedBox(width:18,height:18,child:CircularProgressIndicator(strokeWidth:2)),
       ])),
+      if(!_loading||all.isNotEmpty)_summary(all),
       if(_device.isNotEmpty)_block(S.t('diag.device'),_device),
-      if(_links.isNotEmpty)_block(S.t('diag.links'),_links),
+      if(links.isNotEmpty)_block(S.t('diag.links'),links,
+        footer:sync==null?null:UnsentList(sync:sync,actorId:widget.actorId??'',failedAgain:widget.failedAgain,onChanged:(){if(mounted)setState((){});})),
       if(_pco&&(_server.isNotEmpty||_serverError!=null))_block(S.t('diag.server'),_server,
         footer:_serverError==null?null:Padding(padding:const EdgeInsets.fromLTRB(14,4,14,8),child:Text(_serverError!))),
     ]);
