@@ -31,9 +31,11 @@ class RoutesPanel extends StatelessWidget {
       Padding(padding:const EdgeInsets.fromLTRB(14,8,6,0),child:Row(children:[
         Expanded(child:Text(S.t('routes.title'),style:Theme.of(context).textTheme.titleMedium)),
         IconButton(tooltip:S.t('routes.refresh'),onPressed:controller.refresh,icon:const Icon(Icons.refresh)),
-        IconButton(tooltip:S.t('routes.new'),onPressed:()=>_newRoute(context),icon:const Icon(Icons.add_road)),
         if(isPco(actorId))IconButton(tooltip:S.t('closures.new'),onPressed:onDrawClosure,icon:const Icon(Icons.block)),
       ])),
+      // « Nouvel itinéraire »: full blue button with the route icon (1 h 43, option A).
+      if(selected==null)Padding(padding:const EdgeInsets.fromLTRB(14,4,14,4),child:Align(alignment:Alignment.centerLeft,
+        child:FilledButton.icon(key:const ValueKey('routes-new'),onPressed:()=>_newRoute(context),icon:const Icon(Icons.route),label:Text(S.t('routes.new'))))),
       Expanded(child:selected==null?_list(context):_details(context,selected)),
     ]);
   }
@@ -136,30 +138,7 @@ class RoutesPanel extends StatelessWidget {
     }
   }
 
-  Future<void> _editWaypoint(BuildContext context,Waypoint w) async {
-    final name=TextEditingController(text:w.name), comment=TextEditingController(text:w.comment);
-    var type=w.type; var radius=w.radiusM; var legMode=w.legMode;
-    final ok=await showDialog<bool>(context:context,builder:(c)=>StatefulBuilder(builder:(c,set)=>AlertDialog(
-      title:Text(S.t('routes.editPoint')),
-      content:SingleChildScrollView(child:Column(mainAxisSize:MainAxisSize.min,children:[
-        TextField(controller:name,maxLength:40,decoration:InputDecoration(labelText:S.t('groups.name'))),
-        DropdownButtonFormField<String>(initialValue:type,decoration:InputDecoration(labelText:S.t('routes.pointType')),
-          items:[for(final t in waypointTypes)DropdownMenuItem(value:t,child:Text(S.t('waypoint.$t')))],onChanged:(v)=>set(()=>type=v??type)),
-        DropdownButtonFormField<String>(initialValue:legMode,decoration:InputDecoration(labelText:S.t('routes.legMode')),
-          items:[for(final m in const ['straight','paths'])DropdownMenuItem(value:m,child:Text(S.t('routes.leg.$m')))],onChanged:(v)=>set(()=>legMode=v??legMode)),
-        const SizedBox(height:8),
-        Text(S.t('routes.radius',{'m':radius.round()})),
-        Slider(value:radius.clamp(5,1000),min:5,max:300,divisions:59,onChanged:(v)=>set(()=>radius=v)),
-        TextField(controller:comment,maxLength:300,decoration:InputDecoration(labelText:S.t('routes.comment'))),
-      ])),
-      actions:[TextButton(onPressed:()=>Navigator.pop(c,false),child:Text(S.t('common.cancel'))),
-        FilledButton(onPressed:()=>Navigator.pop(c,true),child:Text(S.t('common.save')))],
-    )));
-    if(ok==true&&name.text.trim().isNotEmpty){
-      await controller.updateWaypoint(w,{'name':name.text.trim(),'type':type,'radius_m':radius.roundToDouble(),
-        'comment':comment.text.trim(),'leg_mode':legMode});
-    }
-  }
+  Future<void> _editWaypoint(BuildContext context,Waypoint w)=>editWaypointDialog(context,controller,w);
 
   Future<void> _newRoute(BuildContext context) async {
     final name=TextEditingController();
@@ -228,3 +207,29 @@ Future<String?> _askText(BuildContext context,String title,String initial){
 
 /// Label of a new road closure, asked to the PCO.
 Future<String?> askClosureLabel(BuildContext context)=>_askText(context,S.t('closures.label'),'');
+
+/// « Modifier le point » (panel and the sheet of a waypoint on the map).
+Future<void> editWaypointDialog(BuildContext context,RoutesController controller,Waypoint w) async {
+  final name=TextEditingController(text:w.name), comment=TextEditingController(text:w.comment);
+  var type=w.type; var radius=w.radiusM; var legMode=w.legMode;
+  final ok=await showDialog<bool>(context:context,builder:(c)=>StatefulBuilder(builder:(c,set)=>AlertDialog(
+    title:Text(S.t('routes.editPoint')),
+    content:SingleChildScrollView(child:Column(mainAxisSize:MainAxisSize.min,children:[
+      TextField(controller:name,maxLength:40,decoration:InputDecoration(labelText:S.t('groups.name'))),
+      DropdownButtonFormField<String>(initialValue:type,decoration:InputDecoration(labelText:S.t('routes.pointType')),
+        items:[for(final t in waypointTypes)DropdownMenuItem(value:t,child:Text(S.t('waypoint.$t')))],onChanged:(v)=>set(()=>type=v??type)),
+      DropdownButtonFormField<String>(initialValue:legMode,decoration:InputDecoration(labelText:S.t('routes.legMode')),
+        items:[for(final m in const ['straight','paths'])DropdownMenuItem(value:m,child:Text(S.t('routes.leg.$m')))],onChanged:(v)=>set(()=>legMode=v??legMode)),
+      const SizedBox(height:8),
+      Text(S.t('routes.radius',{'m':radius.round()})),
+      Slider(value:radius.clamp(5,1000),min:5,max:300,divisions:59,onChanged:(v)=>set(()=>radius=v)),
+      TextField(controller:comment,maxLength:300,decoration:InputDecoration(labelText:S.t('routes.comment'))),
+    ])),
+    actions:[TextButton(onPressed:()=>Navigator.pop(c,false),child:Text(S.t('common.cancel'))),
+      FilledButton(onPressed:()=>Navigator.pop(c,true),child:Text(S.t('common.save')))],
+  )));
+  if(ok==true&&name.text.trim().isNotEmpty){
+    await controller.updateWaypoint(w,{'name':name.text.trim(),'type':type,'radius_m':radius.roundToDouble(),
+      'comment':comment.text.trim(),'leg_mode':legMode});
+  }
+}

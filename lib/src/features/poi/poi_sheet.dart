@@ -15,6 +15,7 @@ import '../../offline/local_store.dart';
 import '../../offline/sync_service.dart';
 import '../bearings/bearing_models.dart' show operatorColor;
 import '../measure/coordinates.dart';
+import 'poi_icons.dart';
 
 /// Colour used instead of a red one (reserved for the beacons).
 const poiFallbackColor=0xFF1E88E5;
@@ -49,14 +50,22 @@ String poiTime(DateTime t,[DateTime? now]){
 String poiMessage(SarcadePoi p,CoordFormat format,{int mgrsDigits=4})=>
   S.t('poi.message',{'name':poiName(p),'pos':formatCoordinates(LatLng(p.lat,p.lon),format,mgrsDigits:mgrsDigits)});
 
-Marker poiMarker(SarcadePoi p,VoidCallback onTap)=>Marker(point:LatLng(p.lat,p.lon),width:40,height:40,
+/// Pin of a point: the default pin, or a round badge with its symbol.
+Widget poiSymbol(SarcadePoi p,{double size=38}){
+  final c=Color(poiColor(p));
+  if(p.icon==null||p.icon=='pin')return Icon(Icons.location_on,size:size,color:c,shadows:const [Shadow(blurRadius:3,color:Colors.black54)]);
+  return Container(width:size*0.8,height:size*0.8,decoration:BoxDecoration(color:c,shape:BoxShape.circle,border:Border.all(color:Colors.white,width:2),
+    boxShadow:const [BoxShadow(blurRadius:3,color:Colors.black45)]),child:Icon(poiIconData(p.icon),size:size*0.46,color:Colors.white));
+}
+
+Marker poiMarker(SarcadePoi p,VoidCallback onTap)=>Marker(point:LatLng(p.lat,p.lon),width:44,height:44,
   child:Tooltip(message:poiName(p),child:GestureDetector(key:ValueKey('poi-${p.id}'),behavior:HitTestBehavior.opaque,onTap:onTap,
-    child:Icon(Icons.location_on,size:38,color:Color(poiColor(p)),shadows:const [Shadow(blurRadius:3,color:Colors.black54)]))));
+    child:Center(child:poiSymbol(p)))));
 
 /// New point of the event, by [actor] in his drawing colour.
-Map<String,dynamic> newPoiJson({required String id,required String eventId,required LatLng at,String? label,required String actor,required int drawColor})=>{
+Map<String,dynamic> newPoiJson({required String id,required String eventId,required LatLng at,String? label,required String actor,required int drawColor,String? icon})=>{
   'id':id,'event_id':eventId,'kind':'designated','label':label,'lat':at.latitude,'lon':at.longitude,
-  'created_at':DateTime.now().toUtc().toIso8601String(),'created_by':actor,'color':poiColorFor(drawColor)};
+  'created_at':DateTime.now().toUtc().toIso8601String(),'created_by':actor,'color':poiColorFor(drawColor),if(icon!=null&&icon!='pin')'icon':icon};
 
 /// Applies a point from the server (realtime or change feed): a deleted one
 /// leaves the map and the cache. Returns true when [pois] changed.
@@ -75,6 +84,15 @@ Future<void> renamePoi(Map<String,SarcadePoi> pois,LocalStore store,OfflineSyncS
   pois[p.id]=SarcadePoi.fromJson(j);
   await store.cachePoi(j);
   await sync.queue(objectId:p.id,objectType:'poi',action:'update',payload:{'id':p.id,'event_id':p.eventId,'label':label,'updated_by':actor,'updated_at':now});
+}
+
+/// New shape of the icon (author or PCO), kept by the server (`icon`).
+Future<void> changePoiIcon(Map<String,SarcadePoi> pois,LocalStore store,OfflineSyncService sync,SarcadePoi p,String icon,String actor) async {
+  final now=DateTime.now().toUtc().toIso8601String();
+  final j=p.toJson()..['icon']=icon..['updated_by']=actor;
+  pois[p.id]=SarcadePoi.fromJson(j);
+  await store.cachePoi(j);
+  await sync.queue(objectId:p.id,objectType:'poi',action:'update',payload:{'id':p.id,'event_id':p.eventId,'icon':icon,'updated_by':actor,'updated_at':now});
 }
 
 Future<void> deletePoi(Map<String,SarcadePoi> pois,LocalStore store,OfflineSyncService sync,SarcadePoi p,String actor) async {
@@ -100,27 +118,19 @@ Future<bool> confirmPoiDelete(BuildContext context,SarcadePoi p) async =>await s
   actions:[TextButton(onPressed:()=>Navigator.pop(c,false),child:Text(S.t('common.cancel'))),
     FilledButton(style:FilledButton.styleFrom(backgroundColor:Theme.of(c).colorScheme.error),onPressed:()=>Navigator.pop(c,true),child:Text(S.t('common.delete')))]))==true;
 
-/// The sheet of a point; returns the action chosen: rename, delete, send, route.
+/// The sheet of a point; returns the action chosen: rename, icon, delete, send, route.
 Future<String?> showPoiSheet(BuildContext context,SarcadePoi p,{required CoordFormat format,int mgrsDigits=4,required bool canEdit}){
   final pos=formatCoordinates(LatLng(p.lat,p.lon),format,mgrsDigits:mgrsDigits);
   return showModalBottomSheet<String>(context:context,showDragHandle:true,builder:(c)=>SafeArea(child:Column(mainAxisSize:MainAxisSize.min,children:[
-    ListTile(leading:Icon(Icons.location_on,color:Color(poiColor(p)),size:32),title:Text(poiName(p),style:Theme.of(c).textTheme.titleMedium),
+    ListTile(leading:SizedBox(width:40,child:Center(child:poiSymbol(p,size:34))),title:Text(poiName(p),style:Theme.of(c).textTheme.titleMedium),
       subtitle:Text([S.t('poi.by',{'who':p.createdBy??S.t('poi.unknownAuthor')}),poiTime(p.createdAt)].join(' · '))),
     ListTile(dense:true,leading:const Icon(Icons.my_location),title:SelectableText(pos)),
     const Divider(height:1),
     if(canEdit)ListTile(leading:const Icon(Icons.edit_outlined),title:Text(S.t('poi.rename')),onTap:()=>Navigator.pop(c,'rename')),
+    if(canEdit)ListTile(key:const ValueKey('poi-change-icon'),leading:Icon(poiIconData(p.icon)),title:Text(S.t('poi.changeIcon')),
+      subtitle:Text(poiIconLabel(p.icon)),onTap:()=>Navigator.pop(c,'icon')),
     ListTile(leading:const Icon(Icons.send_outlined),title:Text(S.t('measure.send')),onTap:()=>Navigator.pop(c,'send')),
     ListTile(leading:const Icon(Icons.add_road),title:Text(S.t('routes.toHere')),onTap:()=>Navigator.pop(c,'route')),
     if(canEdit)ListTile(leading:Icon(Icons.delete_outline,color:Theme.of(c).colorScheme.error),title:Text(S.t('common.delete')),onTap:()=>Navigator.pop(c,'delete')),
   ])));
-}
-
-/// « Points d'intérêt » in the layers panel: show / hide, then the list.
-List<Widget> poiLayerList(BuildContext c,{required List<SarcadePoi> pois,required ValueChanged<SarcadePoi> onOpen}){
-  final sorted=[...pois]..sort((a,b)=>b.createdAt.compareTo(a.createdAt));
-  return [
-    for(final p in sorted)ListTile(dense:true,visualDensity:VisualDensity.compact,
-      leading:Icon(Icons.location_on,color:Color(poiColor(p))),title:Text(poiName(p),maxLines:1,overflow:TextOverflow.ellipsis),
-      subtitle:Text('${p.createdBy??S.t('poi.unknownAuthor')} · ${poiTime(p.createdAt)}'),onTap:()=>onOpen(p)),
-  ];
 }

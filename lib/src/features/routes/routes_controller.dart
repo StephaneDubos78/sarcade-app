@@ -178,6 +178,10 @@ class RoutesController extends ChangeNotifier {
   /// Answer of the operator (accepted, refused, arrived) or cancellation.
   Future<void> setMoveOrderStatus(Map<String,dynamic> order,String status)=>_save('move_order',{...order,'status':status},isNew:false);
 
+  /// « Retirer de la carte » (PCO or author): the order leaves every map;
+  /// the logbook keeps it.
+  Future<void> removeMoveOrder(Map<String,dynamic> order)=>_delete('move_order',order['id'] as String);
+
   // --- Shared itinerary ---------------------------------------------------------
 
   Future<String> shareItinerary({String? id,required String mode,required LatLng destination,required String label,

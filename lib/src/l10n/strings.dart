@@ -28,6 +28,14 @@ class S {
 }
 
 const Texts _fr={
+  'poi.createHere':'Créer un point d’intérêt ici','poi.create':'Créer','poi.defaultName':'Point {hm}','poi.iconTitle':'Icône','poi.changeIcon':'Changer l’icône','poi.created':'Point d’intérêt créé',
+  'poi.icon.pin':'Épingle','poi.icon.gathering':'Rassemblement','poi.icon.command_post':'PC','poi.icon.danger':'Danger','poi.icon.parking':'Parking','poi.icon.water':'Eau',
+  'poi.icon.helipad':'Hélisurface','poi.icon.vehicle':'Véhicule','poi.icon.viewpoint':'Point de vue','poi.icon.medical':'Secours','poi.icon.radio':'Radio','poi.icon.shelter':'Abri','poi.icon.flag':'Repère',
+  'poi.seeList':'Voir la liste','poi.search':'Rechercher un point','poi.sort.date':'Date','poi.sort.name':'Nom','poi.sort.distance':'Distance','poi.filterIcon':'Icône','poi.filterAuthor':'Auteur','poi.all':'Tous','poi.none':'Aucun point',
+  'routes.movePoint':'Déplacer','routes.moveHint':'Touchez la carte à la nouvelle place du point','routes.open':'Ouvrir l’itinéraire',
+  'order.remove':'Retirer de la carte','order.removed':'Ordre retiré de la carte','order.layer':'Ordres','order.none':'Aucun ordre','order.inProgress':'En cours','order.done':'Terminés',
+  'traces.layer':'Toutes les traces','traces.aprs':'Traces APRS','traces.event':'Événement','traces.pinned':'Trace épinglée','traces.unpinned':'Trace retirée','traces.pin':'Épingler la trace','traces.unpin':'Retirer la trace',
+  'legend.title':'Légende','legend.fold':'Replier','legend.noSignal':'Sans signal',
   'locate.follow':'Suivi','locate.compass':'Boussole','locate.all':'Tous les opérateurs',
   'display.menu':'Fond et affichage','display.layers':'Affichage','layers.teams':'Équipes',
   'point.bearing':'Relevé','point.poi':'Point d’intérêt','point.order':'Envoyer un opérateur','point.measure':'Mesurer','point.go':'Y aller','point.weather':'Météo',
@@ -153,7 +161,7 @@ const Texts _fr={
   'groups.archivedNotice':'Groupe archivé : plus aucun message.','groups.managers':'Responsables : {names}',
   'groups.listenOnlyBadge':'écoute seule',
   // Routes
-  'routes.title':'Routes','routes.refresh':'Actualiser','routes.new':'Nouvelle route','routes.empty':'Aucune route pour cet événement.',
+  'routes.title':'Routes','routes.refresh':'Actualiser','routes.new':'Nouvel itinéraire','routes.empty':'Aucune route pour cet événement.',
   'routes.points':'points','routes.assigned':'affectée','routes.assignedTo':'Affectée à {name}','routes.addPoints':'Ajouter des points',
   'routes.stopAdding':'Terminer les points','routes.assign':'Affecter','routes.unassigned':'Non affectée','routes.computeLegs':'Calculer',
   'routes.delete':'Supprimer','routes.deleteConfirm':'Supprimer la route « {name} » ?','routes.readOnly':'Route affectée : seuls son auteur et le PCO la modifient.',
@@ -176,7 +184,7 @@ const Texts _fr={
   'nav.mode.straight':'Ligne droite','nav.mode.straightHelp':'Distance et cap, sans itinéraire',
   'nav.notice.engine_unavailable':'Calcul d’itinéraire indisponible : ligne droite affichée.',
   'nav.notice.no_route':'Aucun itinéraire trouvé : ligne droite affichée.','nav.notice.no_position':'Position actuelle indisponible.',
-  'nav.point':'Point désigné','nav.longPress':'Appui long sur la carte : naviguer jusqu’à ce point',
+  'nav.point':'Point de la carte','nav.longPress':'Appui long sur la carte : naviguer jusqu’à ce point',
   // Weather
   'weather.title':'Météo de l’événement','weather.pointTitle':'Météo · {label}','weather.refresh':'Actualiser',
   'weather.refreshFailed':'Actualisation impossible : dernière prévision affichée','weather.bulletin':'Copier le bulletin',
@@ -222,7 +230,7 @@ const Texts _fr={
   // Measure, coordinates, other apps
   'measure.here':'Mesurer jusqu’ici','measure.noPosition':'Position inconnue : choisis une origine','measure.oldPosition':'Position ancienne de {min} min',
   'measure.from':'Depuis {label}','measure.azimuth':'{true}° vrai · {mag}° magnétique','measure.chooseOrigin':'Choisir l’origine',
-  'measure.clear':'Effacer la mesure','measure.savePoi':'Enregistrer en POI','measure.send':'Envoyer en message','measure.fit':'Recentrer',
+  'measure.clear':'Effacer la mesure','measure.savePoi':'Créer un point d’intérêt','measure.send':'Envoyer en message','measure.fit':'Recentrer',
   'nav.variant':'Variante {n} · {delta} · {length}','nav.variant.same':'même durée','nav.recentre':'Recentrer',
   'nav.rotate':'Orienter dans le sens de la marche',
   'notif.action.accept':'Accepter','notif.action.refuse':'Refuser','notif.action.read':'Lu','notif.action.open':'Ouvrir',
@@ -239,7 +247,7 @@ const Texts _fr={
   'measure.decl.help':'Cas particuliers (carte ancienne, consigne), propre à cet appareil',
   'measure.decl.hint':'2,5 E ou 1,2 O','measure.decl.invalid':'Valeur non reconnue',
   'measure.format.dd':'Degrés décimaux','measure.format.dm':'Degrés, minutes décimales','measure.format.qth':'Locator QTH',
-  'measure.messageDistance':'À {d} de ma position, azimut {true}° vrai ({mag}° magnétique)','measure.poiSaved':'POI enregistré',
+  'measure.messageDistance':'À {d} de ma position, azimut {true}° vrai ({mag}° magnétique)','measure.poiSaved':'Point d’intérêt créé',
   'poi.layer':'Points d’intérêt','poi.unnamed':'Point sans nom','poi.by':'par {who}','poi.unknownAuthor':'auteur inconnu','poi.rename':'Modifier le nom','poi.name':'Nom du point','poi.deleteTitle':'Supprimer le point ?','poi.deleteBody':'« {name} » sera supprimé pour tous les participants et la suppression inscrite en main courante.','poi.deleted':'Point supprimé','poi.message':'Point d’intérêt « {name} » : {pos}',
   'measure.originMine':'Ma position','measure.originPoint':'Un point de la carte','measure.pickOrigin':'Touche la carte pour placer l’origine',
   'measure.goto':'Aller à des coordonnées','measure.gotoHint':'48,80123 N 2,13456 E · 48°48,074′ N 2°08,074′ E · 31U DQ 3644 0572 · JN18BT',
@@ -306,6 +314,14 @@ const Texts _fr={
 };
 
 const Texts _en={
+  'poi.createHere':'Create a point of interest here','poi.create':'Create','poi.defaultName':'Point {hm}','poi.iconTitle':'Icon','poi.changeIcon':'Change the icon','poi.created':'Point of interest created',
+  'poi.icon.pin':'Pin','poi.icon.gathering':'Gathering','poi.icon.command_post':'Command post','poi.icon.danger':'Danger','poi.icon.parking':'Parking','poi.icon.water':'Water',
+  'poi.icon.helipad':'Helipad','poi.icon.vehicle':'Vehicle','poi.icon.viewpoint':'Viewpoint','poi.icon.medical':'Medical','poi.icon.radio':'Radio','poi.icon.shelter':'Shelter','poi.icon.flag':'Marker',
+  'poi.seeList':'See the list','poi.search':'Search a point','poi.sort.date':'Date','poi.sort.name':'Name','poi.sort.distance':'Distance','poi.filterIcon':'Icon','poi.filterAuthor':'Author','poi.all':'All','poi.none':'No point',
+  'routes.movePoint':'Move','routes.moveHint':'Tap the map at the new place of the point','routes.open':'Open the route',
+  'order.remove':'Remove from the map','order.removed':'Order removed from the map','order.layer':'Orders','order.none':'No order','order.inProgress':'In progress','order.done':'Done',
+  'traces.layer':'All traces','traces.aprs':'APRS traces','traces.event':'Event','traces.pinned':'Trace pinned','traces.unpinned':'Trace removed','traces.pin':'Pin the trace','traces.unpin':'Remove the trace',
+  'legend.title':'Legend','legend.fold':'Fold','legend.noSignal':'No signal',
   'locate.follow':'Follow','locate.compass':'Compass','locate.all':'All operators',
   'display.menu':'Base map and display','display.layers':'Display','layers.teams':'Teams',
   'point.bearing':'Bearing','point.poi':'Point of interest','point.order':'Send an operator','point.measure':'Measure','point.go':'Go there','point.weather':'Weather',
@@ -444,7 +460,7 @@ const Texts _en={
   'nav.mode.straight':'Straight line','nav.mode.straightHelp':'Distance and bearing, no itinerary',
   'nav.notice.engine_unavailable':'Itinerary computation unavailable: straight line shown.',
   'nav.notice.no_route':'No itinerary found: straight line shown.','nav.notice.no_position':'Current position unavailable.',
-  'nav.point':'Designated point','nav.longPress':'Long press on the map: navigate to that point',
+  'nav.point':'Map point','nav.longPress':'Long press on the map: navigate to that point',
   'weather.title':'Event weather','weather.pointTitle':'Weather · {label}','weather.refresh':'Refresh',
   'weather.refreshFailed':'Refresh failed: last forecast shown','weather.bulletin':'Copy the bulletin',
   'weather.bulletinCopied':'Bulletin copied: paste it in a message to “Diffusion PCO”','weather.bulletinFailed':'Bulletin unavailable',
@@ -485,7 +501,7 @@ const Texts _en={
   'map.exportFailed':'Export failed','map.open':'Open',
   'measure.here':'Measure to here','measure.noPosition':'Position unknown: choose an origin','measure.oldPosition':'Position {min} min old',
   'measure.from':'From {label}','measure.azimuth':'{true}° true · {mag}° magnetic','measure.chooseOrigin':'Choose the origin',
-  'measure.clear':'Clear the measure','measure.savePoi':'Save as POI','measure.send':'Send in a message','measure.fit':'Fit',
+  'measure.clear':'Clear the measure','measure.savePoi':'Create a point of interest','measure.send':'Send in a message','measure.fit':'Fit',
   'nav.variant':'Variant {n} · {delta} · {length}','nav.variant.same':'same time','nav.recentre':'Re-centre',
   'nav.rotate':'Turn in the direction of travel',
   'notif.action.accept':'Accept','notif.action.refuse':'Refuse','notif.action.read':'Read','notif.action.open':'Open',
@@ -502,7 +518,7 @@ const Texts _en={
   'measure.decl.help':'Special cases (old map, instructions), this device only',
   'measure.decl.hint':'2.5 E or 1.2 W','measure.decl.invalid':'Value not recognised',
   'measure.format.dd':'Decimal degrees','measure.format.dm':'Degrees, decimal minutes','measure.format.qth':'QTH locator',
-  'measure.messageDistance':'{d} from my position, bearing {true}° true ({mag}° magnetic)','measure.poiSaved':'POI saved',
+  'measure.messageDistance':'{d} from my position, bearing {true}° true ({mag}° magnetic)','measure.poiSaved':'Point of interest created',
   'poi.layer':'Points of interest','poi.unnamed':'Unnamed point','poi.by':'by {who}','poi.unknownAuthor':'unknown author','poi.rename':'Edit the name','poi.name':'Name of the point','poi.deleteTitle':'Delete the point?','poi.deleteBody':'« {name} » will be deleted for every participant and the deletion written in the logbook.','poi.deleted':'Point deleted','poi.message':'Point of interest « {name} »: {pos}',
   'measure.originMine':'My position','measure.originPoint':'A point of the map','measure.pickOrigin':'Tap the map to place the origin',
   'measure.goto':'Go to coordinates','measure.gotoHint':'48.80123 N 2.13456 E · 48°48.074′ N 2°08.074′ E · 31U DQ 3644 0572 · JN18BT',
