@@ -85,6 +85,7 @@ import '../navigation/follow_mode.dart';
 import '../routes/route_models.dart';
 import '../routes/routes_controller.dart';
 import '../routes/routes_layers.dart';
+import '../routes/route_entry_bar.dart';
 import '../routes/routes_panel.dart';
 import '../tv/tv_view.dart';
 import '../tv/tv_nearby.dart';
@@ -2239,6 +2240,23 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     _syncEscapes();
     // On a phone a panel takes most of the width, leaving a strip of map visible.
     double panelWidth(double w)=>compact?(screenWidth*0.85).clamp(0.0,w):w;
+    // Phone (revue n° 52): Itinéraires and Résection on the whole screen,
+    // under the status bar; folded while points are added on the map.
+    final fullPanel=sidePanelFullScreen(screenWidth);
+    final routeEntry=fullPanel&&_showRoutesPanel&&_drawingRouteId!=null?_routes.route(_drawingRouteId!):null;
+    Widget routesPanel()=>RoutesPanel(
+          controller:_routes,api:widget.api,actorId:widget.deviceId,selectedRouteId:_selectedRouteId,drawingRouteId:_drawingRouteId,
+          groups:widget.store.groups(widget.eventId).map(CommGroup.fromJson).toList(),
+          onSelect:(id)=>setState((){_selectedRouteId=id;if(id==null)_drawingRouteId=null;}),
+          onDraw:(id)=>setState((){_drawingRouteId=id;_drawingClosure=false;}),
+          onDrawClosure:()=>setState((){_drawingClosure=true;_drawingRouteId=null;_closureDraft.clear();}),
+          onNavigate:_navigateTo,
+          onFocus:_fitPoints,
+          onSend:(text)=>Navigator.push(context,MaterialPageRoute(builder:(_)=>MessagesPage(api:widget.api,eventId:widget.eventId,
+            actorId:widget.deviceId,sync:_sync,store:widget.store,initialText:text))),
+        );
+    // Over the map, not beside it: the map keeps its size underneath.
+    Widget phonePanel(Widget child)=>Positioned.fill(child:Material(elevation:3,child:SafeArea(bottom:false,child:child)));
     void toggleOperators()=>setState((){_deskPage=null;_deskId=null;_showPanel=!_showPanel;if(_showPanel){_showReferencePanel=false;_showResection=false;}});
     void openFiles()=>_openDesk('files',()=>FilesPage(api:widget.api,eventId:widget.eventId,actorId:widget.deviceId,store:widget.store,drawings:DrawingFileActions(importFile:_importFile,exportAll:_exportGeoJson,count:()=>_drawing.features.length)));
     void openMessages()=>_openMessages(fromButton:true);
@@ -2303,21 +2321,11 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         if(!compact)_Rail(messages:messagesButton,actions:rail,bottom:railBottom,onMap:showMap,mapSelected:_deskPage==null&&!_showPanel&&!_showReferencePanel&&!_showRoutesPanel&&!_showResection),
         // Computer: Messages, Fichiers, APRS… open beside the rail, which
         // stays visible (« rail toujours visible », 28 Oct 2026).
-        Expanded(child:IndexedStack(index:!compact&&_deskPage!=null?1:0,sizing:StackFit.expand,children:[Row(children:[
-        if(_showResection&&_pickPoint==null)_resectionPanel(panelWidth(380)),
+        Expanded(child:IndexedStack(index:!compact&&_deskPage!=null?1:0,sizing:StackFit.expand,children:[Stack(fit:StackFit.expand,children:[Row(children:[
+        if(!fullPanel&&_showResection&&_pickPoint==null)_resectionPanel(panelWidth(380)),
         if(_chatPeer!=null)chatSidePanel(width:panelWidth(420),child:MessagesPage(key:ValueKey('chat-$_chatPeer'),api:widget.api,eventId:widget.eventId,
           actorId:widget.deviceId,sync:_sync,store:widget.store,initialPeer:_chatPeer,onClose:()=>setState(()=>_chatPeer=null))),
-        if(_showRoutesPanel)SizedBox(width:panelWidth(360),child:Material(elevation:3,child:RoutesPanel(
-          controller:_routes,api:widget.api,actorId:widget.deviceId,selectedRouteId:_selectedRouteId,drawingRouteId:_drawingRouteId,
-          groups:widget.store.groups(widget.eventId).map(CommGroup.fromJson).toList(),
-          onSelect:(id)=>setState((){_selectedRouteId=id;if(id==null)_drawingRouteId=null;}),
-          onDraw:(id)=>setState((){_drawingRouteId=id;_drawingClosure=false;}),
-          onDrawClosure:()=>setState((){_drawingClosure=true;_drawingRouteId=null;_closureDraft.clear();}),
-          onNavigate:_navigateTo,
-          onFocus:_fitPoints,
-          onSend:(text)=>Navigator.push(context,MaterialPageRoute(builder:(_)=>MessagesPage(api:widget.api,eventId:widget.eventId,
-            actorId:widget.deviceId,sync:_sync,store:widget.store,initialText:text))),
-        ))),
+        if(!fullPanel&&_showRoutesPanel)SizedBox(width:panelWidth(360),child:Material(elevation:3,child:routesPanel())),
         // Reference: the detailed sheet of a high point or a relay only;
         // filters by the chips, search by the search bar.
         if(_showReferencePanel&&_selectedReference!=null)SizedBox(width:panelWidth(355),child:Material(elevation:3,child:Builder(builder:(context){final r=_selectedReference!;return SingleChildScrollView(padding:const EdgeInsets.fromLTRB(14,8,6,14),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
@@ -2449,6 +2457,9 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
             FilledButton(onPressed:_finishClosure,child:Text(S.t('closures.finish'))),
           ])))),
         ])),
+        // Phone, points added to an itinerary: compact bar at the bottom.
+        if(routeEntry!=null)Positioned(left:12,right:12,bottom:12,child:RouteEntryBar(controller:_routes,route:routeEntry,
+          onDone:()=>setState(()=>_drawingRouteId=null))),
         // Right column with SOS at its bottom (30 Oct 2026, 3 h 05).
         mapColumnPlacement(compact:compact,taking:_bearings.taking,card:selected!=null,bottom:compact?60:24,child:_mapButtons()),
         // Phone: « Suivi actif » just above the tab bar.
@@ -2477,6 +2488,9 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         ]))),
       ]))
       
+        ]),
+        if(fullPanel&&_showResection&&_pickPoint==null)phonePanel(_resectionPanel(screenWidth)),
+        if(fullPanel&&_showRoutesPanel&&routeEntry==null)phonePanel(routesPanel()),
         ]),
         _deskPage??const SizedBox.shrink(),
         ])),

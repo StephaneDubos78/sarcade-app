@@ -379,7 +379,9 @@ class _MessagesPageState extends State<MessagesPage>{
      if(q.isEmpty)return true;
      return _convName(k,by).toLowerCase().contains(q)||(lastBy[k]?.body.toLowerCase().contains(q)??false);
    }).toList();
-   Widget chip(String id,String label)=>Padding(padding:const EdgeInsets.only(right:6),child:ChoiceChip(label:Text(label),selected:_filter==id,showCheckmark:false,
+   Widget chip(String id,String label)=>Padding(padding:const EdgeInsets.only(right:6),child:ChoiceChip(key:ValueKey('msg-filter-$id'),label:Text(label),selected:_filter==id,showCheckmark:false,
+     // 48 px touch area, the drawn pill unchanged (revue d'ergonomie n° 39).
+     materialTapTargetSize:MaterialTapTargetSize.padded,
      onSelected:(_)=>setState(()=>_filter=id)));
    return Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
      if(search)Padding(padding:const EdgeInsets.fromLTRB(12,10,12,6),child:_searchField()),

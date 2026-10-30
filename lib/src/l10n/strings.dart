@@ -28,6 +28,7 @@ class S {
 }
 
 const Texts _fr={
+  'routes.entrySummary':'{d} · {n} points','routes.undoPoint':'Annuler le dernier point','routes.done':'Terminer',
   'poi.createHere':'Créer un point d’intérêt ici','poi.create':'Créer','poi.defaultName':'Point {hm}','poi.iconTitle':'Icône','poi.changeIcon':'Changer l’icône','poi.created':'Point d’intérêt créé',
   'poi.icon.pin':'Épingle','poi.icon.gathering':'Rassemblement','poi.icon.command_post':'PC','poi.icon.danger':'Danger','poi.icon.parking':'Parking','poi.icon.water':'Eau',
   'poi.icon.helipad':'Hélisurface','poi.icon.vehicle':'Véhicule','poi.icon.viewpoint':'Point de vue','poi.icon.medical':'Secours','poi.icon.radio':'Radio','poi.icon.shelter':'Abri','poi.icon.flag':'Repère',
@@ -165,7 +166,7 @@ const Texts _fr={
   'groups.archivedNotice':'Groupe archivé : plus aucun message.','groups.managers':'Responsables : {names}',
   'groups.listenOnlyBadge':'écoute seule',
   // Routes
-  'routes.title':'Routes','routes.refresh':'Actualiser','routes.new':'Nouvel itinéraire','routes.empty':'Aucune route pour cet événement.',
+  'routes.title':'Itinéraires','routes.refresh':'Actualiser','routes.new':'Nouvel itinéraire','routes.empty':'Aucune route pour cet événement.',
   'routes.points':'points','routes.assigned':'affectée','routes.assignedTo':'Affectée à {name}','routes.addPoints':'Ajouter des points',
   'routes.stopAdding':'Terminer les points','routes.assign':'Affecter','routes.unassigned':'Non affectée','routes.computeLegs':'Calculer',
   'routes.delete':'Supprimer','routes.deleteConfirm':'Supprimer la route « {name} » ?','routes.readOnly':'Route affectée : seuls son auteur et le PCO la modifient.',
@@ -457,6 +458,7 @@ const Texts _fr={
 };
 
 const Texts _en={
+  'routes.entrySummary':'{d} · {n} points','routes.undoPoint':'Undo last point','routes.done':'Done',
   'poi.createHere':'Create a point of interest here','poi.create':'Create','poi.defaultName':'Point {hm}','poi.iconTitle':'Icon','poi.changeIcon':'Change the icon','poi.created':'Point of interest created',
   'poi.icon.pin':'Pin','poi.icon.gathering':'Gathering','poi.icon.command_post':'Command post','poi.icon.danger':'Danger','poi.icon.parking':'Parking','poi.icon.water':'Water',
   'poi.icon.helipad':'Helipad','poi.icon.vehicle':'Vehicle','poi.icon.viewpoint':'Viewpoint','poi.icon.medical':'Medical','poi.icon.radio':'Radio','poi.icon.shelter':'Shelter','poi.icon.flag':'Marker',
