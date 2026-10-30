@@ -9,16 +9,21 @@ import 'unsent_summary.dart';
 
 /// « Éléments non envoyés » (« Robustesse de la synchronisation »): every
 /// item that cannot leave, with its reason, and what the operator can do.
-class UnsentPage extends StatefulWidget {
+/// Shown in the « Liaisons » block of the Diagnostic, the single place where
+/// problems arrive (card « Diagnostic, point d'arrivée unique des
+/// problèmes », 30 Oct 2026, 12 h 47): the separate screen is gone.
+class UnsentList extends StatefulWidget {
   final OfflineSyncService sync; final String actorId;
   /// « Envoyer » of the banner failed again: Supprimer and Exporter are
   /// offered on each item (card « iPhone, 1 élément(s) non envoyé(s) »).
   final bool failedAgain;
-  const UnsentPage({super.key,required this.sync,required this.actorId,this.failedAgain=false});
-  @override State<UnsentPage> createState()=>_UnsentPageState();
+  /// Called after a retry, an attachment or a deletion.
+  final VoidCallback? onChanged;
+  const UnsentList({super.key,required this.sync,required this.actorId,this.failedAgain=false,this.onChanged});
+  @override State<UnsentList> createState()=>_UnsentListState();
 }
 
-class _UnsentPageState extends State<UnsentPage> {
+class _UnsentListState extends State<UnsentList> {
   OfflineSyncService get _sync=>widget.sync;
   late bool _failedAgain=widget.failedAgain;
 
@@ -43,6 +48,7 @@ class _UnsentPageState extends State<UnsentPage> {
   Future<void> _run(Future<void> Function() action) async {
     await action();
     if(mounted)setState((){});
+    widget.onChanged?.call();
   }
 
   Future<void> _export(Map<String,dynamic> op) async {
@@ -80,15 +86,18 @@ class _UnsentPageState extends State<UnsentPage> {
   Widget build(BuildContext context){
     final items=_items();
     final retryable=items.where(_here).toList();
-    return Scaffold(
-      appBar:AppBar(title:Text('${S.t('unsent.title')} (${items.length})'),actions:[
+    if(items.isEmpty)return const SizedBox.shrink();
+    final t=Theme.of(context);
+    return Column(key:const ValueKey('unsent-list'),crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+      const Divider(height:1),
+      Padding(padding:const EdgeInsets.fromLTRB(14,8,8,0),child:Row(children:[
+        Expanded(child:Text('${S.t('unsent.title')} (${items.length})',style:t.textTheme.titleSmall?.copyWith(fontWeight:FontWeight.w600))),
         if(retryable.isNotEmpty)OutlinedButton.icon(
           onPressed:()=>_run(() async {final left=await _sync.retryAll();_failedAgain=left.isNotEmpty;}),
           icon:const Icon(Icons.refresh),label:Text(S.t('unsent.retryAll'))),
-      ]),
-      body:items.isEmpty
-        ? Center(child:Text(S.t('unsent.empty')))
-        : ListView.separated(
+      ])),
+      ListView.separated(
+            shrinkWrap:true,physics:const NeverScrollableScrollPhysics(),
             itemCount:items.length+(_failedAgain?1:0),
             separatorBuilder:(_,_)=>const Divider(height:1),
             itemBuilder:(context,index){
@@ -136,6 +145,6 @@ class _UnsentPageState extends State<UnsentPage> {
                 ),
               );
             }),
-    );
+    ]);
   }
 }

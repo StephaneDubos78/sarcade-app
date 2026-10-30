@@ -21,6 +21,8 @@ import '../../models/message.dart';
 import '../../models/position.dart';
 import '../../models/reference_site.dart';
 import '../messages/messages_page.dart';
+import '../messages/messages_nav.dart';
+import '../../services/notification_keys.dart';
 import '../aprs/aprs_page.dart';
 import '../search/map_search.dart';
 import '../search/map_search_bar.dart';
@@ -38,6 +40,7 @@ import 'drawing/multi_select.dart';
 import '../../offline/unsent_summary.dart';
 import '../bearings/bearing_controller.dart';
 import '../bearings/bearing_layers.dart';
+import '../bearings/bearing_mouse_hud.dart';
 import '../bearings/bearing_models.dart';
 import 'drawing/geometry.dart' as geo;
 import '../files/files_page.dart';
@@ -58,7 +61,6 @@ import '../../services/realtime_service.dart';
 import '../../services/sarcade_api.dart';
 import '../../offline/local_store.dart';
 import '../../offline/sync_service.dart';
-import '../../offline/unsent_page.dart';
 import '../../access/access_login_page.dart';
 import '../../access/access_manager.dart';
 import '../../platform/platform_services.dart';
@@ -86,8 +88,10 @@ import '../routes/routes_layers.dart';
 import '../routes/routes_panel.dart';
 import '../tv/tv_view.dart';
 import '../tv/tv_nearby.dart';
+import 'fixed_stations.dart';
 import '../orders/move_orders.dart';
 import '../bearings/signals.dart';
+import '../settings/diagnostics_panel.dart' show diagnosticsAlert, showDiagnosticsSheet;
 import '../tools/tools_page.dart';
 import 'sos_button.dart';
 import '../tools/coordinate_converter_page.dart';
@@ -170,7 +174,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         final ack=a.toAck();
         await widget.store.cacheAck(ack);
         await _sync.queue(objectId:a.id,objectType:'ack',payload:ack);
-        await _notifications.answered(a.messageId,a.status);
+        final m=widget.store.messages().map(SarcadeMessage.fromJson).where((x)=>x.id==a.messageId).firstOrNull;
+        await _notifications.answered(a.messageId,a.status,key:m==null?null:messageNotificationKey(m));
       }
       if(answers.isNotEmpty&&mounted)setState((){});
     }catch(e){
@@ -180,11 +185,20 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     }
   }
 
-  void _openMessages(){
-    if(_isCompact){_goTab(1);return;}
+  /// Messages pressed again (lot 10C): a conversation open comes back to
+  /// the list; from the list Messages closes (phone: back to the map).
+  final _messagesNav=MessagesNavigator();
+  void _openMessages({bool fromButton=false}){
+    final shown=_isCompact?_tab==1:_deskId=='messages';
+    if(fromButton&&shown&&_messagesNav.backToList())return;
+    if(_isCompact){_goTab(fromButton&&shown?0:1);return;}
+    if(shown&&!fromButton)return;
     _openDesk('messages',()=>MessagesPage(key:const ValueKey('desk-messages'),api:widget.api,eventId:widget.eventId,
-      actorId:widget.deviceId,sync:_sync,store:widget.store));
+      actorId:widget.deviceId,sync:_sync,store:widget.store,navigator:_messagesNav));
   }
+  /// Chat with an operator opened from its sheet (lot 10C, 12 h 54): side
+  /// panel, map visible; ✕ or Échap come back to the sheet.
+  String? _chatPeer;
 
   /// Computer: screen shown beside the rail (the rail stays); phone: a
   /// new screen as before.
@@ -196,7 +210,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       _deskId=id;_deskPage=build();_showPanel=false; // one icon in blue (30 Oct 2026, 1 h 21)
     });
   }
-  @override void initState(){super.initState();_initNotificationActions();unawaited(requestPersistentStorage());_sync=OfflineSyncService(api:widget.api,store:widget.store,eventId:widget.eventId,onRemoteChange:_onRemoteChange);_initDrawing();_initBearings();_loadLocal();_initRoutes();_initMeasure();_sync.start();_initOperations();_loadBasemaps();_initWebUpdate();unawaited(_loadMyPreferences());_syncUiTimer=Timer.periodic(const Duration(seconds:2),(t){final pw=PowerState.instance;if(!pw.foreground)return;if(t.tick%8==0)_checkOrderArrival();if(t.tick%30==1)unawaited(_loadDevices());if(t.tick%3==0)_drainAnswers();if(shouldPollTvNearby(t.tick,foreground:pw.foreground,pco:isPco(widget.deviceId)||myRoles.contains('admin')))unawaited(_tvNearby.check(context,widget.eventId));if(mounted&&shouldRefreshUi(t.tick,foreground:pw.foreground,saver:pw.saver))setState((){});});AccessManager.instance.addListener(_onAccessChanged);_start();unawaited(_loadRoles());}
+  @override void initState(){super.initState();_initNotificationActions();unawaited(requestPersistentStorage());_sync=OfflineSyncService(api:widget.api,store:widget.store,eventId:widget.eventId,onRemoteChange:_onRemoteChange);_initDrawing();_initBearings();_loadLocal();_initRoutes();_initMeasure();_sync.start();_initOperations();_loadBasemaps();_initWebUpdate();unawaited(_loadMyPreferences());_syncUiTimer=Timer.periodic(const Duration(seconds:2),(t){final pw=PowerState.instance;if(!pw.foreground)return;if(t.tick%8==0)_checkOrderArrival();if(t.tick%30==1)unawaited(_loadDevices());if(t.tick%3==0)_drainAnswers();if(shouldPollTvNearby(t.tick,foreground:pw.foreground,pco:true))unawaited(_tvNearby.check(context,widget.eventId));if(mounted&&shouldRefreshUi(t.tick,foreground:pw.foreground,saver:pw.saver))setState((){});});AccessManager.instance.addListener(_onAccessChanged);_start();unawaited(_loadRoles());}
 
   /// Rights given by the server for the checked email (PCO, administrator).
   Future<void> _loadRoles() async {
@@ -255,28 +269,6 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     }catch(_){/* offline: the next reload or the realtime channel will bring them */}
   }
 
-  /// Status at the top of the screen, from the last exchange with the server
-  /// and the real-time channel, refreshed every 2 s.
-  String get _status{
-    // Cloudflare Access answered instead of SARCADE: the server is reachable,
-    // the operator must sign in (not « Hors connexion »).
-    if(AccessManager.instance.requiredFor(widget.api.baseUrl))return S.t('status.accessRequired');
-    if(!_sync.lastSyncOk)return S.t(_started||_sync.lastServerContact!=null?'status.offline':'status.connecting');
-    if(_sync.eventUnknown)return S.t('status.eventUnknown');
-    // Started without network: load the map data and open real time now.
-    if(!_started){_start();return S.t('status.connecting');}
-    final unsent=_sync.unsent;
-    // Server reachable but items set aside: « Connecté · n non envoyés ».
-    if(unsent>0)return S.t('status.unsent',{'n':unsent});
-    if(!_realtime.connected){_realtime.reconnectNow();return S.t('status.realtimeUnavailable');}
-    return S.t('status.connected');
-  }
-  /// Status line: connection state, then the items on their way.
-  String get _statusLine{
-    final n=_sync.inFlight;
-    return n>0?'$_status · ${S.t('status.inFlight',{'n':n})}':_status;
-  }
-
   /// « Se connecter »: after the sign-in everything that waited leaves.
   Future<void> _signIn() async {
     if(!await signInToServer(context,widget.api.baseUrl))return;
@@ -304,10 +296,17 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     }
     setState(()=>_drawingTools=!_drawingTools);
   }
-  void _openUnsent({bool failedAgain=false})=>Navigator.push(context,MaterialPageRoute(builder:(_)=>UnsentPage(sync:_sync,actorId:widget.deviceId,failedAgain:failedAgain))).then((_){if(mounted)setState((){});});
+  /// Problems all lead to the Diagnostic, over the map (30 Oct 2026, 12 h 47).
+  void _openDiagnostics({bool failedAgain=false}){
+    // As the former links sheet: started without network, start now; real
+    // time down, reconnect.
+    if(_sync.lastSyncOk&&!_sync.eventUnknown){if(!_started){unawaited(_start());}else if(!_realtime.connected){_realtime.reconnectNow();}}
+    showDiagnosticsSheet(context,api:widget.api,server:widget.api.baseUrl,eventId:widget.eventId,
+    actorId:widget.deviceId,failedAgain:failedAgain,onSignIn:_signIn).then((_){if(mounted)setState((){});});
+  }
   /// « Envoyer » of the banner = « Tout réessayer »; failing again opens the
   /// list with Supprimer and Exporter (unsent_summary.dart).
-  Future<void> _retryAllUnsent() async {final left=await _sync.retryAll();if(!mounted)return;setState((){});if(left.isNotEmpty)_openUnsent(failedAgain:true);}
+  Future<void> _retryAllUnsent() async {final left=await _sync.retryAll();if(!mounted)return;setState((){});if(left.isNotEmpty)_openDiagnostics(failedAgain:true);}
   // --- Devices: platform, version, last contact (« Version de l'application
   // et connexions des opérateurs », 29 Oct 2026) ---
   final Map<String,Map<String,dynamic>> _devices={};
@@ -317,6 +316,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       if(!mounted)return;
       setState((){for(final d in list){_devices['${d['device_id']}']=d;}});
     }catch(_){/* offline: the last list stays */}
+    unawaited(_loadFixedClasses());
   }
   /// « SARCADE 0.1.0+415 · Android · dernier contact il y a 12 s ».
   String? _deviceLine(String deviceId){
@@ -330,6 +330,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   }
 
   void _onRealtime(RealtimeEvent e){
+    if(e.type=='aprs.class.updated'){unawaited(_applyFixedClass(e.data));}
     if(e.type=='device.updated'){final id='${e.data['device_id']??''}';if(id.isNotEmpty&&mounted)setState(()=>_devices[id]=Map<String,dynamic>.from(e.data));}
     if(e.type==RealtimeService.reconnectedType){unawaited(_reloadPositions());return;}
     if(e.type=='position.updated'){final p=SarcadePosition.fromJson(e.data);if(_validPosition(p)){widget.store.cachePosition(p.toJson());_traces.add(p);if(mounted)setState((){_positions[p.deviceId]=p;if(_selectedDevice==p.deviceId)_trace.add(p);});}}
@@ -378,7 +379,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       // first arrival notifies; an old message caught up later stays silent.
       if(shouldNotifyMessage(alreadyReceived:existing,createdAt:m.createdAt,now:DateTime.now().toUtc())){
         await _notifications.message(title:'SARCADE · ${S.t('priority.${m.priority}')} · ${m.senderId}',body:m.body,priority:m.priority,
-          payload:NotificationPayload(eventId:widget.eventId,messageId:m.id,deviceId:widget.deviceId,priority:m.priority));
+          payload:NotificationPayload(eventId:widget.eventId,messageId:m.id,deviceId:widget.deviceId,priority:m.priority,tag:messageNotificationKey(m)));
       }
     }
     if(mounted)setState((){});
@@ -420,13 +421,13 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     if(_adjusting!=null){_adjustOrigin(point);return;}
     final wide=MediaQuery.sizeOf(context).width>=_compactWidth;
     final me=_me??_positionOf(widget.deviceId);
-    if(gesture&&nearOwnPosition(point,me)){await _bearings.startTaking();if(wide&&mounted)setState(()=>_aim=BearingAim(me!));return;}
+    if(gesture&&nearOwnPosition(point,me)){await _bearings.startTaking();if(wide&&mounted)_startAim(BearingAim(me!));return;}
     final label=S.t('nav.point');
     final choice=await showPointMenu(context,point:point,places:_places,pco:isPco(widget.deviceId),
       coordinates:formatCoordinates(point,_coordFormat,mgrsDigits:_mgrsDigits));
     if(choice==null||!mounted)return;
     switch(choice){
-      case PointAction.bearing: await _bearings.startTaking(from:point);if(wide&&mounted)setState(()=>_aim=BearingAim(point));
+      case PointAction.bearing: await _bearings.startTaking(from:point);if(wide&&mounted)_startAim(BearingAim(point));
       case PointAction.poi: await _createPoiHere(point);
       case PointAction.order: await _sendOperatorHere(point);
       case PointAction.measure: await _measureTo(point,label);
@@ -588,7 +589,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     if(open.isEmpty)return null;
     final key='sosMuted:${widget.eventId}';
     return SosAlertBanner(open:open,muted:sosMuted(open,widget.store.preference(key)),onOpen:_openMessages,onMute:() async {
-      for(final m in open){await _notifications.answered(m.id,'read');}
+      for(final m in open){await _notifications.answered(m.id,'read',key:messageNotificationKey(m));}
       await widget.store.setPreference(key,sosMuteKey(open));
       if(mounted)setState((){});
     });
@@ -740,16 +741,17 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   /// « Outils »: Itinéraires first; « Mesure » removed, the measure starts
   /// from the point menu (30 Oct 2026, 1 h 48). Phone: the « Outils » tab.
   List<ToolItem> _toolItems()=>[
-    ToolItem(icon:Icons.route,title:S.t('routes.menu'),subtitle:S.t('tools.routesHelp'),color:Colors.green,onTap:_openRoutesPanel),
-    ToolItem(icon:Icons.my_location,title:S.t('resection.title'),subtitle:S.t('tools.resectionHelp'),color:Colors.indigo,onTap:_openResection),
+    // Ordered by use (card « Outils, ordre par usage », 30 Oct 2026, 12 h 50).
+    ToolItem(icon:Icons.cloud_outlined,title:S.t('weather.menu'),subtitle:S.t('tools.weatherHelp'),color:Colors.orange,onTap:()=>_openWeather()),
     ToolItem(icon:Icons.pin_drop_outlined,title:S.t('converter.title'),subtitle:S.t('tools.converterHelp'),color:Colors.blue,
       onTap:()=>_openConverter()),
-    ToolItem(icon:Icons.tv,title:S.t('tv.menu'),subtitle:S.t('tools.tvHelp'),color:Colors.deepPurple,
+    ToolItem(icon:Icons.route,title:S.t('routes.menu'),subtitle:S.t('tools.routesHelp'),color:Colors.green,onTap:_openRoutesPanel),
+    ToolItem(icon:Icons.my_location,title:S.t('resection.title'),subtitle:S.t('tools.resectionHelp'),color:Colors.indigo,onTap:_openResection),
+    ToolItem(icon:Icons.tv,title:S.t('tv.menu'),subtitle:S.t('tools.tvHelp'),color:Colors.deepPurple,group:ToolGroup.pc,
       onTap:()=>_openDesk('tv',()=>TvScreensPage(key:const ValueKey('desk-tv'),api:widget.api,eventId:widget.eventId))),
-    if(isPco(widget.deviceId))ToolItem(icon:Icons.settings_input_antenna,title:S.t('aprs.title'),subtitle:S.t('tools.aprsHelp'),color:Colors.purple,
+    if(isPco(widget.deviceId))ToolItem(icon:Icons.settings_input_antenna,title:S.t('aprs.title'),subtitle:S.t('tools.aprsHelp'),color:Colors.purple,group:ToolGroup.pc,
       onTap:()=>_openDesk('aprs',()=>AprsPage(api:widget.api,eventId:widget.eventId,actorId:widget.deviceId,
         onShowOnMap:(p,_)=>_onMapNow((){setState(()=>_searchPin=p);_map.move(p,15);})))),
-    ToolItem(icon:Icons.cloud_outlined,title:S.t('weather.menu'),subtitle:S.t('tools.weatherHelp'),color:Colors.orange,onTap:()=>_openWeather()),
   ];
   /// Convertisseur étoffé (lot 5): actions handed back to the map.
   void _openConverter({LatLng? initial})=>_openDesk('converter',()=>CoordinateConverterPage(key:ValueKey('desk-converter-$initial'),initial:initial,
@@ -1340,8 +1342,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     // Right column (decision of 30 Oct 2026, 3 h 05): « Fond et affichage »,
     // position, SOS; the north arrow only while a navigation turns the map.
     return Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.end,children:[
-      Badge(isLabelVisible:_layerHidden,smallSize:12,backgroundColor:scheme.tertiary,
-        child:_fab('map-layers',S.t('display.menu'),const Icon(Icons.tune),_chooseBasemap)),
+      // No dot « couche masquée » any more (decision of 30 Oct 2026, 12 h 48).
+      _fab('map-layers',S.t('display.menu'),const Icon(Icons.tune),_chooseBasemap),
       const SizedBox(height:10),
       if(rotated&&_meMode!=MeMode.compass)...[
         _fab('map-north',S.t('map.north'),Transform.rotate(angle:-rotation*3.141592653589793/180,child:const Icon(Icons.explore_outlined)),(){
@@ -1354,9 +1356,6 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     ]);
   }
 
-  /// A layer of « Affichage » is hidden: dot on the button.
-  /// High points and relays start hidden (28 Oct 2026): not counted.
-  bool get _layerHidden=>!_showOperators||!_showAprs||_withoutInternetOnly||!_showDrawings||!_showBearings||!_showPois||!_showOrders;
   bool get _showOrders=>widget.store.preference('show_orders:${widget.eventId}')!='0';
   bool get _allTraces=>widget.store.preference('traces_all:${widget.eventId}')=='1';
   bool get _aprsTraces=>widget.store.preference('traces_aprs:${widget.eventId}')=='1';
@@ -1396,10 +1395,10 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   bool get _rectSelecting=>(_drawing.selectMode||_shiftDown)&&!_drawing.isDrawing&&_aim==null&&!_bearings.taking&&_adjusting==null;
   void _onSelectionRect(Rect r){final cam=_map.camera;_drawing.addToSelection(featuresInRect(_drawing.features,r,cam.latLngToScreenOffset,radiusPx:_circleRadiusPx).map((f)=>f.id));}
   void _onSelectionTap(Offset at){final cam=_map.camera;final hit=hitTest(_drawing.features,at,cam.latLngToScreenOffset,radiusPx:_circleRadiusPx);if(hit!=null)_drawing.toggle(hit.id);}
-  void _syncEscapes()=>_escapes.sync([if(_showPanel)'teams',if(_showRoutesPanel)'routes',if(_showReferencePanel)'reference',if(_showResection)'resection',if(_deskId!=null)'desk']);
+  void _syncEscapes()=>_escapes.sync([if(_showPanel)'teams',if(_showRoutesPanel)'routes',if(_showReferencePanel)'reference',if(_showResection)'resection',if(_deskId!=null)'desk',if(_chatPeer!=null)'chat']);
   bool _escapePanel(){_syncEscapes();return _escapes.escape((k)=>setState((){switch(k){
     case 'teams':_showPanel=false; case 'routes':_showRoutesPanel=false;_drawingRouteId=null;
-    case 'reference':_showReferencePanel=false;_selectedReference=null; case 'resection':_showResection=false;_resectionCtl.result=null;
+    case 'reference':_showReferencePanel=false;_selectedReference=null; case 'chat':_chatPeer=null; case 'resection':_showResection=false;_resectionCtl.result=null;
     default:_deskId=null;_deskPage=null;}}));}
   final ResectionController _resectionCtl=ResectionController();
   void Function(LatLng point,ReferenceSite? site)? _pickPoint; String? _pickHint;
@@ -1461,6 +1460,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       layerSectionTitle(c,S.t('layers.teams'),first:true),
       row(S.t('chips.operators'),_showOperators,(v)=>_setShown('show_ops',v),op:'ops'),
       row('APRS',_showAprs,(v) async =>setState(()=>_showAprs=v),op:'aprs'),
+      row(S.t('fixed.layer'),_showFixed,(v)=>_setFlag('show_fixed',v)),
       // A filter, not a layer: no slider.
       row(S.t('chips.withoutInternet'),_withoutInternetOnly,(v) async =>setState(()=>_withoutInternetOnly=v)),
       layerSectionTitle(c,S.t('layers.operation')),
@@ -1499,7 +1499,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     final now=DateTime.now().toUtc(); final fav=_favourites;
     final shown=_favouritesOnly?sorted.where((p)=>fav.contains(p.deviceId)):sorted;
     final by={for(final x in Section.values)x:<SarcadePosition>[]};
-    for(final p in shown){by[sectionOf(p.time.toUtc(),now,oldMin:_oldMin)]!.add(p);}
+    final fixed=shown.where(_isFixed).toList()..sort((a,b)=>a.label.compareTo(b.label));
+    for(final p in shown.where((p)=>!_isFixed(p))){by[sectionOf(p.time.toUtc(),now,oldMin:_oldMin)]!.add(p);}
     final t=Theme.of(context);
     Widget head(String label,int n,{VoidCallback? onTap,bool? open})=>InkWell(onTap:onTap,child:Padding(
       padding:const EdgeInsets.fromLTRB(16,12,8,4),child:Row(children:[
@@ -1515,6 +1516,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       if(silent.isNotEmpty)...[head(S.t('teams.silent'),silent.length),...silent.map(_stationTile)],
       if(old.isNotEmpty)...[head(S.t('teams.old'),old.length,open:_showOld,onTap:()=>setState(()=>_showOld=!_showOld)),
         if(_showOld)...old.map(_stationTile)],
+      if(fixed.isNotEmpty)...[head(S.t('fixed.section'),fixed.length,open:_showFixedList,onTap:()=>setState(()=>_showFixedList=!_showFixedList)),
+        if(_showFixedList)...fixed.map(_stationTile)],
     ]);
   }
 
@@ -1542,7 +1545,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   /// Phone « Plus »: a normal screen, a list of large buttons.
   Widget _moreScreen(List<_RailAction> items)=>Scaffold(appBar:AppBar(title:Text(S.t('tabs.more'))),
     body:ListView(padding:const EdgeInsets.symmetric(vertical:8),children:[
-      for(final a in items)ListTile(minTileHeight:64,leading:Icon(a.icon,size:28),
+      for(final a in items)ListTile(minTileHeight:64,leading:Badge(isLabelVisible:a.alert,smallSize:10,child:Icon(a.icon,size:28)),
         title:Text(a.label,style:const TextStyle(fontSize:17)),trailing:const Icon(Icons.chevron_right),onTap:a.onTap),
     ]));
 
@@ -1566,22 +1569,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       weatherIcon:h==null?null:weatherIcon(weatherKey(h.weatherCode)),
       weatherText:h==null?null:[if(h.temperatureC!=null)'${h.temperatureC!.round()}°',if(h.windKmh!=null)'${windDirection(h.windDirectionDeg)} ${h.windKmh!.round()} km/h'].join(' · '),
       alert:alert?vigilanceColor(r!.vigilance!.colorId):null,
-      onLinks:()=>_showLinks(state,label,colour),onWeather:()=>_openWeather());
-  }
-
-  /// Details of the links (« Pastille des liaisons simplifiée », 28 Oct 2026).
-  void _showLinks(ServerLink? state,String label,Color colour){
-    final access=AccessManager.instance.requiredFor(widget.api.baseUrl);
-    final unsent=_sync.unsent;
-    Widget dot()=>Container(width:10,height:10,decoration:BoxDecoration(color:colour,shape:BoxShape.circle));
-    showModalBottomSheet<void>(context:context,showDragHandle:true,builder:(c)=>SafeArea(child:Column(mainAxisSize:MainAxisSize.min,children:[
-      ListTile(leading:dot(),title:Text(S.t('links.serverLink')),trailing:Text(label,style:TextStyle(color:colour,fontWeight:FontWeight.w600)),
-        subtitle:state==null||state==ServerLink.direct?null:Text(S.t('links.${state.name}Help'))),
-      if(unsent>0||_sync.inFlight>0||state!=ServerLink.direct)ListTile(leading:const Icon(Icons.info_outline),title:Text(_statusLine)),
-      ListTile(leading:const Icon(Icons.sync),title:Text(S.t('map.sync')),onTap:() async {Navigator.pop(c);await _sync.syncNow();if(mounted)setState((){});}),
-      ListTile(leading:const Icon(Icons.outbox_outlined),title:Text('${S.t('unsent.title')} ($unsent)'),onTap:(){Navigator.pop(c);_openUnsent();}),
-      if(access)ListTile(leading:const Icon(Icons.lock_outline),title:Text(S.t('links.signInAgain')),onTap:(){Navigator.pop(c);_signIn();}),
-    ])));
+      onLinks:_openDiagnostics,onWeather:()=>_openWeather());
   }
 
   /// « Suivi actif · 30 s » always in sight (aprs.fi « Beacon »); a tap
@@ -1650,6 +1638,24 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       debugPrint('SARCADE personal settings not read: $e');
     }
   }
+  // Fixed APRS stations (fixed_stations.dart): forced by hand on this device.
+  final MovementTracker _moves=MovementTracker();
+  Map<String,String> get _forced=>parseForced(widget.store.preference('fixed_forced:${widget.eventId}'));
+  bool _isFixed(SarcadePosition p)=>isFixedStation(p,forced:_forced[p.deviceId],moved:_moves.moved(p.deviceId),still:_moves.still(p.deviceId,DateTime.now().toUtc()));
+  bool get _showFixed=>widget.store.preference('show_fixed:${widget.eventId}')=='1';
+  bool _showFixedList=false;
+  Future<void> _saveForced(Map<String,String> m) async {await widget.store.setPreference('fixed_forced:${widget.eventId}',encodeForced(m));if(mounted)setState((){});}
+  Future<void> _forceFixed(String id,String v) async {
+    final m=_forced;if(v=='auto'){m.remove(id);}else{m[id]=v;}await _saveForced(m);
+    try{await widget.api.setAprsClass(widget.eventId,id,widget.deviceId,serverKind(v));}catch(e){debugPrint('SARCADE APRS class not sent: $e');}
+  }
+  Future<void> _loadFixedClasses() async {try{final c=await widget.api.aprsClasses(widget.eventId);await _saveForced(forcedFromServer(c));}catch(_){/* offline: the cached classes stay */}}
+  Future<void> _applyFixedClass(Map<String,dynamic> d) async {
+    final id='${d['device_id']??''}';if(id.isEmpty)return;final m=_forced;final k='${d['kind']??''}';
+    if(k=='fixed'){m[id]='f';}else if(k=='mobile'){m[id]='m';}else{m.remove(id);}await _saveForced(m);
+  }
+  Marker _fixedMarker(SarcadePosition p)=>Marker(point:LatLng(p.lat,p.lon),width:22,height:22,child:Tooltip(message:p.label,child:GestureDetector(onTap:()=>_tapStation(p),
+    child:Opacity(opacity:0.7,child:_stationIcon(p,size:20)))));
   Future<void> _setTraceHours(int h) async {
     setState((){_traceHours=h;_scrub=null;_trace=traceWithin(_history,DateTime.now().toUtc(),h);});
   }
@@ -1751,11 +1757,15 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           ])),
           IconButton(tooltip:S.t(fav?'favourites.remove':'favourites.add'),onPressed:()=>_toggleFavourite(p.deviceId),icon:Icon(fav?Icons.star:Icons.star_border,color:fav?s.tertiary:null)),
           // « Discuter »: direct chat with this operator (not with myself, not an APRS station).
-          if(!p.isAprs&&p.deviceId!=widget.deviceId)IconButton(tooltip:S.t('operators.chat'),onPressed:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>MessagesPage(
-            api:widget.api,eventId:widget.eventId,actorId:widget.deviceId,sync:_sync,store:widget.store,initialPeer:p.deviceId))),icon:const Icon(Icons.chat_outlined)),
+          if(!p.isAprs&&p.deviceId!=widget.deviceId)IconButton(tooltip:S.t('operators.chat'),onPressed:()=>setState((){_chatPeer=p.deviceId;_deskPage=null;_deskId=null;}),icon:const Icon(Icons.chat_outlined)),
           IconButton(tooltip:S.t('common.close'),onPressed:()=>setState((){_selectedDevice=null;_trace=[];_history=[];_scrub=null;}),icon:const Icon(Icons.close)),
         ]),
         if(callsignAmong([p.callsign,p.label,_devices[p.deviceId]?['callsign']?.toString()]) case final call?)Padding(padding:const EdgeInsets.only(top:6),child:CallsignLinks(callsign:call)),
+        if(p.isAprs)Padding(padding:const EdgeInsets.only(top:8),child:Row(children:[
+          Text(S.t('fixed.kind'),style:const TextStyle(fontSize:13)),const SizedBox(width:8),
+          Flexible(child:ChoicePills<String>(compact:true,selected:_forced[p.deviceId]??'auto',onSelected:(v)=>_forceFixed(p.deviceId,v),
+            choices:[(value:'auto',label:S.t(_isFixed(p)?'fixed.autoFixed':'fixed.autoMobile'),icon:null),(value:'f',label:S.t('fixed.fixed'),icon:null),(value:'m',label:S.t('fixed.mobile'),icon:null)])),
+        ])),
         const SizedBox(height:8),
         Container(padding:const EdgeInsets.symmetric(horizontal:10,vertical:8),decoration:BoxDecoration(color:s.surfaceContainerHigh,borderRadius:BorderRadius.circular(10)),
           child:Text([_sourceLabel(p),if(p.aprsPath?.isNotEmpty==true)S.t('station.via',{'path':p.aprsPath})].join(' · '),style:const TextStyle(fontSize:12,fontFamily:'monospace'))),
@@ -1877,6 +1887,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     if(a.fixed){final t=a.tip, at=tap.relative;if(t!=null&&at!=null&&nearTip(at,_map.camera.latLngToScreenOffset(t))){setState(a.release);}return;}
     a.fix(p,snap:HardwareKeyboard.instance.isShiftPressed);_bearings.setManual(a.azimuthDeg);}
   void _cancelAim(){_aim=null;_bearings.stopTaking();}
+  /// Mouse bearing started (new or changed): map centred on its origin (30 Oct 2026, 12 h 44).
+  void _startAim(BearingAim a){setState(()=>_aim=a);glideMapTo(_map,a.origin);}
   /// « Modifier » on a computer: mouse arrow from the same origin, panel
   /// prefilled; Échap or a right click leaves the bearing as it was.
   Future<void> _editWithMouse(Bearing b) async {
@@ -1885,7 +1897,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     final a=BearingAim.edit(b);
     _bearings.setManual(a.azimuthDeg);
     if(b.search.isNotEmpty)await _setSignal(b.search);
-    if(mounted)setState((){_aim=a;_brgStrength=b.strength;});
+    if(mounted){setState(()=>_brgStrength=b.strength);_startAim(a);}
   }
   bool get _brgByOperator=>widget.store.preference('brg_color:${widget.eventId}')=='op';
   Future<void> _setSignal(String v) async {await widget.store.setPreference('brg_search:${widget.eventId}',v.isEmpty?null:v);if(mounted)setState((){});}
@@ -1896,10 +1908,12 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     final s=Theme.of(context).colorScheme; final b=_bearings; final az=b.trueDeg; final p=b.position;
     final mouse=_aim!=null, decl=b.declinationDeg, mag=mouse?(az==null||decl==null?null:normDeg(az-decl)):b.magneticDeg;
     final t=DateTime.now(); String two(int v)=>v.toString().padLeft(2,'0');
+    if(mouse){return MouseBearingHud(trueDeg:az,magneticDeg:mag,position:p,accuracyM:b.accuracyM,time:t,onClose:_cancelAim,
+      decoration:glass(context,border:s.primary.withValues(alpha:0.6)));}
     return Container(padding:const EdgeInsets.fromLTRB(14,10,8,10),decoration:glass(context,border:s.primary.withValues(alpha:0.6)),
       child:Column(crossAxisAlignment:CrossAxisAlignment.start,mainAxisSize:MainAxisSize.min,children:[
         Row(children:[
-          Expanded(child:Text(S.t(_aim!=null?'bearings.aimMouse':b.hasCompass||b.manualDeg!=null?'bearings.aim':'bearings.noCompass'),style:TextStyle(fontSize:12,fontWeight:FontWeight.w700,letterSpacing:0.8,color:s.primary))),
+          Expanded(child:Text(S.t(b.hasCompass||b.manualDeg!=null?'bearings.aim':'bearings.noCompass'),style:TextStyle(fontSize:12,fontWeight:FontWeight.w700,letterSpacing:0.8,color:s.primary))),
           IconButton(tooltip:S.t('common.cancel'),onPressed:_cancelAim,icon:const Icon(Icons.close)),
         ]),
         Row(crossAxisAlignment:CrossAxisAlignment.end,children:[
@@ -2216,17 +2230,18 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     currentMapView=_tvView; currentMapOptions=_tvOptions;
     final sorted=_positions.values.where((p)=>(p.isAprs?_showAprs:_showOperators)&&(!_withoutInternetOnly||worksWithoutInternet(p)||p.deviceId==widget.deviceId)).toList()..sort((a,b)=>a.deviceId.compareTo(b.deviceId));
     // Old stations stay in the list and the search, not on the map.
-    final onMap=sorted.where((p)=>p.deviceId==widget.deviceId||sectionOf(p.time.toUtc(),DateTime.now().toUtc(),oldMin:_oldMin)!=Section.old).toList();
+    for(final p in _positions.values){if(p.isAprs)_moves.observe(p);}
+    final onMap=sorted.where((p)=>p.deviceId==widget.deviceId||(sectionOf(p.time.toUtc(),DateTime.now().toUtc(),oldMin:_oldMin)!=Section.old&&(_showFixed||!_isFixed(p)))).toList();
     final selected=_selectedDevice==null?null:_positions[_selectedDevice];
-    final traced=_traceIds(onMap);
+    final traced=_traceIds(onMap.where((p)=>!_isFixed(p)));
     final screenWidth=MediaQuery.sizeOf(context).width;
     final compact=screenWidth<_compactWidth;
     _syncEscapes();
     // On a phone a panel takes most of the width, leaving a strip of map visible.
     double panelWidth(double w)=>compact?(screenWidth*0.85).clamp(0.0,w):w;
     void toggleOperators()=>setState((){_deskPage=null;_deskId=null;_showPanel=!_showPanel;if(_showPanel){_showReferencePanel=false;_showResection=false;}});
-    void openFiles()=>_openDesk('files',()=>FilesPage(api:widget.api,eventId:widget.eventId,actorId:widget.deviceId,store:widget.store));
-    void openMessages()=>_openMessages();
+    void openFiles()=>_openDesk('files',()=>FilesPage(api:widget.api,eventId:widget.eventId,actorId:widget.deviceId,store:widget.store,drawings:DrawingFileActions(importFile:_importFile,exportAll:_exportGeoJson,count:()=>_drawing.features.length)));
+    void openMessages()=>_openMessages(fromButton:true);
     void showMap()=>setState((){_tab=0;_deskPage=null;_deskId=null;_showPanel=false;_showReferencePanel=false;_showRoutesPanel=false;_showResection=false;_drawingRouteId=null;});
     void openSettings(){
       final b=widget.settingsBuilder;
@@ -2236,7 +2251,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     // Paramètres; « Outils » is a tab, « Itinéraires » is in it.
     final more=<_RailAction>[
       _RailAction(Icons.folder_copy_outlined,S.t('map.files'),openFiles),
-      if(widget.onSettings!=null)_RailAction(Icons.settings_outlined,S.t('map.settings'),widget.onSettings!),
+      if(widget.onSettings!=null)_RailAction(Icons.settings_outlined,S.t('map.settings'),widget.onSettings!,alert:diagnosticsAlert()),
     ];
     // Computer: every entry visible, no « … » (decision of 29 Oct 2026,
     // 12 h 17); Carte and Messages are drawn by the rail itself, Paramètres
@@ -2250,14 +2265,14 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         selected:_showResection||_showRoutesPanel||const {'tools','converter','tv','aprs','weather'}.contains(_deskId)),
     ];
     final railBottom=(widget.onSettings!=null||widget.settingsBuilder!=null)
-      ?_RailAction(Icons.settings_outlined,S.t('map.settings'),openSettings,selected:_deskId=='settings'):null;
+      ?_RailAction(Icons.settings_outlined,S.t('map.settings'),openSettings,selected:_deskId=='settings',alert:diagnosticsAlert()):null;
     final messagesButton=IconButton(tooltip:S.t('map.messages'),onPressed:openMessages,icon:_messagesIcon(),
       style:IconButton.styleFrom(fixedSize:const Size(48,48)));
     final sosAlert=_sosAlert();
     final banners=OperationsBanners(settings:_ops.settings,update:_ops.update,
           alert:syncAlert(_sync.currentItems,DateTime.now(),_ops.settings.syncAlertMinutes),
           heldPhotos:_sync.lowBandwidth?widget.store.pendingUploads().length:0,
-          onSyncNow:_retryAllUnsent,alertWhat:unsentWhat(_sync.currentItems),onOpenUnsent:_openUnsent,
+          onSyncNow:_retryAllUnsent,alertWhat:unsentWhat(_sync.currentItems),onOpenUnsent:_openDiagnostics,
           onUpdate:()=>downloadUpdate(context,widget.api,_ops.update),
           accessRequired:AccessManager.instance.requiredFor(widget.api.baseUrl),
           accessRenewBy:_accessRenewBy,onSignIn:_signIn,
@@ -2290,6 +2305,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         // stays visible (« rail toujours visible », 28 Oct 2026).
         Expanded(child:IndexedStack(index:!compact&&_deskPage!=null?1:0,sizing:StackFit.expand,children:[Row(children:[
         if(_showResection&&_pickPoint==null)_resectionPanel(panelWidth(380)),
+        if(_chatPeer!=null)chatSidePanel(width:panelWidth(420),child:MessagesPage(key:ValueKey('chat-$_chatPeer'),api:widget.api,eventId:widget.eventId,
+          actorId:widget.deviceId,sync:_sync,store:widget.store,initialPeer:_chatPeer,onClose:()=>setState(()=>_chatPeer=null))),
         if(_showRoutesPanel)SizedBox(width:panelWidth(360),child:Material(elevation:3,child:RoutesPanel(
           controller:_routes,api:widget.api,actorId:widget.deviceId,selectedRouteId:_selectedRouteId,drawingRouteId:_drawingRouteId,
           groups:widget.store.groups(widget.eventId).map(CommGroup.fromJson).toList(),
@@ -2352,7 +2369,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           ...buildMeasureLayers(_measure,_coordFormat),
           ..._resectionLayers(),
           if(_showPois)_faded('poi',PoiClusterLayer(pois:_pois.values.toList(),onTap:(p)=>unawaited(_openPoi(p)))),
-          _faded('aprs',MarkerLayer(markers:_stationMarkers(onMap.where((p)=>p.isAprs).toList()))),
+          _faded('aprs',MarkerLayer(markers:[...onMap.where(_isFixed).map(_fixedMarker),..._stationMarkers(onMap.where((p)=>p.isAprs&&!_isFixed(p)).toList())])),
           _faded('ops',MarkerLayer(markers:_stationMarkers(onMap.where((p)=>!p.isAprs).toList()))),
           if(_me!=null)MarkerLayer(markers:[Marker(point:_me!,width:22,height:22,child:GestureDetector(key:const ValueKey('me-dot'),
             onTap:()=>openMyPositionInfo(context,location:_location,places:_places,fallback:_me,onSendMessage:_sendText),
@@ -2403,7 +2420,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
               foreground:_drawingTools?Theme.of(context).colorScheme.onPrimary:null),
             if(_drawingTools)...[
               const SizedBox(width:8),
-              Flexible(child:DrawingToolbar(controller:_drawing,onExport:_exportGeoJson,onImport:_importFile,onClose:_toggleDrawingTools)),
+              // Hidden while an object is edited: its card stays visible (13 h 25).
+              if(_drawing.selection.isEmpty)Flexible(child:DrawingToolbar(controller:_drawing,onClose:_toggleDrawingTools)),
             ]else...[
               const SizedBox(width:8),
               // Computer (29 Oct 2026): « Suivi de position » right after the
@@ -2465,7 +2483,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
 ])),
         // Phone: the other tabs, built at their first visit then kept.
         if(compact)...[
-          _builtTabs.contains(1)?MessagesPage(api:widget.api,eventId:widget.eventId,actorId:widget.deviceId,sync:_sync,store:widget.store,active:_tab==1):const SizedBox.shrink(),
+          _builtTabs.contains(1)?MessagesPage(api:widget.api,eventId:widget.eventId,actorId:widget.deviceId,sync:_sync,store:widget.store,active:_tab==1,navigator:_messagesNav):const SizedBox.shrink(),
           _builtTabs.contains(2)?_teams(sorted,screen:true):const SizedBox.shrink(),
           _builtTabs.contains(3)?ToolsPage(items:_toolItems()):const SizedBox.shrink(),
           _builtTabs.contains(4)?_moreScreen(more):const SizedBox.shrink(),
@@ -2473,7 +2491,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       ])),
       ])),
       // Phone: tab bar always visible, each tab a real screen.
-      bottomNavigationBar:compact?_TabBar(index:_tab,messagesIcon:_messagesIcon(),onSelect:_goTab):null,
+      bottomNavigationBar:compact?_TabBar(index:_tab,messagesIcon:_messagesIcon(),onSelect:(i)=>i==1?_openMessages(fromButton:true):_goTab(i),moreAlert:diagnosticsAlert()):null,
     ));
   }
 }
@@ -2481,7 +2499,9 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
 /// One action of the rail (computer) or of the « Plus » sheet (phone).
 class _RailAction {
   final IconData icon; final String label; final VoidCallback onTap; final bool selected;
-  const _RailAction(this.icon,this.label,this.onTap,{this.selected=false});
+  /// Red dot: a problem waits in the Diagnostic (Paramètres).
+  final bool alert;
+  const _RailAction(this.icon,this.label,this.onTap,{this.selected=false,this.alert=false});
 }
 
 /// Computer: vertical rail on the left, 9 entries (note « Navigation et
@@ -2491,11 +2511,11 @@ class _Rail extends StatelessWidget {
   const _Rail({required this.messages,required this.actions,required this.onMap,required this.mapSelected,this.bottom});
   @override Widget build(BuildContext context){
     final scheme=Theme.of(context).colorScheme;
-    Widget button(IconData icon,String label,VoidCallback onTap,{bool selected=false})=>Padding(padding:const EdgeInsets.symmetric(vertical:2),
+    Widget button(IconData icon,String label,VoidCallback onTap,{bool selected=false,bool alert=false})=>Padding(padding:const EdgeInsets.symmetric(vertical:2),
       child:IconButton(tooltip:label,onPressed:onTap,isSelected:selected,
         style:IconButton.styleFrom(fixedSize:const Size(48,48),shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(14)),
           backgroundColor:selected?scheme.primaryContainer:null,foregroundColor:selected?scheme.primary:scheme.onSurfaceVariant),
-        icon:Icon(icon)));
+        icon:Badge(isLabelVisible:alert,smallSize:10,child:Icon(icon))));
     return Container(width:72,margin:const EdgeInsets.fromLTRB(8,8,0,8),decoration:glass(context),
       child:Column(children:[
         Expanded(child:SingleChildScrollView(padding:const EdgeInsets.symmetric(vertical:8),child:Column(children:[
@@ -2505,7 +2525,7 @@ class _Rail extends StatelessWidget {
         ]))),
         if(bottom!=null)...[
           const Divider(height:1,indent:14,endIndent:14),
-          Padding(padding:const EdgeInsets.symmetric(vertical:6),child:button(bottom!.icon,bottom!.label,bottom!.onTap,selected:bottom!.selected)),
+          Padding(padding:const EdgeInsets.symmetric(vertical:6),child:button(bottom!.icon,bottom!.label,bottom!.onTap,selected:bottom!.selected,alert:bottom!.alert)),
         ],
       ]));
   }
@@ -2513,8 +2533,8 @@ class _Rail extends StatelessWidget {
 
 /// Phone: tab bar always visible; each tab is a real screen.
 class _TabBar extends StatelessWidget {
-  final int index; final Widget messagesIcon; final ValueChanged<int> onSelect;
-  const _TabBar({required this.index,required this.messagesIcon,required this.onSelect});
+  final int index; final Widget messagesIcon; final ValueChanged<int> onSelect; final bool moreAlert;
+  const _TabBar({required this.index,required this.messagesIcon,required this.onSelect,this.moreAlert=false});
   @override Widget build(BuildContext context){
     final scheme=Theme.of(context).colorScheme;
     Widget tab(int i,Widget icon,String label,{String? tooltip})=>Expanded(child:Tooltip(message:tooltip??label,excludeFromSemantics:true,child:InkWell(
@@ -2536,7 +2556,7 @@ class _TabBar extends StatelessWidget {
         tab(1,messagesIcon,S.t('tabs.messages'),tooltip:S.t('map.messages')),
         tab(2,const Icon(Icons.groups_outlined),S.t('tabs.teams')),
         tab(3,const Icon(Icons.build_outlined),S.t('tools.title')),
-        tab(4,const Icon(Icons.more_horiz),S.t('tabs.more')),
+        tab(4,Badge(isLabelVisible:moreAlert,smallSize:10,child:const Icon(Icons.more_horiz)),S.t('tabs.more')),
       ])));
   }
 }

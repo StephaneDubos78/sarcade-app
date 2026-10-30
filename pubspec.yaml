@@ -55,3 +55,7 @@ dev_dependencies:
   flutter_lints: ^6.0.0
 flutter:
   uses-material-design: true
+  # SARCADE logo of « À propos », light and dark themes (30 Oct 2026, 13 h 27).
+  assets:
+    - assets/logo/sarcade-logo-light.png
+    - assets/logo/sarcade-logo-dark.png

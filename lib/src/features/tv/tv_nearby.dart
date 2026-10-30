@@ -1,7 +1,8 @@
 /// « Écrans TV, validation automatique depuis le même réseau » (validated
 /// on 30 Oct 2026, 2 h 33): a TV showing its code is noted by the server
-/// with its public address; a PCO or an administrator behind the same
-/// address gets « Un écran demande à se connecter sur votre réseau (code
+/// with its public address; any participant of the event behind the same
+/// address (decision of 30 Oct 2026, 13 h 19, formerly PCO and
+/// administrators only) gets « Un écran demande à se connecter sur votre réseau (code
 /// …). Autoriser ? ». Nothing is approved without a touch; the code is
 /// always shown; QR code and typed code stay. Channel: the timer of the map
 /// page asks the server every 60 s, SARCADE on screen only (battery card,
