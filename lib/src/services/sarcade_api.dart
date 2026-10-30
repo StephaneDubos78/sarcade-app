@@ -320,6 +320,18 @@ class SarcadeApi {
     if(r.statusCode!=200) throw SarcadeHttpException('aprs_callsigns',r.statusCode);
     return ((jsonDecode(r.body) as Map)['callsigns'] as List).map((e)=>'$e').toList();
   }
+  /// APRS stations classified by hand, shared by the event: {device_id: fixed|mobile}.
+  Future<Map<String,String>> aprsClasses(String eventId) async {
+    final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/events/${Uri.encodeComponent(eventId)}/aprs/classes'));
+    if(r.statusCode!=200) throw SarcadeHttpException('aprs_classes',r.statusCode);
+    return ((jsonDecode(r.body) as Map)['classes'] as Map).map((k,v)=>MapEntry('$k','$v'));
+  }
+  /// [kind]: fixed, mobile or auto (removes the choice).
+  Future<void> setAprsClass(String eventId,String deviceId,String actorId,String kind) async {
+    final r=await _client.put(Uri.parse('$baseUrl/api/v0.1/events/${Uri.encodeComponent(eventId)}/aprs/classes/${Uri.encodeComponent(deviceId)}'),headers:_json,
+      body:jsonEncode({'actor_id':actorId,'kind':kind}));
+    if(r.statusCode!=200) throw SarcadeHttpException('aprs_class',r.statusCode,r.body);
+  }
   Future<Map<String,dynamic>> event(String eventId) async {
     final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/events/$eventId'));
     if(r.statusCode!=200) throw SarcadeHttpException('event',r.statusCode);
