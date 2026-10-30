@@ -81,7 +81,7 @@ class _EventSettingsSectionState extends State<EventSettingsSection> {
     final old=(s['position_old_min'] as num?)?.toInt()??120;
     String dur(int m)=>m%60==0?'${m~/60} h':'$m min';
     return AbsorbPointer(absorbing:_busy,child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
-      Padding(padding:const EdgeInsets.only(top:12),child:EventNameBuilder(api:widget.api,eventId:widget.eventId,placeholder:S.t('event.this'),
+      Padding(padding:const EdgeInsets.only(top:12),child:EventNameBuilder(api:widget.api,eventId:widget.eventId,
         builder:(_,name)=>Text(S.t('event.intro',{'event':name})))),
       _row(S.t('event.oldThreshold'),help:S.t('event.oldThresholdHelp'),child:DropdownButton<int>(value:oldChoices.contains(old)?old:120,
         items:[for(final m in oldChoices)DropdownMenuItem(value:m,child:Text(dur(m)))],

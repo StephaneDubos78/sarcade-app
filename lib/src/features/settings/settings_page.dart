@@ -484,10 +484,10 @@ class _SettingsPageState extends State<SettingsPage> {
   Widget _diagnosticsTab()=>Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
     Padding(padding:const EdgeInsets.only(top:12),child:Text(S.t('diagnostics.description'))),
     // Name of the event; its identifier in the copyable report only (revue n° 60).
-    _row(S.t('diagnostics.event'),child:EventNameBuilder(api:widget.api,eventId:widget.initial.eventId,placeholder:S.t('event.this'),builder:(_,n)=>_value(n))),
+    _row(S.t('diagnostics.event'),child:EventNameBuilder(api:widget.api,eventId:widget.initial.eventId,builder:(_,n)=>_value(n))),
     _row(S.t('diagnostics.server'),child:_value(widget.initial.serverUrl)),
     _row(S.t('diagnostics.device'),child:_value(widget.initial.deviceId)),
-    EventNameBuilder(api:widget.api,eventId:widget.initial.eventId,placeholder:S.t('event.this'),builder:(_,n)=>_row(S.t('map.logbook'),help:S.t('diagnostics.activeEvent',{'event':n}),
+    EventNameBuilder(api:widget.api,eventId:widget.initial.eventId,builder:(_,n)=>_row(S.t('map.logbook'),help:S.t('diagnostics.activeEvent',{'event':n}),
       child:_value('',action:S.t('diagnostics.open'),onAction:widget.onOpenLogbook))),
     // « Copier » at the far right (29 Oct 2026).
     _row(S.t('diagnostics.version'),child:Builder(builder:(c){

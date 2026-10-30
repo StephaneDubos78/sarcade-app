@@ -38,13 +38,12 @@ Future<String?> loadEventName(SarcadeApi? api,String eventId) async {
   }
 }
 
-/// Builds with the name of the event; « Événement » until it is known.
+/// Builds with the name of the event; its identifier as long as the name is
+/// unknown (loading, offline, older server).
 class EventNameBuilder extends StatefulWidget {
   final SarcadeApi? api; final String eventId;
   final Widget Function(BuildContext context,String name) builder;
-  /// Shown while the name is unknown (never the identifier).
-  final String placeholder;
-  const EventNameBuilder({super.key,required this.api,required this.eventId,required this.builder,required this.placeholder});
+  const EventNameBuilder({super.key,required this.api,required this.eventId,required this.builder});
   @override State<EventNameBuilder> createState()=>_EventNameBuilderState();
 }
 
@@ -55,5 +54,5 @@ class _EventNameBuilderState extends State<EventNameBuilder> {
       loadEventName(widget.api,widget.eventId).then((n){if(n!=null&&mounted)setState((){});});
     }
   }
-  @override Widget build(BuildContext context)=>widget.builder(context,knownEventName(widget.eventId)??widget.placeholder);
+  @override Widget build(BuildContext context)=>widget.builder(context,knownEventName(widget.eventId)??widget.eventId);
 }
