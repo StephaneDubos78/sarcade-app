@@ -10,6 +10,7 @@ import '../../platform/platform_services.dart';
 import '../../models/shared_file.dart';
 import '../../services/sarcade_api.dart';
 import 'file_tree.dart';
+import '../../ui/action_buttons.dart';
 
 /// Files screen (« Écran Fichiers enrichi », « Personnel », 28 Oct 2026;
 /// « sous-dossiers et interface plus soignée », 29 Oct 2026): folders up to
@@ -444,8 +445,10 @@ class _FilesPageState extends State<FilesPage> with SingleTickerProviderStateMix
     final crumbs=breadcrumb(S.t(_personalTab?'files.tabPersonal':'files.tabEvent'),_path);
     final t=Theme.of(context);
     return Padding(padding:const EdgeInsets.fromLTRB(12,6,8,2),child:Row(children:[
-      if(_path.isNotEmpty)IconButton(tooltip:S.t('files.up'),onPressed:()=>setState(()=>_path=parentFolder(_path)),icon:const Icon(Icons.arrow_upward)),
-      Expanded(child:SingleChildScrollView(scrollDirection:Axis.horizontal,reverse:true,child:Row(children:[
+      if(_path.isNotEmpty)RoundIconButton(tooltip:S.t('files.up'),onPressed:()=>setState(()=>_path=parentFolder(_path)),icon:Icons.arrow_upward),
+      // At the root, no breadcrumb: « Événement » / « Personnel » is already the
+      // tab (charte, 30 Oct 2026, 10 h 46, rule 6).
+      Expanded(child:_path.isEmpty?const SizedBox.shrink():SingleChildScrollView(scrollDirection:Axis.horizontal,reverse:true,child:Row(children:[
         for(var i=0;i<crumbs.length;i++)...[
           if(i>0)Icon(Icons.chevron_right,size:18,color:t.colorScheme.onSurfaceVariant),
           if(i<crumbs.length-1)_target(crumbs[i].path,(over)=>_hl(over,TextButton(onPressed:()=>setState(()=>_path=crumbs[i].path),
@@ -456,8 +459,8 @@ class _FilesPageState extends State<FilesPage> with SingleTickerProviderStateMix
             child:Text(crumbs[i].label,style:TextStyle(fontWeight:i==crumbs.length-1?FontWeight.w700:FontWeight.w500))),
         ],
       ]))),
-      IconButton(tooltip:S.t(_grid?'files.asList':'files.asGrid'),onPressed:() async {await widget.store?.setPreference('files_grid',_grid?null:'1');if(mounted)setState((){});},
-        icon:Icon(_grid?Icons.view_list_outlined:Icons.grid_view_outlined)),
+      RoundIconButton(tooltip:S.t(_grid?'files.asList':'files.asGrid'),onPressed:() async {await widget.store?.setPreference('files_grid',_grid?null:'1');if(mounted)setState((){});},
+        icon:_grid?Icons.view_list_outlined:Icons.grid_view_outlined),
       const SizedBox(width:4),
       MenuAnchor(builder:(c,ctl,_)=>FilledButton.icon(onPressed:_uploading?null:()=>ctl.isOpen?ctl.close():ctl.open(),
           icon:_uploading?const SizedBox(width:16,height:16,child:CircularProgressIndicator(strokeWidth:2)):const Icon(Icons.add),label:Text(S.t('files.new'))),

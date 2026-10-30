@@ -60,7 +60,7 @@ class _QuickMessagesEditorState extends State<QuickMessagesEditor> {
               trailing:IconButton(tooltip:S.t('common.delete'),icon:const Icon(Icons.delete_outline),onPressed:()=>_remove(i)));
           })),
         SafeArea(top:false,child:Padding(padding:const EdgeInsets.fromLTRB(16,0,16,12),child:Row(children:[
-          OutlinedButton.icon(onPressed:_rows.length>=maxQuickMessages?null:_add,icon:const Icon(Icons.add),label:Text(S.t('event.quickAdd'))),
+          FilledButton.icon(onPressed:_rows.length>=maxQuickMessages?null:_add,icon:const Icon(Icons.add),label:Text(S.t('event.quickAdd'))),
           const SizedBox(width:12),
           Text(S.t('event.quickCount',{'n':_rows.length,'max':maxQuickMessages}),style:t.textTheme.bodySmall),
         ]))),

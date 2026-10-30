@@ -9,6 +9,7 @@ import '../../models/position.dart';
 import '../../services/sarcade_api.dart';
 import '../measure/coordinates.dart';
 import 'aprs_models.dart';
+import '../../ui/action_buttons.dart';
 
 /// PCO screen « APRS de l'événement » (vault note « APRS »): callsign groups
 /// followed by the event, callsigns added for it, local radio transmission,
@@ -258,7 +259,7 @@ class _AprsPageState extends State<AprsPage> {
           // Groups
           Padding(padding:const EdgeInsets.fromLTRB(16,0,8,0),child:Row(children:[
             Expanded(child:Text(S.t('aprs.groups'),style:theme.textTheme.titleSmall)),
-            OutlinedButton.icon(onPressed:()=>_editGroup(null),icon:const Icon(Icons.add),label:Text(S.t('aprs.groupNew'))),
+            FilledButton.icon(onPressed:()=>_editGroup(null),icon:const Icon(Icons.add),label:Text(S.t('aprs.groupNew'))),
           ])),
           if(_groups.isEmpty)Padding(padding:const EdgeInsets.symmetric(horizontal:16),child:Text(S.t('aprs.groupsNone'),style:theme.textTheme.bodySmall)),
           for(final g in _groups)CheckboxListTile(
@@ -266,7 +267,7 @@ class _AprsPageState extends State<AprsPage> {
             onChanged:_ended?null:(v)=>_toggleGroup('${g['id']}',v==true),
             title:Text('${g['name']}'),
             subtitle:Text(stringList(g['callsigns']).join(' · ')),
-            secondary:IconButton(tooltip:S.t('aprs.groupEdit'),onPressed:()=>_editGroup(g),icon:const Icon(Icons.edit_outlined)),
+            secondary:RoundIconButton(tooltip:S.t('aprs.groupEdit'),onPressed:()=>_editGroup(g),icon:Icons.edit_outlined),
             controlAffinity:ListTileControlAffinity.leading,
           ),
           const Divider(height:24),
@@ -279,7 +280,7 @@ class _AprsPageState extends State<AprsPage> {
             Expanded(child:TextField(controller:_addCtrl,enabled:!_ended,textCapitalization:TextCapitalization.characters,
               decoration:InputDecoration(labelText:S.t('aprs.addCallsign'),helperText:S.t('aprs.ssidHelp'),helperMaxLines:1),
               onSubmitted:(_)=>_addCallsigns())),
-            IconButton(tooltip:S.t('aprs.add'),onPressed:_ended?null:_addCallsigns,icon:const Icon(Icons.add_circle_outline)),
+            RoundIconButton(tooltip:S.t('aprs.add'),onPressed:_ended?null:_addCallsigns,icon:Icons.add),
           ])),
           const Divider(height:24),
           // Local radio transmission and its callsign: only here (lot 5).
@@ -291,7 +292,7 @@ class _AprsPageState extends State<AprsPage> {
             Expanded(child:TextField(key:const ValueKey('aprs-tx-callsign'),controller:_txCall,enabled:!_ended,textCapitalization:TextCapitalization.characters,
               decoration:InputDecoration(labelText:S.t('aprs.txCall'),hintText:'F4ABC',helperText:S.t('aprs.txCallHelp'),helperMaxLines:2),
               onSubmitted:(_)=>_setTxCall())),
-            OutlinedButton(onPressed:_ended?null:_setTxCall,child:Text(S.t('event.apply'))),
+            FilledButton(onPressed:_ended?null:_setTxCall,child:Text(S.t('event.apply'))),
           ])),
         ]),
     );

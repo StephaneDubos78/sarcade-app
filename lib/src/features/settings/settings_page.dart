@@ -23,6 +23,7 @@ import 'event_settings_section.dart';
 import '../bearings/signal_defaults_page.dart';
 import '../../offline/local_store.dart';
 import '../../ui/save_bar.dart';
+import '../../ui/action_buttons.dart';
 
 /// Operator settings: server address, event and terminal identifier,
 /// language, radio callsign. Lets one APK serve every field operator
@@ -176,11 +177,11 @@ class _SettingsPageState extends State<SettingsPage> {
           validator:(_)=>_url(_server.text),
         )),
         if(current!=null)...[
-          IconButton(tooltip:S.t('servers.rename'),onPressed:()=>_renameServer(current),icon:const Icon(Icons.edit_outlined)),
-          if(canRemoveServer(current))IconButton(tooltip:S.t('servers.remove'),onPressed:()=>_removeServer(current),icon:const Icon(Icons.delete_outline)),
+          RoundIconButton(tooltip:S.t('servers.rename'),onPressed:()=>_renameServer(current),icon:Icons.edit_outlined),
+          if(canRemoveServer(current))RoundIconButton(tooltip:S.t('servers.remove'),onPressed:()=>_removeServer(current),icon:Icons.delete_outline),
         ],
       ]),
-      Align(alignment:Alignment.centerLeft,child:OutlinedButton.icon(onPressed:_addServer,icon:const Icon(Icons.add),label:Text(S.t('servers.add')))),
+      Align(alignment:Alignment.centerLeft,child:FilledButton.icon(onPressed:_addServer,icon:const Icon(Icons.add),label:Text(S.t('servers.add')))),
     ]);
   }
 

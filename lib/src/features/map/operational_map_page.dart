@@ -106,6 +106,7 @@ import 'traces_layer.dart';
 import '../poi/poi_icons.dart';
 import '../poi/poi_list.dart';
 import '../routes/waypoint_sheet.dart';
+import '../../ui/action_buttons.dart';
 
 class OperationalMapPage extends StatefulWidget {
   final SarcadeApi api; final String eventId,deviceId,tileUrl,tileAttribution; final LocalStore store; final VoidCallback? onSettings;
@@ -1960,10 +1961,10 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           },
           icon:const Icon(Icons.track_changes),label:Text(S.t('bearings.save')))),
         if(_aim==null)...[const SizedBox(width:8),
-        IconButton.outlined(tooltip:S.t('bearings.typeAzimuth'),style:IconButton.styleFrom(fixedSize:const Size(52,52)),onPressed:_typeAzimuth,icon:const Icon(Icons.edit_outlined)),
+        RoundIconButton(tooltip:S.t('bearings.typeAzimuth'),size:48,onPressed:_typeAzimuth,icon:Icons.edit_outlined),
         const SizedBox(width:4),
-        IconButton.outlined(tooltip:S.t('bearings.useMapCentre'),style:IconButton.styleFrom(fixedSize:const Size(52,52)),
-          onPressed:(){final c=_mapCentre();if(c!=null)_bearings.setPosition(c);},icon:const Icon(Icons.filter_center_focus))],
+        RoundIconButton(tooltip:S.t('bearings.useMapCentre'),size:48,
+          onPressed:(){final c=_mapCentre();if(c!=null)_bearings.setPosition(c);},icon:Icons.filter_center_focus)],
       ]),
     ]));
   }

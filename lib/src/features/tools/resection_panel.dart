@@ -133,7 +133,7 @@ class _ResectionPanelState extends State<ResectionPanel> {
             SelectableText(formatDd(r.centre!),style:t.textTheme.bodyLarge),
             const SizedBox(height:10),
             Wrap(spacing:8,runSpacing:8,children:[
-              OutlinedButton.icon(onPressed:()=>widget.onCreatePoint(r.centre!),icon:const Icon(Icons.add_location_alt_outlined),label:Text(S.t('resection.createPoint'))),
+              FilledButton.icon(onPressed:()=>widget.onCreatePoint(r.centre!),icon:const Icon(Icons.add_location_alt_outlined),label:Text(S.t('resection.createPoint'))),
               OutlinedButton.icon(onPressed:()=>widget.onSendPosition(r.centre!),icon:const Icon(Icons.send_outlined),label:Text(S.t('resection.send'))),
               OutlinedButton.icon(onPressed:()=>widget.onCopy(r.centre!),icon:const Icon(Icons.copy_outlined),label:Text(S.t('common.copy'))),
             ]),

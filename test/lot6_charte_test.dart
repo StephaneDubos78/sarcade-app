@@ -5,6 +5,7 @@ import 'package:sarcade_app/src/features/messages/conversations.dart';
 import 'package:sarcade_app/src/ui/choice_pills.dart';
 import 'package:sarcade_app/src/ui/overlay_page.dart';
 import 'package:sarcade_app/src/ui/theme.dart';
+import 'package:sarcade_app/src/ui/action_buttons.dart';
 
 void main(){
   test('avatar initials: name, terminal or callsign',(){
@@ -20,13 +21,22 @@ void main(){
     expect(ackCount(read:0,received:2),'2');
   });
 
-  test('secondary buttons: light blue pill without border, day and night',(){
+  test('other actions: discreet dark pill without border, day and night (lot 9)',(){
     for(final t in [dayTheme(),nightTheme()]){
       final st=t.outlinedButtonTheme.style!;
       expect(st.side?.resolve({}),BorderSide.none);
-      expect(st.backgroundColor?.resolve({}),t.colorScheme.primaryContainer);
-      expect(st.foregroundColor?.resolve({}),t.colorScheme.onPrimaryContainer);
+      expect(st.backgroundColor?.resolve({}),t.colorScheme.surfaceContainerHighest);
+      expect(st.foregroundColor?.resolve({}),t.colorScheme.onSurface);
+      expect(t.chipTheme.side,BorderSide.none);
     }
+  });
+
+  testWidgets('icon-only button: a small round, tooltip kept',(tester) async {
+    var n=0;
+    await tester.pumpWidget(MaterialApp(theme:nightTheme(),home:Scaffold(body:Center(child:RoundIconButton(icon:Icons.add,tooltip:'Ajouter',onPressed:()=>n++)))));
+    await tester.tap(find.byTooltip('Ajouter'));
+    expect(n,1);
+    expect(tester.getSize(find.byType(IconButton)).width,lessThanOrEqualTo(48));
   });
 
   testWidgets('choice pills: a check on the chosen one, a touch chooses',(tester) async {
