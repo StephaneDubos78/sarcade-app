@@ -160,10 +160,16 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
     return Card(elevation:0,margin:const EdgeInsets.only(top:12),color:t.colorScheme.surfaceContainerLow,child:Padding(
       padding:const EdgeInsets.symmetric(vertical:6),child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
         Padding(padding:const EdgeInsets.fromLTRB(14,6,14,4),child:Text(title,style:t.textTheme.titleSmall?.copyWith(fontWeight:FontWeight.w700))),
-        for(final l in lines)ListTile(dense:true,
-          leading:l.state==null?const SizedBox(width:12):Icon(Icons.circle,size:12,color:stateColor(l.state)),
-          minLeadingWidth:12,title:Text(l.label),
-          trailing:ConstrainedBox(constraints:const BoxConstraints(maxWidth:320),child:SelectableText(l.value,textAlign:TextAlign.end))),
+        // Label kept on one line, value wraps (30 Oct 2026: on iPhone the
+        // ListTile trailing squeezed the label into one letter per line).
+        for(final l in lines)Padding(padding:const EdgeInsets.symmetric(horizontal:16,vertical:8),child:Row(
+          crossAxisAlignment:CrossAxisAlignment.start,children:[
+            SizedBox(width:24,child:l.state==null?null:Padding(padding:const EdgeInsets.only(top:4),
+              child:Icon(Icons.circle,size:12,color:stateColor(l.state)))),
+            Text(l.label,softWrap:false),
+            const SizedBox(width:12),
+            Expanded(child:SelectableText(l.value,textAlign:TextAlign.end)),
+          ])),
         ?footer,
       ])));
   }
