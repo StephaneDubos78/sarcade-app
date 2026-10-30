@@ -1,6 +1,7 @@
 import 'dart:async';
 import '../../ui/choice_pills.dart';
 import '../messages/operator_avatar.dart';
+import '../messages/conversations.dart' show avatarInitials;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -290,6 +291,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   void _onAccessChanged(){if(mounted)setState((){});}
 
   void _toggleDrawingTools(){
+    Tooltip.dismissAllToolTips();
     // Each opening of the tools starts from the profile colour.
     // Closing the bar ends any selection: the map is never left blocked
     // (bug of 30 Oct 2026, 17 h 35).
@@ -1424,7 +1426,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   void _startPick(String hint,void Function(LatLng point,ReferenceSite? site) done)=>setState((){_tab=0;_deskPage=null;_deskId=null;_pickHint=hint;_pickPoint=done;});
   void _cancelPick()=>setState((){_pickPoint=null;_pickHint=null;_resectionCtl.pick(null);});
   Iterable<Searchable> _searchables()=>[
-    for(final p in _positions.values)Searchable(SearchKind.operator,p.deviceId.replaceFirst('aprs:',''),p.deviceId.startsWith('aprs:')?'APRS':S.t('search.kind.operator'),LatLng(p.lat,p.lon)),
+    for(final p in _positions.values)// Subtitle: the label of the device, never « Opérateur » twice (revue n° 10).
+    Searchable(SearchKind.operator,p.deviceId.replaceFirst('aprs:',''),p.deviceId.startsWith('aprs:')?'APRS':(p.label.trim()!=p.deviceId?p.label.trim():''),LatLng(p.lat,p.lon)),
     for(final r in _references.values)Searchable(SearchKind.reference,r.name,[r.callsign,r.subtype,r.description].whereType<String>().join(' '),LatLng(r.lat,r.lon)),
     for(final p in _pois.values)Searchable(SearchKind.poi,p.label??p.kind,p.kind,LatLng(p.lat,p.lon)),
     for(final f in _drawing.features)if(f.label.trim().isNotEmpty&&f.points.isNotEmpty)Searchable(SearchKind.drawing,f.label,f.kind.name,f.points.first),
@@ -1558,7 +1561,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     ]);
     final tabs=DefaultTabController(length:2,child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
       // Count of the stations above the two tabs (as the former panel).
-      Padding(padding:const EdgeInsets.fromLTRB(14,14,14,4),child:Text(S.t('operators.title',{'n':sorted.length}),style:Theme.of(context).textTheme.titleMedium)),
+      Padding(padding:const EdgeInsets.fromLTRB(14,14,14,4),child:Text(operatorsTitle(sorted.where((p)=>!_isFixed(p)).length,sorted.where(_isFixed).length),style:Theme.of(context).textTheme.titleMedium)),
       TabBar(tabs:[Tab(text:S.t('teams.list')),Tab(text:S.t('nearby.title'))]),
       Expanded(child:TabBarView(children:[list,_nearbyPanel(closable:false)])),
     ]));
@@ -1699,12 +1702,13 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     final f=freshness(p.time.toUtc(),now,ageingMin:_ageingMin,staleMin:_staleMin);
     final color=f==Freshness.stale?s.outline:_stationColor(p);
     final sym=p.isAprs?aprsSymbol(p.aprsSymbol):null;
-    final initials=p.label.replaceAll(RegExp(r'[^A-Za-z0-9]'),'');
+    // Same letters as the avatars of the lists and Messages (revue n° 8).
+    final initials=avatarInitials(p.label.trim().isEmpty?p.deviceId:p.label);
     return Stack(clipBehavior:Clip.none,alignment:Alignment.center,children:[
       Container(width:size,height:size,alignment:Alignment.center,
         decoration:BoxDecoration(color:s.surface,shape:sym?.overlay!=null?BoxShape.rectangle:BoxShape.circle,borderRadius:sym?.overlay!=null?BorderRadius.circular(8):null,
           border:Border.all(color:color,width:f==Freshness.stale?1.5:2.5)),
-        child:sym==null?Text(initials.length>3?initials.substring(initials.length-3):initials,style:TextStyle(fontSize:size*0.3,fontWeight:FontWeight.w800,color:color))
+        child:sym==null?Text(initials,style:TextStyle(fontSize:size*0.3,fontWeight:FontWeight.w800,color:color))
           :sym.overlay!=null?Text(sym.overlay!,style:TextStyle(fontSize:size*0.45,fontWeight:FontWeight.w800,color:color))
           :Icon(sym.icon,size:size*0.58,color:color)),
       // Heading of a moving station (aprs.fi).
@@ -1750,8 +1754,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     final f=freshness(p.time.toUtc(),now,ageingMin:_ageingMin,staleMin:_staleMin); final fav=_favourites.contains(p.deviceId);
     return ListTile(selected:_selectedDevice==p.deviceId,leading:p.isAprs?_stationIcon(p,size:32):operatorAvatar(p.deviceId,label:p.label,radius:16,stale:f==Freshness.stale),
       title:Text(p.label,style:TextStyle(decoration:f==Freshness.stale?TextDecoration.lineThrough:null)),
-      subtitle:Text([_sourceLabel(p),ageLabel(p.time.toUtc(),now),
-          if(!_isCompact&&isPco(widget.deviceId)&&'${_devices[p.deviceId]?['app_version']??''}'.isNotEmpty)'v${_devices[p.deviceId]!['app_version']}'].join(' · '),
+      // Version in the sheet only, not in the list (revue n° 43).
+      subtitle:Text([_sourceLabel(p),ageLabel(p.time.toUtc(),now)].join(' · '),
         style:TextStyle(color:f==Freshness.fresh?null:s.tertiary)),
       trailing:IconButton(tooltip:S.t(fav?'favourites.remove':'favourites.add'),onPressed:()=>_toggleFavourite(p.deviceId),
         visualDensity:VisualDensity.compact,iconSize:20,
@@ -1975,7 +1979,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           child:InkWell(onTap:()=>setState(()=>_brgStrength=_brgStrength==i?0:i),child:Container(height:22,decoration:BoxDecoration(
             color:i<=_brgStrength?s.primary:s.surfaceContainerHighest,borderRadius:BorderRadius.circular(4)))))))])),
         const SizedBox(width:8),
-        SizedBox(width:28,child:Text(_brgStrength==0?'—':'S$_brgStrength',style:TextStyle(fontWeight:FontWeight.w700,color:s.primary))),
+        SizedBox(width:28,child:Text(_brgStrength==0?'':'S$_brgStrength',style:TextStyle(fontWeight:FontWeight.w700,color:s.primary))),
       ]),
       if(_aim!=null)Padding(padding:const EdgeInsets.only(top:10),child:AimFields(azimuthDeg:_aim!.azimuthDeg,takenAt:_aim!.takenAt,
         onAzimuth:(d){_aim!.type(d);_bearings.setManual(d);},onTime:(t)=>setState(()=>_aim!.takenAt=t))),
@@ -2672,3 +2676,8 @@ class _HoldButtonState extends State<_HoldButton> with SingleTickerProviderState
         child:Text(widget.label,style:TextStyle(color:s.onError,fontWeight:FontWeight.w700)))));
   }
 }
+
+/// « Opérateurs (4) · Stations (2) » when fixed stations are listed too
+/// (revue d'ergonomie n° 42).
+String operatorsTitle(int operators,int stations)=>stations==0?S.t('operators.title',{'n':operators})
+  :S.t('operators.titleStations',{'n':operators,'m':stations});

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'ui/overlay_page.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:http/http.dart' as http;
 import 'config/app_config.dart';
 import 'config/saved_servers.dart';
@@ -144,6 +145,10 @@ class _SarcadeAppState extends State<SarcadeApp> {
     navigatorKey:_navigator,
     title:'SARCADE',
     debugShowCheckedModeBanner:false,
+    // Labels of the standard widgets read by screen readers in the language
+    // of SARCADE (revue d'ergonomie n° 70: « Show menu », « Dismiss »).
+    locale:Locale(S.lang),supportedLocales:const [Locale('fr'),Locale('en')],
+    localizationsDelegates:GlobalMaterialLocalizations.delegates,
     theme:dayTheme(),darkTheme:nightTheme(),themeMode:mode,
     home:_needsSetup
       ? _settingsPage(firstRun:true)

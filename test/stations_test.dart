@@ -15,9 +15,9 @@ void main() {
     expect(freshness(now.subtract(const Duration(minutes: 6)), now), Freshness.ageing);
     expect(freshness(now.subtract(const Duration(minutes: 14)), now), Freshness.stale);
     expect(freshness(now.subtract(const Duration(minutes: 14)), now, staleMin: 20), Freshness.ageing);
-    expect(ageLabel(now.subtract(const Duration(seconds: 12)), now), '12 s');
-    expect(ageLabel(now.subtract(const Duration(minutes: 6)), now), '6 min');
-    expect(ageLabel(now.subtract(const Duration(hours: 3)), now), '3 h');
+    expect(ageLabel(now.subtract(const Duration(seconds: 12)), now), '12\u00A0s');
+    expect(ageLabel(now.subtract(const Duration(minutes: 6)), now), '6\u00A0min');
+    expect(ageLabel(now.subtract(const Duration(hours: 3)), now), '3\u00A0h');
   });
   test('source of a position', () {
     expect(sourceOf(pos('a')), PositionSource.app);

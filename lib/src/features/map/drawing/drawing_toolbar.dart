@@ -112,7 +112,8 @@ class _ToolButton extends StatelessWidget {
   @override Widget build(BuildContext context){
     final scheme=Theme.of(context).colorScheme;
     return Tooltip(message:kind.label,child:InkWell(
-      borderRadius:BorderRadius.circular(10),onTap:onTap,
+      // The tooltip goes away with the click (revue n° 23).
+      borderRadius:BorderRadius.circular(10),onTap:(){Tooltip.dismissAllToolTips();onTap();},
       child:Container(
         width:width,padding:const EdgeInsets.symmetric(vertical:4),
         decoration:BoxDecoration(color:active?scheme.primaryContainer:null,borderRadius:BorderRadius.circular(10)),
