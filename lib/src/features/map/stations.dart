@@ -26,12 +26,14 @@ String platformLabel(String p)=>switch(p.toLowerCase()){
   'android'=>'Android','ios'=>'iPhone','web'=>'Web','windows'=>'Windows','linux'=>'Linux','macos'=>'Mac',_=>p};
 
 /// « 12 s », « 6 min », « 2 h », « 3 j ».
+/// Number and unit joined by a no-break space: « 27 min » never cut in two
+/// (revue d'ergonomie n° 43).
 String ageLabel(DateTime time,DateTime now){
   final d=now.difference(time);
-  if(d.inSeconds<60)return '${d.inSeconds<0?0:d.inSeconds} s';
-  if(d.inMinutes<60)return '${d.inMinutes} min';
-  if(d.inHours<48)return '${d.inHours} h';
-  return '${d.inDays} j';
+  if(d.inSeconds<60)return '${d.inSeconds<0?0:d.inSeconds}\u00A0s';
+  if(d.inMinutes<60)return '${d.inMinutes}\u00A0min';
+  if(d.inHours<48)return '${d.inHours}\u00A0h';
+  return '${d.inDays}\u00A0j';
 }
 
 /// Way the position came: the SARCADE app, APRS by radio (Gateway, works

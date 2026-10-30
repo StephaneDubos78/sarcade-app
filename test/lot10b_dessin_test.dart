@@ -61,7 +61,7 @@ void main() {
     expect(canManageDrawings('T1'), isTrue);
     myRoles = <String>{};
     expect(S.t('files.drawings'), 'Dessins de l’événement');
-    expect(S.t('files.importDrawings'), 'Importer des dessins (GeoJSON, KML, GPX)');
+    expect(S.t('files.importDrawings'), 'Importer des dessins');
     expect(S.t('files.exportDrawings'), 'Exporter les dessins');
   });
 

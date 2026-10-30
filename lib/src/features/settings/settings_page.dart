@@ -178,7 +178,8 @@ class _SettingsPageState extends State<SettingsPage> {
           // The row already says « Serveur » (29 Oct 2026: no word twice).
           decoration:_field(),
           items:[
-            for(final s in _servers)DropdownMenuItem(value:s.url,child:Text('${s.label} · ${s.shortAddress}',overflow:TextOverflow.ellipsis)),
+            // The address only when it differs from the name (revue n° 62).
+            for(final s in _servers)DropdownMenuItem(value:s.url,child:Text(s.label==s.shortAddress?s.label:'${s.label} · ${s.shortAddress}',overflow:TextOverflow.ellipsis)),
             if(current==null&&_serverText.isNotEmpty)DropdownMenuItem(value:_serverText,child:Text(S.t('servers.new',{'url':_serverText}),overflow:TextOverflow.ellipsis)),
             // « + Ajouter un serveur… » at the bottom of the list (16 h 38).
             DropdownMenuItem(key:const ValueKey('server-add'),value:addServerValue,child:Text(S.t('servers.addItem'),overflow:TextOverflow.ellipsis)),
