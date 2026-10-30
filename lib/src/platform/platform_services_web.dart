@@ -9,6 +9,7 @@ import 'package:hive_ce_flutter/hive_ce_flutter.dart';
 import 'package:web/web.dart' as web;
 import 'package:web_socket_channel/web_socket_channel.dart';
 
+import '../features/compass/compass_reading.dart';
 import '../models/web_update.dart';
 
 /// Browser builds return true here; installed apps return false.
@@ -166,5 +167,21 @@ Future<Stream<double>?> compassHeadings() async {
   }
   final type=globalContext.has('ondeviceorientationabsolute')?'deviceorientationabsolute':'deviceorientation';
   out=StreamController<double>.broadcast(onListen:()=>listen(type),onCancel:(){if(handler!=null)web.window.removeEventListener(type,handler);});
+  return out.stream;
+}
+
+/// Whether the browser gives a heading (asks the permission on iPhone).
+Future<bool> hasCompass() async=>await compassHeadings()!=null;
+
+/// Same compass as the installed apps (shared_compass.dart): the browser
+/// heading once allowed; nothing on a computer.
+Stream<CompassReading>? compassReadings(){
+  late StreamController<CompassReading> out;
+  StreamSubscription<double>? sub;
+  out=StreamController<CompassReading>.broadcast(onListen:() async {
+    final s=await compassHeadings();
+    if(s==null){await out.close();return;}
+    sub=s.listen((d)=>out.add(CompassReading(d)),onError:(_){});
+  },onCancel:(){sub?.cancel();});
   return out.stream;
 }

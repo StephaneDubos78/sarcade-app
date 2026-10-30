@@ -3,8 +3,8 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
-import 'package:sensors_plus/sensors_plus.dart';
 import '../../services/location_service.dart';
+import '../compass/shared_compass.dart';
 import '../map/drawing/geometry.dart' as geo;
 import 'wmm.dart';
 
@@ -21,7 +21,8 @@ class MeasureOrigin {
 /// oriented by the compass on phones.
 class MeasureController extends ChangeNotifier {
   final LocationService location;
-  MeasureController({required this.location});
+  final SharedCompass compass;
+  MeasureController({required this.location,SharedCompass? compass}):compass=compass??SharedCompass.instance;
 
   MeasureOrigin? origin; LatLng? target; String targetLabel='';
   /// Manual declination set by the operator (special cases), else WMM.
@@ -29,8 +30,7 @@ class MeasureController extends ChangeNotifier {
   /// Magnetic heading of the device (compass), degrees, null without sensor.
   double? heading;
   StreamSubscription<Position>? _gps;
-  StreamSubscription<AccelerometerEvent>? _acc; StreamSubscription<MagnetometerEvent>? _mag;
-  List<double>? _gravity, _field;
+  bool _compassOn=false;
 
   bool get active=>target!=null;
 
@@ -74,23 +74,19 @@ class MeasureController extends ChangeNotifier {
     return m==null||h==null?null:(m-h+360)%360;
   }
 
-  /// Compass from the accelerometer and the magnetometer (Android, iOS).
+  /// Compass of the system (shared_compass.dart), phones only.
   void startCompass(){
-    if(_acc!=null)return;
-    try{
-      _acc=accelerometerEventStream().listen((e){_gravity=[e.x,e.y,e.z];_updateHeading();},onError:(_){});
-      _mag=magnetometerEventStream().listen((e){_field=[e.x,e.y,e.z];_updateHeading();},onError:(_){});
-    }catch(_){/* no sensor on this device */}
+    // Browser: no compass here, as before.
+    if(_compassOn||kIsWeb)return;
+    _compassOn=true; compass.start(); compass.addListener(_updateHeading);
   }
 
   void _updateHeading(){
-    final g=_gravity, f=_field;
-    if(g==null||f==null)return;
-    final h=compassHeading(g,f);
-    if(h!=null){heading=h;notifyListeners();}
+    final h=compass.heading;
+    if(h!=heading){heading=h;notifyListeners();}
   }
 
-  void stopCompass(){_acc?.cancel();_mag?.cancel();_acc=null;_mag=null;heading=null;}
+  void stopCompass(){if(_compassOn){_compassOn=false;compass.removeListener(_updateHeading);compass.stop();}heading=null;}
 
   Future<void> clear() async {
     await _stopGps(); stopCompass();

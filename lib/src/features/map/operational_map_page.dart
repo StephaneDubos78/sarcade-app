@@ -24,9 +24,12 @@ import '../search/map_search.dart';
 import '../search/map_search_bar.dart';
 import '../../ui/map_view.dart';
 import '../../ui/compass_follow.dart';
+import '../compass/shared_compass.dart';
+import '../compass/compass_status.dart';
 import '../measure/wmm.dart' show magneticDeclination;
 import '../../ui/theme.dart';
 import 'stations.dart';
+import 'sos_placement.dart';
 import '../bearings/bearing_aim.dart';
 import '../bearings/bearing_controller.dart';
 import '../bearings/bearing_layers.dart';
@@ -1171,7 +1174,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   /// like the phone (compass, true north with the WMM declination); a press
   /// goes back to follow, north up. Moving the map by hand stops it all.
   LatLng? _me; MeMode _meMode=MeMode.off; StreamSubscription? _meSub; StreamSubscription? _mapEvents;
-  StreamSubscription<double>? _headingSub; double? _heading;
+  double? _heading;
   bool get _followMe=>_meMode!=MeMode.off;
   Future<void> _myPosition() async {
     if(_me!=null&&_centredOnMe()){
@@ -1204,20 +1207,23 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       if(_followMe)_map.move(_me!,_map.camera.zoom);
     },onError:(_){});
   }
-  /// Compass of the phone; false without one (computer) or when refused.
+  /// Compass of the phone (shared_compass.dart); false without one
+  /// (computer) or when refused.
+  bool _compassOn=false;
   Future<bool> _startCompass() async {
-    if(_headingSub!=null)return true;
-    final headings=await compassHeadings();
-    if(headings==null||!mounted)return false;
-    _headingSub=headings.listen((magnetic){
-      final me=_me; if(!mounted||_meMode!=MeMode.compass)return;
-      final declination=me==null?0.0:magneticDeclination(me.latitude,me.longitude,DateTime.now().toUtc());
-      final next=smoothHeading(_heading,magnetic+declination);
-      if(headingChanged(_heading,next)){_heading=next;_map.rotate(-next);setState((){});}
-    },onError:(_){});
+    if(_compassOn)return true;
+    if(!await hasCompass()||!mounted)return false;
+    if(!SharedCompass.instance.start()){SharedCompass.instance.stop();return false;}
+    _compassOn=true; SharedCompass.instance.addListener(_onMapCompass);
     return true;
   }
-  void _stopCompass(){_headingSub?.cancel();_headingSub=null;_heading=null;}
+  void _onMapCompass(){
+    final me=_me, magnetic=SharedCompass.instance.heading; if(!mounted||_meMode!=MeMode.compass||magnetic==null)return;
+    final declination=me==null?0.0:magneticDeclination(me.latitude,me.longitude,DateTime.now().toUtc());
+    final next=(magnetic+declination+360)%360;
+    if(headingChanged(_heading,next)){_heading=next;_map.rotate(-next);setState((){});}
+  }
+  void _stopCompass(){if(_compassOn){_compassOn=false;SharedCompass.instance.removeListener(_onMapCompass);SharedCompass.instance.stop();}_heading=null;}
   void _stopFollowing(){
     if(_meMode==MeMode.compass){_stopCompass();_map.rotate(0);}
     setState(()=>_meMode=MeMode.off); _meSub?.cancel(); _meSub=null;
@@ -1257,9 +1263,10 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   }
 
   /// SOS on the map (decision of 29 Oct 2026, 12 h 14): any operator, held
-  /// 2 s; « Fin de détresse » blinking while in distress; hidden while
-  /// drawing.
-  bool get _sosVisible=>!_drawingTools&&!_bearings.taking&&_pickPoint==null;
+  /// 2 s; « Fin de détresse » blinking while in distress. Always visible,
+  /// drawing, bearing and choice of a point included (card « Détresse
+  /// encore dans le menu Plus », 30 Oct 2026): no more entry in « Plus ».
+  bool get _sosVisible=>true;
   Widget _sosButton()=>SosButton(inDistress:_inDistress,onTriggered:_sendDistress,onEnd:_distress);
 
   /// Floating button of 48 × 48 px (the small ones were 40 px).
@@ -1717,7 +1724,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   /// Signals typed with « Autre… » during this session.
   final List<SignalChoice> _extraSignals=[];
   List<SignalChoice> get _signalMenu=>signalMenu(_bearings.all,_signalDefaults,extra:_extraSignals);
-  SignalChoice? get _currentSignal=>_brgSearch.isEmpty?null:_signalMenu.where((s)=>s.name==_brgSearch).firstOrNull;
+  SignalChoice? get _currentSignal=>_brgSearch.isEmpty?null:signalFor(_signalMenu,_brgSearch);
   Future<void> _loadSignalDefaults() async {
     try{
       final body=await widget.api.signalDefaults();
@@ -1765,6 +1772,16 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     if(a.fixed){final t=a.tip, at=tap.relative;if(t!=null&&at!=null&&nearTip(at,_map.camera.latLngToScreenOffset(t))){setState(a.release);}return;}
     a.fix(p,snap:HardwareKeyboard.instance.isShiftPressed);_bearings.setManual(a.azimuthDeg);}
   void _cancelAim(){_aim=null;_bearings.stopTaking();}
+  /// « Modifier » on a computer: mouse arrow from the same origin, panel
+  /// prefilled; Échap or a right click leaves the bearing as it was.
+  Future<void> _editWithMouse(Bearing b) async {
+    await _bearings.startTaking(from:b.origin);
+    if(!mounted)return;
+    final a=BearingAim.edit(b);
+    _bearings.setManual(a.azimuthDeg);
+    if(b.search.isNotEmpty)await _setSignal(b.search);
+    if(mounted)setState((){_aim=a;_brgStrength=b.strength;});
+  }
   bool get _brgByOperator=>widget.store.preference('brg_color:${widget.eventId}')=='op';
   Future<void> _setSignal(String v) async {await widget.store.setPreference('brg_search:${widget.eventId}',v.isEmpty?null:v);if(mounted)setState((){});}
 
@@ -1787,6 +1804,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
             if(mag!=null&&(mouse||b.manualDeg==null))'(${S.t('bearings.magnetic',{'v':mag.toStringAsFixed(0).padLeft(3,'0')})})'].join('\n'),
             style:TextStyle(fontSize:12,color:s.onSurfaceVariant))),
         ]),
+        if(!mouse&&b.manualDeg==null&&(b.hasCompass||b.needsCalibration||b.averaging))Padding(padding:const EdgeInsets.only(top:4),
+          child:CompassStatus(accuracyDeg:b.compassAccuracyDeg,calibrate:b.needsCalibration,averaging:b.averaging)),
         const SizedBox(height:4),
         Text([p==null?S.t('bearings.noPosition'):'${p.latitude.toStringAsFixed(4)}° N · ${p.longitude.toStringAsFixed(4)}° E',
           if(b.accuracyM!=null)'±${b.accuracyM!.toStringAsFixed(0)} m','${two(t.hour)}:${two(t.minute)}:${two(t.second)}'].join(' · '),
@@ -1824,14 +1843,17 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       const SizedBox(height:10),
       Row(children:[
         Expanded(child:FilledButton.icon(style:FilledButton.styleFrom(minimumSize:const Size.fromHeight(52)),
-          onPressed:draft==null?null:() async {
+          onPressed:draft==null||_bearings.averaging?null:() async {
             final sig=_currentSignal;
             // Mouse: the free length becomes the usual one only now.
             final a=_aim;
+            final changed=a?.edited(strength:_brgStrength,search:_brgSearch,exercise:sig?.exercise??false,frequencyMhz:sig?.frequencyMhz,
+              lengthM:savedLengthM(),by:widget.deviceId,at:DateTime.now().toUtc());
+            if(changed!=null){_bearings.stopTaking();await _bearings.update(changed);if(mounted)setState(()=>_brgStrength=0);return;}
             final b=await _bearings.save(strength:_brgStrength,search:_brgSearch,exercise:sig?.exercise??false,frequencyMhz:sig?.frequencyMhz,
               lengthM:a==null?null:savedLengthM(),takenAt:a?.takenAt,method:a==null?null:'map');
             if(b!=null&&mounted){setState(()=>_brgStrength=0);
-              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(S.t('bearings.saved',{'v':b.azimuthDeg.toStringAsFixed(0).padLeft(3,'0')}))));}
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(S.t('bearings.saved',{'v':b.azimuthDeg.toStringAsFixed(0).padLeft(3,'0')})+(_bearings.lastSpreadDeg==null?'':' (±${_bearings.lastSpreadDeg!.toStringAsFixed(0)}°)'))));}
           },
           icon:const Icon(Icons.track_changes),label:Text(S.t('bearings.save')))),
         if(_aim==null)...[const SizedBox(width:8),
@@ -1859,7 +1881,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   Widget _signalDropdown(){
     final s=Theme.of(context).colorScheme;
     final menu=_signalMenu;
-    final current=_brgSearch;
+    // Same signal saved with another apostrophe: the line of the list.
+    final current=_currentSignal?.name??_brgSearch;
     final items=[...menu,if(current.isNotEmpty&&!menu.any((m)=>m.name==current))SignalChoice(label:current)];
     Widget row(SignalChoice c)=>Row(children:[
       Icon(Icons.circle,size:12,color:Color(searchColor(c.name))),const SizedBox(width:8),
@@ -1929,7 +1952,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         TextButton(onPressed:()=>Navigator.pop(c,false),child:Text(S.t('common.cancel'))),FilledButton(onPressed:()=>Navigator.pop(c,true),child:Text(S.t('bearings.delete')))]));
       if(ok==true)await _bearings.delete(b);
     }
-    if(choice=='edit')await _editBearing(b);
+    // Computer: the arrow follows the mouse again, as when taking it.
+    if(choice=='edit'){if(_isCompact){await _editBearing(b);}else{await _editWithMouse(b);}}
     if(choice=='adjust')setState(()=>_adjusting=b);
   }
 
@@ -2063,7 +2087,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     child:child,
   );
 
-  @override void dispose(){if(currentMapView==_tvView)currentMapView=null;if(currentMapOptions==_tvOptions)currentMapOptions=null;_headingSub?.cancel();_webUpdateTimer?.cancel();_saveViewTimer?.cancel();_bearings.dispose();_positionsTimer?.cancel();_meSub?.cancel();_mapEvents?.cancel();AccessManager.instance.removeListener(_onAccessChanged);_fcmRefresh?.cancel();_fcmForeground?.cancel();if(registerWakeupHook==_wakeupNoted)registerWakeupHook=null;_opensSub?.cancel();_answersSub?.cancel();_rtSub?.cancel();_tracking.removeListener(_onOperationsChanged);_ops.removeListener(_onOperationsChanged);_tracking.dispose();_ops.dispose();_routes.removeListener(_onRoutesChanged);_nav.removeListener(_onNavigationChanged);_variantHits.dispose();_bearingHits.dispose();_routes.dispose();_nav.dispose();_graphs.removeListener(_onRoutesChanged);_graphs.dispose();_measure.removeListener(_onRoutesChanged);_measure.dispose();_syncUiTimer?.cancel();_sync.dispose();_realtime.dispose();_drawing.dispose();_resectionCtl.dispose();widget.api.close();super.dispose();}
+  @override void dispose(){if(currentMapView==_tvView)currentMapView=null;if(currentMapOptions==_tvOptions)currentMapOptions=null;_stopCompass();_webUpdateTimer?.cancel();_saveViewTimer?.cancel();_bearings.dispose();_positionsTimer?.cancel();_meSub?.cancel();_mapEvents?.cancel();AccessManager.instance.removeListener(_onAccessChanged);_fcmRefresh?.cancel();_fcmForeground?.cancel();if(registerWakeupHook==_wakeupNoted)registerWakeupHook=null;_opensSub?.cancel();_answersSub?.cancel();_rtSub?.cancel();_tracking.removeListener(_onOperationsChanged);_ops.removeListener(_onOperationsChanged);_tracking.dispose();_ops.dispose();_routes.removeListener(_onRoutesChanged);_nav.removeListener(_onNavigationChanged);_variantHits.dispose();_bearingHits.dispose();_routes.dispose();_nav.dispose();_graphs.removeListener(_onRoutesChanged);_graphs.dispose();_measure.removeListener(_onRoutesChanged);_measure.dispose();_syncUiTimer?.cancel();_sync.dispose();_realtime.dispose();_drawing.dispose();_resectionCtl.dispose();widget.api.close();super.dispose();}
 
   /// Current view, for « Envoyer ma vue » on a TV (Paramètres › Affichage › Écrans).
   TvView? _tvView(){
@@ -2112,7 +2136,6 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       _RailAction(Icons.route,S.t('routes.menu'),openRoutes),
       _RailAction(Icons.folder_copy_outlined,S.t('map.files'),openFiles),
       _RailAction(Icons.build_outlined,S.t('tools.title'),_openTools),
-      _RailAction(Icons.sos,_inDistress?S.t('distress.end'):S.t('distress.title'),_distress),
       if(widget.onSettings!=null)_RailAction(Icons.settings_outlined,S.t('map.settings'),widget.onSettings!),
     ];
     // Computer: every entry visible, no « … » (decision of 29 Oct 2026,
@@ -2211,7 +2234,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           // Reference sites below the drawn objects, grouped when zoomed out.
           _faded('ref',ReferenceClusterLayer(sites:_references.values.where((r)=>(r.isHighPoint&&_showHighPoints)||(r.isRelay&&_showRelays)).toList(),onSelect:_selectReference)),
           if(_showDrawings)..._fadedAll('draw',buildDrawingLayers(_drawing)),
-          if(_showBearings||_bearings.taking||_adjusting!=null)..._fadedAll('brg',buildBearingLayers(bearings:_showBearings?_bearings.all.where((b)=>b.id!=_adjusting?.id):const <Bearing>[],draft:_bearingDraft()??_adjusting,byOperator:_brgByOperator,hits:_bearingHits,
+          if(_showBearings||_bearings.taking||_adjusting!=null)..._fadedAll('brg',buildBearingLayers(bearings:_showBearings?_bearings.all.where((b)=>b.id!=_adjusting?.id&&b.id!=_aim?.editing?.id):const <Bearing>[],draft:_bearingDraft()??_adjusting,byOperator:_brgByOperator,hits:_bearingHits,
             onTapBearing:_showBearingSheet,onTapZone:(c,_)=>_onLongPress(c))),
           if(_aim!=null)...buildAimLayers(_aim!,Color(searchColor(_brgSearch))),
           ..._variantLayers(),
@@ -2286,7 +2309,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           ])))),
         ])),
         Positioned(right:12,bottom:compact?60:24,child:_mapButtons()),
-        if(compact&&_sosVisible&&selected==null)Positioned(left:12,bottom:100,child:_sosButton()),
+        // Phone: moved up to mid-height above a bearing sheet or a station card.
+        if(compact&&_sosVisible)sosPlacement(taking:_bearings.taking,card:selected!=null,child:_sosButton()),
         // Phone: « Suivi actif » just above the tab bar.
         if(compact&&!_bearings.taking&&selected==null)Positioned(left:12,bottom:12,child:_trackingBadge()),
         if(_bearings.taking&&_aim!=null)Positioned(right:12,bottom:16,width:380,child:_bearingTakeSheet())

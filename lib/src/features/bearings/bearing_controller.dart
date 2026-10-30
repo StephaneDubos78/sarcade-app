@@ -2,11 +2,10 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:latlong2/latlong.dart';
-import 'package:sensors_plus/sensors_plus.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../services/location_service.dart';
-import '../measure/measure_controller.dart' show compassHeading;
+import '../compass/shared_compass.dart';
 import '../measure/wmm.dart';
 import 'bearing_models.dart';
 
@@ -17,7 +16,10 @@ class BearingController extends ChangeNotifier {
   final String eventId, actorId; final LocationService location;
   final Future<void> Function(Bearing b,{required bool isNew}) onSave;
   final Future<void> Function(Bearing b) onDelete;
-  BearingController({required this.eventId,required this.actorId,required this.location,required this.onSave,required this.onDelete});
+  /// One compass for the whole app (shared_compass.dart).
+  final SharedCompass compass;
+  BearingController({required this.eventId,required this.actorId,required this.location,required this.onSave,required this.onDelete,SharedCompass? compass})
+    :compass=compass??SharedCompass.instance;
 
   final Map<String,Bearing> _all={};
   Iterable<Bearing> get all=>_all.values;
@@ -29,7 +31,14 @@ class BearingController extends ChangeNotifier {
   // --- taking a bearing ---
   bool taking=false;
   LatLng? position; double? accuracyM, magneticDeg, manualDeg;
-  StreamSubscription? _gps,_acc,_mag; List<double>? _gravity,_field;
+  StreamSubscription? _gps; bool _compassOn=false;
+  /// Averaging the compass over 2 s before saving (« ± x° »).
+  bool averaging=false;
+  /// Spread of the last saved bearing averaged over 2 s, degrees.
+  double? lastSpreadDeg;
+  /// The system asks for a calibration (figure of 8).
+  bool get needsCalibration=>_compassOn&&compass.calibrate;
+  double? get compassAccuracyDeg=>compass.accuracyDeg;
   /// Compass seen at least once: else the azimuth is typed (PC, Chromebook).
   bool get hasCompass=>magneticDeg!=null;
   double? get declinationDeg=>position==null?null:magneticDeclination(position!.latitude,position!.longitude,DateTime.now().toUtc());
@@ -47,20 +56,19 @@ class BearingController extends ChangeNotifier {
       if(p!=null&&taking){position=LatLng(p.latitude,p.longitude);accuracyM=p.accuracy;notifyListeners();}
       _gps=location.positions().listen((p){position=LatLng(p.latitude,p.longitude);accuracyM=p.accuracy;notifyListeners();},onError:(_){});
     }
-    try{
-      _acc=accelerometerEventStream().listen((e){_gravity=[e.x,e.y,e.z];_heading();},onError:(_){});
-      _mag=magnetometerEventStream().listen((e){_field=[e.x,e.y,e.z];_heading();},onError:(_){});
-    }catch(_){/* no sensor: typed azimuth */}
+    // Browser: no compass for the bearing, as before (azimuth typed or mouse).
+    if(taking&&!kIsWeb&&!_compassOn){_compassOn=true;compass.start();compass.addListener(_heading);}
   }
   void _heading(){
-    final g=_gravity,f=_field; if(g==null||f==null)return;
-    final h=compassHeading(g,f); if(h!=null&&manualDeg==null){magneticDeg=h;notifyListeners();}
+    final h=compass.heading; if(manualDeg==null&&h!=magneticDeg){magneticDeg=h;notifyListeners();}
+    else if(compass.calibrate){notifyListeners();}
   }
   void setManual(double? deg){manualDeg=deg==null?null:(deg%360+360)%360;notifyListeners();}
   void setPosition(LatLng p){position=p;accuracyM=null;notifyListeners();}
 
   void stopTaking(){_stopSensors();notifyListeners();}
-  void _stopSensors(){taking=false; _gps?.cancel(); _acc?.cancel(); _mag?.cancel(); _gps=_acc=_mag=null; _gravity=_field=null;}
+  void _stopSensors(){taking=false; _gps?.cancel(); _gps=null;
+    if(_compassOn){_compassOn=false;compass.removeListener(_heading);compass.stop();}}
 
   /// The bearing being taken, as it would be saved.
   /// Colour of this operator, kept with each bearing.
@@ -76,6 +84,15 @@ class BearingController extends ChangeNotifier {
 
   /// [lengthM], [takenAt], [method]: bearing taken with the mouse (bearing_aim.dart).
   Future<Bearing?> save({String target='',int strength=0,String comment='',String search='',bool exercise=false,double? frequencyMhz,double? lengthM,DateTime? takenAt,String? method}) async {
+    lastSpreadDeg=null;
+    // Compass: mean of the readings over 2 s, with their spread.
+    if(manualDeg==null&&method==null&&magneticDeg!=null&&!averaging){
+      averaging=true; notifyListeners();
+      final avg=await compass.average();
+      averaging=false;
+      if(!taking)return null;
+      if(avg!=null){magneticDeg=avg.mean;lastSpreadDeg=avg.spread;}
+    }
     final d=draft(target:target,strength:strength,comment:comment,search:search,lengthM:lengthM,takenAt:takenAt,method:method); if(d==null)return null;
     final b=Bearing.fromJson({...d.copyWith(exercise:exercise,frequencyMhz:frequencyMhz,updatedBy:d.updatedBy,updatedAt:d.updatedAt).toJson(),'id':const Uuid().v4()});
     _all[b.id]=b; stopTaking();

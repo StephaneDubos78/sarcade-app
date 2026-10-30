@@ -6,16 +6,14 @@
 /// the result drawn on the map with its uncertainty circle.
 library;
 
-import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:latlong2/latlong.dart';
-import 'package:sensors_plus/sensors_plus.dart';
 
 import '../../models/reference_site.dart';
 import '../bearings/bearing_models.dart' show resection;
 import '../map/drawing/geometry.dart' as geo;
-import '../measure/measure_controller.dart' show compassHeading;
+import '../compass/shared_compass.dart';
 import '../measure/wmm.dart';
 
 /// A known point: a site of the radio directory, or a point of the map.
@@ -40,6 +38,8 @@ double crossingAngle(double az1,double az2){
 }
 
 class ResectionController extends ChangeNotifier {
+  final SharedCompass compass;
+  ResectionController({SharedCompass? compass}):compass=compass??SharedCompass.instance;
   final sights=[ResectionSight(),ResectionSight(),ResectionSight()];
   /// Sight waiting for a touch on the map.
   int? pickingIndex;
@@ -47,7 +47,7 @@ class ResectionController extends ChangeNotifier {
   /// distance and the magnetic declination.
   LatLng? around;
   double? heading;
-  StreamSubscription? _acc,_mag; List<double>? _gravity,_field;
+  bool _compassOn=false;
   ({LatLng? centre,double radiusM})? result;
 
   bool get hasCompass=>heading!=null;
@@ -72,18 +72,26 @@ class ResectionController extends ChangeNotifier {
   }
   bool get poorGeometry=>(narrowestAngle??90)<30;
 
+  /// What is still missing before « Calculer » (card « Résection, aide et
+  /// bouton Calculer », 30 Oct 2026): sights 1 and 2 without point, without
+  /// azimuth; empty when two sights are complete.
+  ({List<int> points,List<int> azimuths}) get missing{
+    if(validSights.length>=2)return (points:const <int>[],azimuths:const <int>[]);
+    bool done(int i)=>sights[i].known!=null&&trueAzimuth(sights[i])!=null;
+    bool started(int i)=>sights[i].known!=null||sights[i].azimuth!=null;
+    // Sights already started first, then 1 and 2: as many as still needed.
+    final open=[for(var i=0;i<3;i++)if(!done(i))i]..sort((a,b)=>started(a)==started(b)?a.compareTo(b):started(a)?-1:1);
+    final needed=open.take(2-validSights.length).toList()..sort();
+    return (points:[for(final i in needed)if(sights[i].known==null)i],azimuths:[for(final i in needed)if(sights[i].azimuth==null)i]);
+  }
+
   void startCompass(){
-    if(_acc!=null)return;
-    try{
-      _acc=accelerometerEventStream().listen((e){_gravity=[e.x,e.y,e.z];_update();},onError:(_){});
-      _mag=magnetometerEventStream().listen((e){_field=[e.x,e.y,e.z];_update();},onError:(_){});
-    }catch(_){/* no sensor: typed azimuths */}
+    // Browser: no compass here, as before.
+    if(_compassOn||kIsWeb)return;
+    _compassOn=true; compass.start(); compass.addListener(_update);
   }
-  void _update(){
-    final g=_gravity,f=_field; if(g==null||f==null)return;
-    final h=compassHeading(g,f); if(h!=null){heading=h;notifyListeners();}
-  }
-  void stopCompass(){_acc?.cancel();_mag?.cancel();_acc=_mag=null;_gravity=_field=null;heading=null;}
+  void _update(){final h=compass.heading; if(h!=heading){heading=h;notifyListeners();}}
+  void stopCompass(){if(_compassOn){_compassOn=false;compass.removeListener(_update);compass.stop();}heading=null;}
 
   /// The compass reading becomes the azimuth of the sight (magnetic).
   void takeCompass(int i){

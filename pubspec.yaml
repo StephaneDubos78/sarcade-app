@@ -29,8 +29,10 @@ dependencies:
   # Reminders of the immediate messages scheduled in UTC (same version as
   # flutter_local_notifications).
   timezone: ^0.10.0
-  # Compass of the guidance arrow (measure to a designated point).
-  sensors_plus: ^6.1.1
+  # Heading given by the system (Android rotation vector, iPhone Core
+  # Location), with its accuracy: card « Boussole instable », 30 Oct 2026.
+  sarcade_compass:
+    path: third_party/sarcade_compass
   # « Open in… » another map application (navigation level 1).
   url_launcher: ^6.3.1
   flutter_secure_storage: ^9.2.4

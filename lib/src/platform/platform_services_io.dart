@@ -1,7 +1,6 @@
-import 'dart:async';
 import 'dart:io';
-import 'package:sensors_plus/sensors_plus.dart';
-import '../features/measure/measure_controller.dart' show compassHeading;
+import 'package:sarcade_compass/sarcade_compass.dart';
+import '../features/compass/compass_reading.dart';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:hive_ce_flutter/hive_ce_flutter.dart';
@@ -93,17 +92,11 @@ bool get browserOnline=>false;
 Future<bool> requestPersistentStorage() async=>true;
 
 
-/// Compass of the device (accelerometer + magnetometer): degrees from
-/// magnetic north, clockwise; null without these sensors (computers).
-Future<Stream<double>?> compassHeadings() async {
+/// Compass given by the system (Android rotation vector, iPhone Core
+/// Location heading), magnetic north; null without compass (computers).
+/// Whether this device has a compass (phones and tablets).
+Future<bool> hasCompass() async=>Platform.isAndroid||Platform.isIOS;
+Stream<CompassReading>? compassReadings(){
   if(!(Platform.isAndroid||Platform.isIOS))return null;
-  List<double>? g,f;
-  late StreamController<double> out;
-  StreamSubscription? a,m;
-  void emit(){if(g!=null&&f!=null){final h=compassHeading(g!,f!);if(h!=null)out.add(h);}}
-  out=StreamController<double>.broadcast(onListen:(){
-    a=accelerometerEventStream().listen((e){g=[e.x,e.y,e.z];emit();},onError:(_){});
-    m=magnetometerEventStream().listen((e){f=[e.x,e.y,e.z];emit();},onError:(_){});
-  },onCancel:(){a?.cancel();m?.cancel();});
-  return out.stream;
+  return systemCompassEvents().map((e)=>CompassReading(e[0]<0?null:e[0],accuracyDeg:e.length>1&&e[1]>=0?e[1]:null,status:e.length>2?e[2].round():-1));
 }
