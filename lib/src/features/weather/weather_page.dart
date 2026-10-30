@@ -195,7 +195,7 @@ class _WeatherPageState extends State<WeatherPage> {
               Text(S.t('weather.vigilance.${r.vigilance!.colorId.clamp(1,4)}',{'dep':r.vigilance!.department}),style:const TextStyle(fontWeight:FontWeight.w600)),
               if(r.vigilance!.phenomena.isNotEmpty)Text(r.vigilance!.phenomena.join(', '),style:t.textTheme.bodySmall),
             ]))])),
-        if(r!=null&&(r.stale||_offline))ListTile(leading:const Icon(Icons.history),title:Text(S.t('weather.stale',{'time':_hm(r.fetchedAt)}))),
+        if(weatherShowsStale(r,offline:_offline))ListTile(leading:const Icon(Icons.history),title:Text(S.t('weather.stale',{'time':_hm(r!.fetchedAt)}))),
         if(r==null||r.isEmpty)Padding(padding:const EdgeInsets.all(20),child:Text(_loading?S.t('weather.loading'):S.t('weather.none'))),
         if(hours.isNotEmpty)_nowCard(hours.first,loc),
         if(hours.isNotEmpty)_strip(hours,loc),

@@ -14,6 +14,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
@@ -25,6 +26,7 @@ import '../measure/coordinate_rows.dart';
 import '../measure/coordinates.dart';
 import '../search/map_search.dart';
 import 'converter_input.dart';
+import 'paste_locations.dart';
 
 enum ConverterSource { me, map, search, input }
 
@@ -67,7 +69,7 @@ class _CoordinateConverterPageState extends State<CoordinateConverterPage> {
     _history=_readHistory();
     if(_source==ConverterSource.me)_startGps();
   }
-  @override void dispose(){_gps?.cancel();_debounce?.cancel();_text.dispose();_search.dispose();super.dispose();}
+  @override void dispose(){_gps?.cancel();_debounce?.cancel();_text.dispose();_search.dispose();_paste.dispose();super.dispose();}
 
   List<Map<String,dynamic>> _readHistory(){
     try{final v=widget.store?.preference(_historyKey);if(v==null)return [];
@@ -185,6 +187,76 @@ class _CoordinateConverterPageState extends State<CoordinateConverterPage> {
     ]);
   }
 
+  // --- « Coller » (card of 30 Oct 2026, 16 h 34), text part ---------------
+  final _paste=TextEditingController();
+  List<FoundLocation>? _found; String? _pasteNote; bool _pasting=false;
+
+  Future<void> _pasteFromClipboard() async {
+    final d=await Clipboard.getData(Clipboard.kTextPlain);
+    final text=d?.text??'';
+    if(text.trim().isEmpty){setState(()=>_pasteNote=S.t('paste.empty'));return;}
+    _paste.text=text;
+    await _readPasted();
+  }
+
+  /// Reads the pasted text; nothing is applied without a touch on a result.
+  Future<void> _readPasted() async {
+    final text=_paste.text;
+    if(text.trim().isEmpty){setState((){_found=null;_pasteNote=null;});return;}
+    var found=findLocations(text);
+    String? note;
+    // Last resort: an address (geocoding of the server).
+    final addr=widget.addresses;
+    if(found.isEmpty&&addr!=null&&text.trim().length>=3&&text.trim().length<=200){
+      setState(()=>_pasting=true);
+      try{
+        final r=await addr(text.trim(),_live);
+        found=[for(final x in r.take(5))(point:x.point,excerpt:x.title,format:'address')];
+      }catch(_){note=S.t('paste.offline');}
+      if(!mounted)return;
+    }
+    setState((){_pasting=false;_found=found;_pasteNote=note??(found.isEmpty?S.t('paste.none'):null);});
+  }
+
+  void _usePasted(FoundLocation f){
+    setState((){
+      _source=ConverterSource.input;_fields=false;
+      _text.text=formatDd(f.point,decimal:'.');
+      _found=null;_pasteNote=S.t('paste.applied',{'what':f.excerpt});
+    });
+    _gps?.cancel();_gps=null;
+    _remember(f.point,f.excerpt);
+  }
+
+  String _formatName(String f)=>switch(f){
+    'link'=>S.t('paste.link'),'address'=>S.t('paste.address'),
+    _=>formatLabel(CoordFormat.values.firstWhere((c)=>c.name==f,orElse:()=>CoordFormat.dd))};
+
+  Widget _pasteZone(ThemeData t){
+    final found=_found;
+    return Card(key:const ValueKey('converter-paste'),margin:EdgeInsets.zero,child:Padding(padding:const EdgeInsets.fromLTRB(12,10,12,10),
+      child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+        Row(children:[
+          const Icon(Icons.content_paste),const SizedBox(width:8),
+          Expanded(child:Text(S.t('paste.title'),style:t.textTheme.titleSmall)),
+          FilledButton.tonalIcon(key:const ValueKey('paste-button'),onPressed:_pasteFromClipboard,icon:const Icon(Icons.content_paste_go),label:Text(S.t('paste.button'))),
+        ]),
+        const SizedBox(height:8),
+        TextField(key:const ValueKey('paste-text'),controller:_paste,minLines:1,maxLines:4,onSubmitted:(_)=>_readPasted(),
+          decoration:InputDecoration(isDense:true,hintText:S.t('paste.hint'),border:OutlineInputBorder(borderRadius:BorderRadius.circular(12)),
+            suffixIcon:IconButton(tooltip:S.t('paste.read'),onPressed:_readPasted,icon:const Icon(Icons.travel_explore)))),
+        if(_pasting)const Padding(padding:EdgeInsets.only(top:8),child:LinearProgressIndicator()),
+        if(_pasteNote!=null)Padding(padding:const EdgeInsets.only(top:6),child:Text(_pasteNote!,style:t.textTheme.bodySmall)),
+        if(found!=null&&found.isNotEmpty)...[
+          Padding(padding:const EdgeInsets.only(top:6),child:Text(S.t(found.length==1?'paste.foundOne':'paste.foundMany',{'n':found.length}),style:t.textTheme.bodySmall)),
+          for(final f in found)ListTile(dense:true,contentPadding:EdgeInsets.zero,leading:const Icon(Icons.place_outlined),
+            title:Text(S.t('paste.read1',{'what':f.excerpt}),maxLines:2,overflow:TextOverflow.ellipsis),
+            subtitle:Text('${_formatName(f.format)} · ${formatDd(f.point)}'),
+            trailing:FilledButton(onPressed:()=>_usePasted(f),child:Text(S.t('paste.use')))),
+        ],
+      ])));
+  }
+
   Widget _searchBox(){
     return Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
       TextField(key:const ValueKey('converter-search'),controller:_search,onChanged:_searchChanged,
@@ -221,6 +293,8 @@ class _CoordinateConverterPageState extends State<CoordinateConverterPage> {
       appBar:AppBar(title:Text(S.t('converter.title'))),
       body:ListView(padding:const EdgeInsets.fromLTRB(16,8,16,24),children:[
         Text(S.t('converter.help'),style:t.textTheme.bodyMedium?.copyWith(color:t.colorScheme.onSurfaceVariant)),
+        const SizedBox(height:12),
+        _pasteZone(t),
         const SizedBox(height:12),
         _sourceChips(),
         const SizedBox(height:12),

@@ -4,6 +4,7 @@ import '../../l10n/strings.dart';
 import '../../services/sarcade_api.dart';
 import '../aprs/aprs_page.dart';
 import 'quick_messages_editor.dart';
+import '../../services/event_names.dart';
 
 /// Paramètres › Événement (PCO): settings of the active event kept by the
 /// server, applied at once and written in the logbook by the server —
@@ -64,7 +65,8 @@ class _EventSettingsSectionState extends State<EventSettingsSection> {
           if(help!=null)Text(help,style:t.textTheme.bodySmall?.copyWith(color:t.colorScheme.onSurfaceVariant)),
         ])),
         const SizedBox(width:12),
-        child,
+        // Actions of the same width, right-aligned (card of 30 Oct 2026, 16 h 40).
+        SizedBox(width:eventActionWidth,child:Align(alignment:Alignment.centerRight,child:child)),
       ])),
       const Divider(height:1),
     ]);
@@ -80,16 +82,24 @@ class _EventSettingsSectionState extends State<EventSettingsSection> {
     final old=(s['position_old_min'] as num?)?.toInt()??120;
     String dur(int m)=>m%60==0?'${m~/60} h':'$m min';
     return AbsorbPointer(absorbing:_busy,child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
-      Padding(padding:const EdgeInsets.only(top:12),child:Text(S.t('event.intro',{'event':widget.eventId}))),
-      _row(S.t('event.oldThreshold'),help:S.t('event.oldThresholdHelp'),child:DropdownButton<int>(value:oldChoices.contains(old)?old:120,
+      Padding(padding:const EdgeInsets.only(top:12),child:EventNameBuilder(api:widget.api,eventId:widget.eventId,
+        builder:(_,name)=>Text(S.t('event.intro',{'event':name})))),
+      // Same pill as the other settings, no underline (card of 16 h 40).
+      _row(S.t('event.oldThreshold'),help:S.t('event.oldThresholdHelp'),child:SizedBox(width:eventActionWidth,child:DropdownButtonFormField<int>(
+        initialValue:oldChoices.contains(old)?old:120,isExpanded:true,
+        decoration:const InputDecoration(isDense:true,border:OutlineInputBorder(borderRadius:BorderRadius.all(Radius.circular(20))),contentPadding:EdgeInsets.symmetric(horizontal:14,vertical:8)),
         items:[for(final m in oldChoices)DropdownMenuItem(value:m,child:Text(dur(m)))],
-        onChanged:(v){if(v!=null)_patch({'position_old_min':v});})),
+        onChanged:(v){if(v!=null)_patch({'position_old_min':v});}))),
       _row(S.t('event.quick'),help:S.t('event.quickHelp',{'n':(s['quick_messages'] as List?)?.length??0}),
-        child:OutlinedButton(onPressed:_editQuick,child:Text(S.t('event.edit')))),
+        child:SizedBox(width:eventActionWidth,child:OutlinedButton(onPressed:_editQuick,child:Text(S.t('event.edit'))))),
       _row(S.t('event.aprsFollowed'),help:[S.t('event.aprsFollowedHelp',{'g':(s['aprs_groups'] as List?)?.length??0,'c':(s['aprs_callsigns'] as List?)?.length??0}),
           if(s['aprs_tx_rf']==true)S.t('event.aprsTxOn',{'call':'${s['aprs_tx_callsign']??'—'}'})].join(' · '),
-        child:OutlinedButton(onPressed:()=>showOverlayPage<void>(context,(_)=>AprsPage(api:widget.api,eventId:widget.eventId,actorId:widget.actorId)).then((_)=>_load()),
-          child:Text(S.t('diagnostics.open')))),
+        child:SizedBox(width:eventActionWidth,child:OutlinedButton(onPressed:()=>showOverlayPage<void>(context,(_)=>AprsPage(api:widget.api,eventId:widget.eventId,actorId:widget.actorId)).then((_)=>_load()),
+          child:Text(S.t('diagnostics.open'))))),
     ]));
   }
 }
+
+/// Width of the actions of Paramètres › Événement (« Modifier », « Ouvrir »,
+/// the « Ancien » list): the same for all, right-aligned.
+const double eventActionWidth=130;

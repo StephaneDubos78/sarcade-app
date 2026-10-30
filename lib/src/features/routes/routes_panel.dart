@@ -31,7 +31,8 @@ class RoutesPanel extends StatelessWidget {
       Padding(padding:const EdgeInsets.fromLTRB(14,8,6,0),child:Row(children:[
         Expanded(child:Text(S.t('routes.title'),style:Theme.of(context).textTheme.titleMedium)),
         IconButton(tooltip:S.t('routes.refresh'),onPressed:controller.refresh,icon:const Icon(Icons.refresh)),
-        if(isPco(actorId))IconButton(tooltip:S.t('closures.new'),onPressed:onDrawClosure,icon:const Icon(Icons.block)),
+        // ⊘ with its words (revue n° 54).
+        if(isPco(actorId))TextButton.icon(onPressed:onDrawClosure,icon:const Icon(Icons.block),label:Text(S.t('closures.new'))),
       ])),
       // « Nouvel itinéraire »: full blue button with the route icon (1 h 43, option A).
       if(selected==null)Padding(padding:const EdgeInsets.fromLTRB(14,4,14,4),child:Align(alignment:Alignment.centerLeft,

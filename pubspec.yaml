@@ -7,6 +7,9 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  # Material texts in French (« Afficher le menu », « Fermer »…; revue n° 70).
+  flutter_localizations:
+    sdk: flutter
   flutter_map: ^8.0.0
   speech_to_text: ^7.0.0
   latlong2: ^0.9.1

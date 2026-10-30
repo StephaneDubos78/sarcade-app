@@ -27,3 +27,7 @@ class ConversationDrafts {
 /// Side panel beside the map, as the other sub-screens (the map stays
 /// visible behind).
 Widget chatSidePanel({required double width,required Widget child})=>SizedBox(width:width,child:Material(elevation:3,child:child));
+
+/// Computer rail: « Messages » in blue while the Messages page or a
+/// conversation side panel is open (card of 30 Oct 2026, 16 h 13).
+bool messagesRailSelected({required String? deskId,required String? chatPeer})=>deskId=='messages'||chatPeer!=null;

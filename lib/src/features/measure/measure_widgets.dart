@@ -82,7 +82,12 @@ class _MeasureCardState extends State<MeasureCard> {
           if(o!=null&&m.manualDeclination)Text(S.t('measure.declManual',{'manual':decl(m.declination),'wmm':decl(m.wmmDeclination)}),
             style:theme.textTheme.bodySmall?.copyWith(color:theme.colorScheme.tertiary)),
           if(MeasureController.wmmExpired())Text(S.t('measure.wmmExpired'),style:theme.textTheme.bodySmall?.copyWith(color:theme.colorScheme.error)),
-          if(originNote!=null)Text(originNote,style:theme.textTheme.bodySmall?.copyWith(color:o==null||m.originStale?theme.colorScheme.error:null)),
+          // An instruction, not an error (revue n° 19): grey with ⓘ; an old
+          // position stays a warning.
+          if(originNote!=null)Row(children:[
+            if(o==null)Padding(padding:const EdgeInsets.only(right:4),child:Icon(Icons.info_outline,size:14,color:theme.colorScheme.onSurfaceVariant)),
+            Flexible(child:Text(originNote,style:theme.textTheme.bodySmall?.copyWith(color:m.originStale&&o!=null?theme.colorScheme.error:theme.colorScheme.onSurfaceVariant))),
+          ]),
         ])),
         PopupMenuButton<String>(tooltip:S.t('map.menu'),onSelected:(v){
           switch(v){

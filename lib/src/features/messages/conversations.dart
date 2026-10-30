@@ -93,6 +93,11 @@ String avatarInitials(String id){
   final call=RegExp(r'^[A-Z0-9]{1,3}[0-9]([A-Z]{1,4})(-[0-9]{1,2})?$',caseSensitive:false).firstMatch(t);
   if(call!=null){final suf=call.group(1)!.toUpperCase();return suf.length>3?suf.substring(0,3):suf;}
   final words=t.split(RegExp(r'[^A-Za-z0-9]+')).where((w)=>w.isNotEmpty).toList();
+  // Numbered terminals (revue d'ergonomie n° 8, 36, 44): « TEL-01 » → « 01 »,
+  // the 2 last characters, so TEL-01 to TEL-04 differ; same rule on the map,
+  // in the lists and in Messages.
+  final alnum=words.join();
+  if(alnum.length>=2&&RegExp(r'[0-9]$').hasMatch(alnum))return alnum.substring(alnum.length-2).toUpperCase();
   if(words.length>=2)return words.take(3).map((w)=>w[0]).join().toUpperCase();
   final w=words.isEmpty?'?':words.first.toUpperCase();
   return w.length<=2?w:w.substring(0,2);
