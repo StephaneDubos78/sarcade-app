@@ -21,6 +21,8 @@ import '../../models/message.dart';
 import '../../models/position.dart';
 import '../../models/reference_site.dart';
 import '../messages/messages_page.dart';
+import '../messages/messages_nav.dart';
+import '../../services/notification_keys.dart';
 import '../aprs/aprs_page.dart';
 import '../search/map_search.dart';
 import '../search/map_search_bar.dart';
@@ -85,6 +87,7 @@ import '../routes/routes_layers.dart';
 import '../routes/routes_panel.dart';
 import '../tv/tv_view.dart';
 import '../tv/tv_nearby.dart';
+import 'fixed_stations.dart';
 import '../orders/move_orders.dart';
 import '../bearings/signals.dart';
 import '../tools/tools_page.dart';
@@ -169,7 +172,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         final ack=a.toAck();
         await widget.store.cacheAck(ack);
         await _sync.queue(objectId:a.id,objectType:'ack',payload:ack);
-        await _notifications.answered(a.messageId,a.status);
+        final m=widget.store.messages().map(SarcadeMessage.fromJson).where((x)=>x.id==a.messageId).firstOrNull;
+        await _notifications.answered(a.messageId,a.status,key:m==null?null:messageNotificationKey(m));
       }
       if(answers.isNotEmpty&&mounted)setState((){});
     }catch(e){
@@ -179,11 +183,20 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     }
   }
 
-  void _openMessages(){
-    if(_isCompact){_goTab(1);return;}
+  /// Messages pressed again (lot 10C): a conversation open comes back to
+  /// the list; from the list Messages closes (phone: back to the map).
+  final _messagesNav=MessagesNavigator();
+  void _openMessages({bool fromButton=false}){
+    final shown=_isCompact?_tab==1:_deskId=='messages';
+    if(fromButton&&shown&&_messagesNav.backToList())return;
+    if(_isCompact){_goTab(fromButton&&shown?0:1);return;}
+    if(shown&&!fromButton)return;
     _openDesk('messages',()=>MessagesPage(key:const ValueKey('desk-messages'),api:widget.api,eventId:widget.eventId,
-      actorId:widget.deviceId,sync:_sync,store:widget.store));
+      actorId:widget.deviceId,sync:_sync,store:widget.store,navigator:_messagesNav));
   }
+  /// Chat with an operator opened from its sheet (lot 10C, 12 h 54): side
+  /// panel, map visible; ✕ or Échap come back to the sheet.
+  String? _chatPeer;
 
   /// Computer: screen shown beside the rail (the rail stays); phone: a
   /// new screen as before.
@@ -195,7 +208,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       _deskId=id;_deskPage=build();_showPanel=false; // one icon in blue (30 Oct 2026, 1 h 21)
     });
   }
-  @override void initState(){super.initState();_initNotificationActions();unawaited(requestPersistentStorage());_sync=OfflineSyncService(api:widget.api,store:widget.store,eventId:widget.eventId,onRemoteChange:_onRemoteChange);_initDrawing();_initBearings();_loadLocal();_initRoutes();_initMeasure();_sync.start();_initOperations();_loadBasemaps();_initWebUpdate();unawaited(_loadMyPreferences());_syncUiTimer=Timer.periodic(const Duration(seconds:2),(t){if(t.tick%8==0)_checkOrderArrival();if(t.tick%30==1)unawaited(_loadDevices());if(t.tick%3==0)_drainAnswers();if(t.tick%10==5&&isPco(widget.deviceId))unawaited(_tvNearby.check(context,widget.eventId));if(mounted)setState((){});});AccessManager.instance.addListener(_onAccessChanged);_start();unawaited(_loadRoles());}
+  @override void initState(){super.initState();_initNotificationActions();unawaited(requestPersistentStorage());_sync=OfflineSyncService(api:widget.api,store:widget.store,eventId:widget.eventId,onRemoteChange:_onRemoteChange);_initDrawing();_initBearings();_loadLocal();_initRoutes();_initMeasure();_sync.start();_initOperations();_loadBasemaps();_initWebUpdate();unawaited(_loadMyPreferences());_syncUiTimer=Timer.periodic(const Duration(seconds:2),(t){if(t.tick%8==0)_checkOrderArrival();if(t.tick%30==1)unawaited(_loadDevices());if(t.tick%3==0)_drainAnswers();if(t.tick%10==5)unawaited(_tvNearby.check(context,widget.eventId));if(mounted)setState((){});});AccessManager.instance.addListener(_onAccessChanged);_start();unawaited(_loadRoles());}
 
   /// Rights given by the server for the checked email (PCO, administrator).
   Future<void> _loadRoles() async {
@@ -316,6 +329,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       if(!mounted)return;
       setState((){for(final d in list){_devices['${d['device_id']}']=d;}});
     }catch(_){/* offline: the last list stays */}
+    unawaited(_loadFixedClasses());
   }
   /// « SARCADE 0.1.0+415 · Android · dernier contact il y a 12 s ».
   String? _deviceLine(String deviceId){
@@ -329,6 +343,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   }
 
   void _onRealtime(RealtimeEvent e){
+    if(e.type=='aprs.class.updated'){unawaited(_applyFixedClass(e.data));}
     if(e.type=='device.updated'){final id='${e.data['device_id']??''}';if(id.isNotEmpty&&mounted)setState(()=>_devices[id]=Map<String,dynamic>.from(e.data));}
     if(e.type==RealtimeService.reconnectedType){unawaited(_reloadPositions());return;}
     if(e.type=='position.updated'){final p=SarcadePosition.fromJson(e.data);if(_validPosition(p)){widget.store.cachePosition(p.toJson());_traces.add(p);if(mounted)setState((){_positions[p.deviceId]=p;if(_selectedDevice==p.deviceId)_trace.add(p);});}}
@@ -377,7 +392,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       // first arrival notifies; an old message caught up later stays silent.
       if(shouldNotifyMessage(alreadyReceived:existing,createdAt:m.createdAt,now:DateTime.now().toUtc())){
         await _notifications.message(title:'SARCADE · ${S.t('priority.${m.priority}')} · ${m.senderId}',body:m.body,priority:m.priority,
-          payload:NotificationPayload(eventId:widget.eventId,messageId:m.id,deviceId:widget.deviceId,priority:m.priority));
+          payload:NotificationPayload(eventId:widget.eventId,messageId:m.id,deviceId:widget.deviceId,priority:m.priority,tag:messageNotificationKey(m)));
       }
     }
     if(mounted)setState((){});
@@ -587,7 +602,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     if(open.isEmpty)return null;
     final key='sosMuted:${widget.eventId}';
     return SosAlertBanner(open:open,muted:sosMuted(open,widget.store.preference(key)),onOpen:_openMessages,onMute:() async {
-      for(final m in open){await _notifications.answered(m.id,'read');}
+      for(final m in open){await _notifications.answered(m.id,'read',key:messageNotificationKey(m));}
       await widget.store.setPreference(key,sosMuteKey(open));
       if(mounted)setState((){});
     });
@@ -1395,10 +1410,10 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   bool get _rectSelecting=>(_drawing.selectMode||_shiftDown)&&!_drawing.isDrawing&&_aim==null&&!_bearings.taking&&_adjusting==null;
   void _onSelectionRect(Rect r){final cam=_map.camera;_drawing.addToSelection(featuresInRect(_drawing.features,r,cam.latLngToScreenOffset,radiusPx:_circleRadiusPx).map((f)=>f.id));}
   void _onSelectionTap(Offset at){final cam=_map.camera;final hit=hitTest(_drawing.features,at,cam.latLngToScreenOffset,radiusPx:_circleRadiusPx);if(hit!=null)_drawing.toggle(hit.id);}
-  void _syncEscapes()=>_escapes.sync([if(_showPanel)'teams',if(_showRoutesPanel)'routes',if(_showReferencePanel)'reference',if(_showResection)'resection',if(_deskId!=null)'desk']);
+  void _syncEscapes()=>_escapes.sync([if(_showPanel)'teams',if(_showRoutesPanel)'routes',if(_showReferencePanel)'reference',if(_showResection)'resection',if(_deskId!=null)'desk',if(_chatPeer!=null)'chat']);
   bool _escapePanel(){_syncEscapes();return _escapes.escape((k)=>setState((){switch(k){
     case 'teams':_showPanel=false; case 'routes':_showRoutesPanel=false;_drawingRouteId=null;
-    case 'reference':_showReferencePanel=false;_selectedReference=null; case 'resection':_showResection=false;_resectionCtl.result=null;
+    case 'reference':_showReferencePanel=false;_selectedReference=null; case 'chat':_chatPeer=null; case 'resection':_showResection=false;_resectionCtl.result=null;
     default:_deskId=null;_deskPage=null;}}));}
   final ResectionController _resectionCtl=ResectionController();
   void Function(LatLng point,ReferenceSite? site)? _pickPoint; String? _pickHint;
@@ -1460,6 +1475,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       layerSectionTitle(c,S.t('layers.teams'),first:true),
       row(S.t('chips.operators'),_showOperators,(v)=>_setShown('show_ops',v),op:'ops'),
       row('APRS',_showAprs,(v) async =>setState(()=>_showAprs=v),op:'aprs'),
+      row(S.t('fixed.layer'),_showFixed,(v)=>_setFlag('show_fixed',v)),
       // A filter, not a layer: no slider.
       row(S.t('chips.withoutInternet'),_withoutInternetOnly,(v) async =>setState(()=>_withoutInternetOnly=v)),
       layerSectionTitle(c,S.t('layers.operation')),
@@ -1498,7 +1514,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     final now=DateTime.now().toUtc(); final fav=_favourites;
     final shown=_favouritesOnly?sorted.where((p)=>fav.contains(p.deviceId)):sorted;
     final by={for(final x in Section.values)x:<SarcadePosition>[]};
-    for(final p in shown){by[sectionOf(p.time.toUtc(),now,oldMin:_oldMin)]!.add(p);}
+    final fixed=shown.where(_isFixed).toList()..sort((a,b)=>a.label.compareTo(b.label));
+    for(final p in shown.where((p)=>!_isFixed(p))){by[sectionOf(p.time.toUtc(),now,oldMin:_oldMin)]!.add(p);}
     final t=Theme.of(context);
     Widget head(String label,int n,{VoidCallback? onTap,bool? open})=>InkWell(onTap:onTap,child:Padding(
       padding:const EdgeInsets.fromLTRB(16,12,8,4),child:Row(children:[
@@ -1514,6 +1531,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       if(silent.isNotEmpty)...[head(S.t('teams.silent'),silent.length),...silent.map(_stationTile)],
       if(old.isNotEmpty)...[head(S.t('teams.old'),old.length,open:_showOld,onTap:()=>setState(()=>_showOld=!_showOld)),
         if(_showOld)...old.map(_stationTile)],
+      if(fixed.isNotEmpty)...[head(S.t('fixed.section'),fixed.length,open:_showFixedList,onTap:()=>setState(()=>_showFixedList=!_showFixedList)),
+        if(_showFixedList)...fixed.map(_stationTile)],
     ]);
   }
 
@@ -1649,6 +1668,24 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       debugPrint('SARCADE personal settings not read: $e');
     }
   }
+  // Fixed APRS stations (fixed_stations.dart): forced by hand on this device.
+  final MovementTracker _moves=MovementTracker();
+  Map<String,String> get _forced=>parseForced(widget.store.preference('fixed_forced:${widget.eventId}'));
+  bool _isFixed(SarcadePosition p)=>isFixedStation(p,forced:_forced[p.deviceId],moved:_moves.moved(p.deviceId),still:_moves.still(p.deviceId,DateTime.now().toUtc()));
+  bool get _showFixed=>widget.store.preference('show_fixed:${widget.eventId}')=='1';
+  bool _showFixedList=false;
+  Future<void> _saveForced(Map<String,String> m) async {await widget.store.setPreference('fixed_forced:${widget.eventId}',encodeForced(m));if(mounted)setState((){});}
+  Future<void> _forceFixed(String id,String v) async {
+    final m=_forced;if(v=='auto'){m.remove(id);}else{m[id]=v;}await _saveForced(m);
+    try{await widget.api.setAprsClass(widget.eventId,id,widget.deviceId,serverKind(v));}catch(e){debugPrint('SARCADE APRS class not sent: $e');}
+  }
+  Future<void> _loadFixedClasses() async {try{final c=await widget.api.aprsClasses(widget.eventId);await _saveForced(forcedFromServer(c));}catch(_){/* offline: the cached classes stay */}}
+  Future<void> _applyFixedClass(Map<String,dynamic> d) async {
+    final id='${d['device_id']??''}';if(id.isEmpty)return;final m=_forced;final k='${d['kind']??''}';
+    if(k=='fixed'){m[id]='f';}else if(k=='mobile'){m[id]='m';}else{m.remove(id);}await _saveForced(m);
+  }
+  Marker _fixedMarker(SarcadePosition p)=>Marker(point:LatLng(p.lat,p.lon),width:22,height:22,child:Tooltip(message:p.label,child:GestureDetector(onTap:()=>_tapStation(p),
+    child:Opacity(opacity:0.7,child:_stationIcon(p,size:20)))));
   Future<void> _setTraceHours(int h) async {
     setState((){_traceHours=h;_scrub=null;_trace=traceWithin(_history,DateTime.now().toUtc(),h);});
   }
@@ -1750,11 +1787,15 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           ])),
           IconButton(tooltip:S.t(fav?'favourites.remove':'favourites.add'),onPressed:()=>_toggleFavourite(p.deviceId),icon:Icon(fav?Icons.star:Icons.star_border,color:fav?s.tertiary:null)),
           // « Discuter »: direct chat with this operator (not with myself, not an APRS station).
-          if(!p.isAprs&&p.deviceId!=widget.deviceId)IconButton(tooltip:S.t('operators.chat'),onPressed:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>MessagesPage(
-            api:widget.api,eventId:widget.eventId,actorId:widget.deviceId,sync:_sync,store:widget.store,initialPeer:p.deviceId))),icon:const Icon(Icons.chat_outlined)),
+          if(!p.isAprs&&p.deviceId!=widget.deviceId)IconButton(tooltip:S.t('operators.chat'),onPressed:()=>setState((){_chatPeer=p.deviceId;_deskPage=null;_deskId=null;}),icon:const Icon(Icons.chat_outlined)),
           IconButton(tooltip:S.t('common.close'),onPressed:()=>setState((){_selectedDevice=null;_trace=[];_history=[];_scrub=null;}),icon:const Icon(Icons.close)),
         ]),
         if(callsignAmong([p.callsign,p.label,_devices[p.deviceId]?['callsign']?.toString()]) case final call?)Padding(padding:const EdgeInsets.only(top:6),child:CallsignLinks(callsign:call)),
+        if(p.isAprs)Padding(padding:const EdgeInsets.only(top:8),child:Row(children:[
+          Text(S.t('fixed.kind'),style:const TextStyle(fontSize:13)),const SizedBox(width:8),
+          Flexible(child:ChoicePills<String>(compact:true,selected:_forced[p.deviceId]??'auto',onSelected:(v)=>_forceFixed(p.deviceId,v),
+            choices:[(value:'auto',label:S.t(_isFixed(p)?'fixed.autoFixed':'fixed.autoMobile'),icon:null),(value:'f',label:S.t('fixed.fixed'),icon:null),(value:'m',label:S.t('fixed.mobile'),icon:null)])),
+        ])),
         const SizedBox(height:8),
         Container(padding:const EdgeInsets.symmetric(horizontal:10,vertical:8),decoration:BoxDecoration(color:s.surfaceContainerHigh,borderRadius:BorderRadius.circular(10)),
           child:Text([_sourceLabel(p),if(p.aprsPath?.isNotEmpty==true)S.t('station.via',{'path':p.aprsPath})].join(' · '),style:const TextStyle(fontSize:12,fontFamily:'monospace'))),
@@ -2215,9 +2256,10 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     currentMapView=_tvView; currentMapOptions=_tvOptions;
     final sorted=_positions.values.where((p)=>(p.isAprs?_showAprs:_showOperators)&&(!_withoutInternetOnly||worksWithoutInternet(p)||p.deviceId==widget.deviceId)).toList()..sort((a,b)=>a.deviceId.compareTo(b.deviceId));
     // Old stations stay in the list and the search, not on the map.
-    final onMap=sorted.where((p)=>p.deviceId==widget.deviceId||sectionOf(p.time.toUtc(),DateTime.now().toUtc(),oldMin:_oldMin)!=Section.old).toList();
+    for(final p in _positions.values){if(p.isAprs)_moves.observe(p);}
+    final onMap=sorted.where((p)=>p.deviceId==widget.deviceId||(sectionOf(p.time.toUtc(),DateTime.now().toUtc(),oldMin:_oldMin)!=Section.old&&(_showFixed||!_isFixed(p)))).toList();
     final selected=_selectedDevice==null?null:_positions[_selectedDevice];
-    final traced=_traceIds(onMap);
+    final traced=_traceIds(onMap.where((p)=>!_isFixed(p)));
     final screenWidth=MediaQuery.sizeOf(context).width;
     final compact=screenWidth<_compactWidth;
     _syncEscapes();
@@ -2225,7 +2267,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     double panelWidth(double w)=>compact?(screenWidth*0.85).clamp(0.0,w):w;
     void toggleOperators()=>setState((){_deskPage=null;_deskId=null;_showPanel=!_showPanel;if(_showPanel){_showReferencePanel=false;_showResection=false;}});
     void openFiles()=>_openDesk('files',()=>FilesPage(api:widget.api,eventId:widget.eventId,actorId:widget.deviceId,store:widget.store,drawings:DrawingFileActions(importFile:_importFile,exportAll:_exportGeoJson,count:()=>_drawing.features.length)));
-    void openMessages()=>_openMessages();
+    void openMessages()=>_openMessages(fromButton:true);
     void showMap()=>setState((){_tab=0;_deskPage=null;_deskId=null;_showPanel=false;_showReferencePanel=false;_showRoutesPanel=false;_showResection=false;_drawingRouteId=null;});
     void openSettings(){
       final b=widget.settingsBuilder;
@@ -2289,6 +2331,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         // stays visible (« rail toujours visible », 28 Oct 2026).
         Expanded(child:IndexedStack(index:!compact&&_deskPage!=null?1:0,sizing:StackFit.expand,children:[Row(children:[
         if(_showResection&&_pickPoint==null)_resectionPanel(panelWidth(380)),
+        if(_chatPeer!=null)chatSidePanel(width:panelWidth(420),child:MessagesPage(key:ValueKey('chat-$_chatPeer'),api:widget.api,eventId:widget.eventId,
+          actorId:widget.deviceId,sync:_sync,store:widget.store,initialPeer:_chatPeer,onClose:()=>setState(()=>_chatPeer=null))),
         if(_showRoutesPanel)SizedBox(width:panelWidth(360),child:Material(elevation:3,child:RoutesPanel(
           controller:_routes,api:widget.api,actorId:widget.deviceId,selectedRouteId:_selectedRouteId,drawingRouteId:_drawingRouteId,
           groups:widget.store.groups(widget.eventId).map(CommGroup.fromJson).toList(),
@@ -2351,7 +2395,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           ...buildMeasureLayers(_measure,_coordFormat),
           ..._resectionLayers(),
           if(_showPois)_faded('poi',PoiClusterLayer(pois:_pois.values.toList(),onTap:(p)=>unawaited(_openPoi(p)))),
-          _faded('aprs',MarkerLayer(markers:_stationMarkers(onMap.where((p)=>p.isAprs).toList()))),
+          _faded('aprs',MarkerLayer(markers:[...onMap.where(_isFixed).map(_fixedMarker),..._stationMarkers(onMap.where((p)=>p.isAprs&&!_isFixed(p)).toList())])),
           _faded('ops',MarkerLayer(markers:_stationMarkers(onMap.where((p)=>!p.isAprs).toList()))),
           if(_me!=null)MarkerLayer(markers:[Marker(point:_me!,width:22,height:22,child:GestureDetector(key:const ValueKey('me-dot'),
             onTap:()=>openMyPositionInfo(context,location:_location,places:_places,fallback:_me,onSendMessage:_sendText),
@@ -2465,7 +2509,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
 ])),
         // Phone: the other tabs, built at their first visit then kept.
         if(compact)...[
-          _builtTabs.contains(1)?MessagesPage(api:widget.api,eventId:widget.eventId,actorId:widget.deviceId,sync:_sync,store:widget.store,active:_tab==1):const SizedBox.shrink(),
+          _builtTabs.contains(1)?MessagesPage(api:widget.api,eventId:widget.eventId,actorId:widget.deviceId,sync:_sync,store:widget.store,active:_tab==1,navigator:_messagesNav):const SizedBox.shrink(),
           _builtTabs.contains(2)?_teams(sorted,screen:true):const SizedBox.shrink(),
           _builtTabs.contains(3)?ToolsPage(items:_toolItems()):const SizedBox.shrink(),
           _builtTabs.contains(4)?_moreScreen(more):const SizedBox.shrink(),
@@ -2473,7 +2517,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       ])),
       ])),
       // Phone: tab bar always visible, each tab a real screen.
-      bottomNavigationBar:compact?_TabBar(index:_tab,messagesIcon:_messagesIcon(),onSelect:_goTab):null,
+      bottomNavigationBar:compact?_TabBar(index:_tab,messagesIcon:_messagesIcon(),onSelect:(i)=>i==1?_openMessages(fromButton:true):_goTab(i)):null,
     ));
   }
 }
