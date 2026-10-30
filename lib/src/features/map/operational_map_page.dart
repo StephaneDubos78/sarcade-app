@@ -1601,12 +1601,13 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   /// Scale bar (OsmAnd), from the current zoom and latitude.
   Widget _scaleBar(){
     final b=scaleBar(_camZoom,_camLat);
-    final c=Theme.of(context).colorScheme.onSurface;
-    final shadow=[Shadow(blurRadius:3,color:Theme.of(context).colorScheme.surface)];
-    return Column(crossAxisAlignment:CrossAxisAlignment.start,mainAxisSize:MainAxisSize.min,children:[
-      Text(b.label,style:TextStyle(fontSize:11,fontWeight:FontWeight.w600,color:c,shadows:shadow)),
-      Container(width:b.px,height:6,decoration:BoxDecoration(border:Border(left:BorderSide(color:c,width:2),right:BorderSide(color:c,width:2),bottom:BorderSide(color:c,width:2)))),
-    ]);
+    // Own light background, dark ink, whatever the theme (revue n° 5).
+    const c=mapInkText;
+    return Container(padding:const EdgeInsets.fromLTRB(6,2,6,4),decoration:BoxDecoration(color:mapInkBackground,borderRadius:BorderRadius.circular(6)),
+      child:Column(crossAxisAlignment:CrossAxisAlignment.start,mainAxisSize:MainAxisSize.min,children:[
+        Text(b.label,style:const TextStyle(fontSize:11,fontWeight:FontWeight.w600,color:c)),
+        Container(width:b.px,height:6,decoration:const BoxDecoration(border:Border(left:BorderSide(color:c,width:2),right:BorderSide(color:c,width:2),bottom:BorderSide(color:c,width:2)))),
+      ]));
   }
 
   // --- Stations V2: freshness, source, APRS symbols, favourites, trace, proximity ---
@@ -1672,13 +1673,14 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   }
 
   Color _stationColor(SarcadePosition p){
-    final s=Theme.of(context).colorScheme;
+    // Day colours on the map and in the lists, both themes (revue n° 5, 45).
+    final s=mapMarkerScheme;
     if(p.deviceId==widget.deviceId)return s.tertiary;
     return p.isAprs?s.secondary:s.primary;
   }
 
   Widget _stationIcon(SarcadePosition p,{double size=34}){
-    final s=Theme.of(context).colorScheme; final now=DateTime.now().toUtc();
+    final s=mapMarkerScheme; final now=DateTime.now().toUtc();
     final f=freshness(p.time.toUtc(),now,ageingMin:_ageingMin,staleMin:_staleMin);
     final color=f==Freshness.stale?s.outline:_stationColor(p);
     final sym=p.isAprs?aprsSymbol(p.aprsSymbol):null;
@@ -1698,7 +1700,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
 
   /// Station markers, grouped with a number when they overlap (Tesla).
   List<Marker> _stationMarkers(List<SarcadePosition> list){
-    final now=DateTime.now().toUtc(); final s=Theme.of(context).colorScheme;
+    final now=DateTime.now().toUtc(); final s=mapMarkerScheme;
     MapCamera? cam; try{cam=_map.camera;}catch(_){}
     final groups=cam==null||cam.zoom>=15?[for(final p in list)[p]]:clusterOnScreen(list,(p)=>cam!.latLngToScreenOffset(LatLng(p.lat,p.lon)));
     return [for(final g in groups)
@@ -1711,7 +1713,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   }
 
   Marker _stationMarker(SarcadePosition p,DateTime now){
-    final s=Theme.of(context).colorScheme;
+    final s=mapMarkerScheme;
     final f=freshness(p.time.toUtc(),now,ageingMin:_ageingMin,staleMin:_staleMin);
     return Marker(point:LatLng(p.lat,p.lon),width:170,height:64,alignment:Alignment.topCenter,child:GestureDetector(onTap:()=>_tapStation(p),
       child:Opacity(opacity:f==Freshness.ageing?0.75:1,child:Column(mainAxisSize:MainAxisSize.min,children:[
