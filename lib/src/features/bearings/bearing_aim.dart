@@ -26,10 +26,12 @@ class BearingAim {
   /// a new bearing is taken.
   final Bearing? editing;
   BearingAim(this.origin):editing=null;
-  /// « Modifier » on a computer: same origin, tip on the saved azimuth, fixed
-  /// until a click on it; the time of the bearing kept.
+  /// « Modifier » on a computer: same origin, tip on the saved azimuth and
+  /// following the mouse at once, a click fixes it (card « Relevé web,
+  /// Modifier : bout de la flèche directement à la souris », 30 Oct 2026,
+  /// 10 h 38); the time of the bearing kept. Échap leaves it as it was.
   BearingAim.edit(Bearing b):origin=b.origin,editing=b{
-    azimuthDeg=normDeg(b.azimuthDeg); tip=geo.destination(origin,aimDefaultM,azimuthDeg!); fixed=true; takenAt=b.takenAt;
+    azimuthDeg=normDeg(b.azimuthDeg); tip=geo.destination(origin,aimDefaultM,azimuthDeg!); takenAt=b.takenAt;
   }
 
   /// The edited bearing with the new aim: same identifier, author and rights,
@@ -81,8 +83,14 @@ double? parseAzimuth(String text){final d=double.tryParse(text.replaceAll(',','.
 /// Arrow head and handle at the tip (map north up, rotation off).
 List<Widget> buildAimLayers(BearingAim aim,Color colour){
   final tip=aim.tip, az=aim.azimuthDeg; if(tip==null||az==null)return const [];
-  return [MarkerLayer(markers:[Marker(point:tip,width:36,height:36,child:MouseRegion(cursor:aim.fixed?SystemMouseCursors.grab:SystemMouseCursors.precise,
-    child:Transform.rotate(angle:az*math.pi/180,child:Icon(Icons.navigation,size:30,color:colour,shadows:const [Shadow(blurRadius:3,color:Colors.black54)]))))])];
+  // Same handles as the drawings (card « Dessin, poignées d'édition »,
+  // 30 Oct 2026, 10 h 40): a small arrow head and a dot of 8 px at the tip,
+  // inside a touch area of 44 px.
+  return [MarkerLayer(markers:[Marker(point:tip,width:44,height:44,child:MouseRegion(cursor:aim.fixed?SystemMouseCursors.grab:SystemMouseCursors.precise,
+    child:Stack(alignment:Alignment.center,children:[
+      Transform.rotate(angle:az*math.pi/180,child:Icon(Icons.navigation,size:18,color:colour,shadows:const [Shadow(blurRadius:3,color:Colors.black54)])),
+      Container(width:8,height:8,decoration:BoxDecoration(color:Colors.white,shape:BoxShape.circle,border:Border.all(color:colour,width:1.5))),
+    ])))])];
 }
 
 /// Azimuth and time of the mouse bearing, corrected with the keyboard.

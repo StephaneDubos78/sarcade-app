@@ -33,6 +33,9 @@ import '../../ui/theme.dart';
 import 'stations.dart';
 import 'sos_placement.dart';
 import '../bearings/bearing_aim.dart';
+import '../../ui/escape_stack.dart';
+import 'drawing/multi_select.dart';
+import '../../offline/unsent_summary.dart';
 import '../bearings/bearing_controller.dart';
 import '../bearings/bearing_layers.dart';
 import '../bearings/bearing_models.dart';
@@ -103,7 +106,6 @@ import 'traces_layer.dart';
 import '../poi/poi_icons.dart';
 import '../poi/poi_list.dart';
 import '../routes/waypoint_sheet.dart';
-import '../bearings/bearing_legend.dart';
 
 class OperationalMapPage extends StatefulWidget {
   final SarcadeApi api; final String eventId,deviceId,tileUrl,tileAttribution; final LocalStore store; final VoidCallback? onSettings;
@@ -300,7 +302,10 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     }
     setState(()=>_drawingTools=!_drawingTools);
   }
-  void _openUnsent()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>UnsentPage(sync:_sync,actorId:widget.deviceId))).then((_){if(mounted)setState((){});});
+  void _openUnsent({bool failedAgain=false})=>Navigator.push(context,MaterialPageRoute(builder:(_)=>UnsentPage(sync:_sync,actorId:widget.deviceId,failedAgain:failedAgain))).then((_){if(mounted)setState((){});});
+  /// « Envoyer » of the banner = « Tout réessayer »; failing again opens the
+  /// list with Supprimer and Exporter (unsent_summary.dart).
+  Future<void> _retryAllUnsent() async {final left=await _sync.retryAll();if(!mounted)return;setState((){});if(left.isNotEmpty)_openUnsent(failedAgain:true);}
   // --- Devices: platform, version, last contact (« Version de l'application
   // et connexions des opérateurs », 29 Oct 2026) ---
   final Map<String,Map<String,dynamic>> _devices={};
@@ -1084,6 +1089,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       onDeleted:_onLocalFeatureDeleted,
     );
     _drawing.color=_profileDrawColor;
+    _drawing.canSelect=(f)=>canMultiSelect(f,widget.deviceId,pco:isPco(widget.deviceId));
     _drawing.addListener(_onDrawingChanged);
   }
   /// Colour of new drawings chosen in the profile (Paramètres).
@@ -1104,13 +1110,15 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   // Local edits: stored at once, then sent through the Outbox (ADR-001).
   void _onLocalFeatureChanged(MapFeature f,{required bool isNew}){
     widget.store.saveMapFeature(f.toJson());
-    _sync.queue(objectId:f.id,objectType:'map_feature',action:isNew?'create':'update',payload:f.toJson());
+    // Several objects at once: one logbook line (multi_select.dart).
+    final g=_drawing.groupJson;
+    _sync.queue(objectId:f.id,objectType:'map_feature',action:isNew?'create':'update',payload:{...f.toJson(),'group':?g});
   }
 
   void _onLocalFeatureDeleted(MapFeature f){
     widget.store.deleteMapFeature(f.id);
     _sync.queue(objectId:f.id,objectType:'map_feature',action:'delete',payload:{
-      'id':f.id,'event_id':widget.eventId,'updated_by':widget.deviceId,'updated_at':DateTime.now().toUtc().toIso8601String(),
+      'id':f.id,'event_id':widget.eventId,'updated_by':widget.deviceId,'updated_at':DateTime.now().toUtc().toIso8601String(),'group':?_drawing.groupJson,
     });
   }
 
@@ -1219,6 +1227,9 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     if(_searchPin!=null){setState(()=>_searchPin=null);return;}
     final cam=_map.camera;
     final hit=hitTest(_drawing.features,tap.relative??cam.latLngToScreenOffset(point),cam.latLngToScreenOffset,radiusPx:_circleRadiusPx);
+    // Ctrl / Maj + clic, or « Sélection » on a phone: adds or removes an object.
+    final keys=HardwareKeyboard.instance;
+    if(hit!=null&&(_drawing.selectMode||keys.isControlPressed||keys.isMetaPressed||keys.isShiftPressed)){_drawing.toggle(hit.id);return;}
     if(hit==null&&_closeOpenItems())return;
     _drawing.select(hit?.id);
   }
@@ -1230,7 +1241,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   bool _closeOpenItems(){
     final compact=MediaQuery.sizeOf(context).width<_compactWidth;
     var closed=false;
-    if(_drawing.selected!=null){_drawing.select(null);closed=true;}
+    if(_drawing.hasSelection){_drawing.select(null);closed=true;}
     if(_measure.active){unawaited(_measure.clear());closed=true;}
     if(_selectedDevice!=null||_trace.isNotEmpty){_selectedDevice=null;_trace=[];closed=true;}
     if(_selectedReference!=null){_selectedReference=null;closed=true;}
@@ -1328,7 +1339,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     // position, SOS; the north arrow only while a navigation turns the map.
     return Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.end,children:[
       Badge(isLabelVisible:_layerHidden,smallSize:12,backgroundColor:scheme.tertiary,
-        child:_fab('map-layers',S.t('display.menu'),const Icon(Icons.layers_outlined),_chooseBasemap)),
+        child:_fab('map-layers',S.t('display.menu'),const Icon(Icons.tune),_chooseBasemap)),
       const SizedBox(height:10),
       if(rotated&&_meMode!=MeMode.compass)...[
         _fab('map-north',S.t('map.north'),Transform.rotate(angle:-rotation*3.141592653589793/180,child:const Icon(Icons.explore_outlined)),(){
@@ -1357,7 +1368,6 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     return ids;
   }
   final LayerHitNotifier<String> _routeHits=ValueNotifier(null);
-  bool? _legendOpen;
 
   /// SOS on the map (decision of 29 Oct 2026, 12 h 14): any operator, held
   /// 2 s; « Fin de détresse » blinking while in distress. Always visible,
@@ -1377,6 +1387,18 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   LatLng? _searchPin;
   // --- Résection panel and « Toucher la carte » (menu Outils) ---
   bool _showResection=false;
+  /// Échap closes the side panel opened last (escape_stack.dart).
+  final _escapes=EscapeStack();
+  bool _shiftDown=false;
+  /// Maj + glisser (computer) or « Sélection » (phone): selection rectangle.
+  bool get _rectSelecting=>(_drawing.selectMode||_shiftDown)&&!_drawing.isDrawing&&_aim==null&&!_bearings.taking&&_adjusting==null;
+  void _onSelectionRect(Rect r){final cam=_map.camera;_drawing.addToSelection(featuresInRect(_drawing.features,r,cam.latLngToScreenOffset,radiusPx:_circleRadiusPx).map((f)=>f.id));}
+  void _onSelectionTap(Offset at){final cam=_map.camera;final hit=hitTest(_drawing.features,at,cam.latLngToScreenOffset,radiusPx:_circleRadiusPx);if(hit!=null)_drawing.toggle(hit.id);}
+  void _syncEscapes()=>_escapes.sync([if(_showPanel)'teams',if(_showRoutesPanel)'routes',if(_showReferencePanel)'reference',if(_showResection)'resection',if(_deskId!=null)'desk']);
+  bool _escapePanel(){_syncEscapes();return _escapes.escape((k)=>setState((){switch(k){
+    case 'teams':_showPanel=false; case 'routes':_showRoutesPanel=false;_drawingRouteId=null;
+    case 'reference':_showReferencePanel=false;_selectedReference=null; case 'resection':_showResection=false;_resectionCtl.result=null;
+    default:_deskId=null;_deskPage=null;}}));}
   final ResectionController _resectionCtl=ResectionController();
   void Function(LatLng point,ReferenceSite? site)? _pickPoint; String? _pickHint;
   void _startPick(String hint,void Function(LatLng point,ReferenceSite? site) done)=>setState((){_tab=0;_deskPage=null;_deskId=null;_pickHint=hint;_pickPoint=done;});
@@ -1430,7 +1452,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   List<Widget> _fadedAll(String k,List<Widget> layers)=>[for(final l in layers)_faded(k,l)];
 
   List<Widget> _layerSections(BuildContext c,StateSetter refresh){
-    Widget row(String label,bool on,Future<void> Function(bool) set,{String? op})=>LayerRow(label:label,on:on,
+    Widget row(String label,bool on,Future<void> Function(bool) set,{String? op,Widget? trailing})=>LayerRow(label:label,on:on,trailing:trailing,
       onShown:(v) async {await set(v);refresh((){});},
       opacity:op==null?null:_layerOpacity(op),onOpacity:op==null?null:(v) async {await _setLayerOpacity(op,v);refresh((){});});
     return [
@@ -1443,8 +1465,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       row(S.t('chips.drawings'),_showDrawings,(v)=>_setShown('show_draw',v),op:'draw'),
       row(S.t('chips.bearings'),_showBearings,(v)=>_setShown('show_brg',v),op:'brg'),
       _bearingColorBy(refresh),
-      row('${S.t('poi.layer')} (${_pois.length})',_showPois,(v)=>_setShown('show_poi',v),op:'poi'),
-      poiSeeListLink(c,onTap:(){Navigator.pop(c);_openPoiList();}),
+      row('${S.t('poi.layer')} (${_pois.length})',_showPois,(v)=>_setShown('show_poi',v),op:'poi',
+        trailing:poiSeeListLink(_pois.length,onTap:(){Navigator.pop(c);_openPoiList();})),
       row(S.t('order.layer'),_showOrders,(v)=>_setShown('show_orders',v)),
       if(_showOrders)...moveOrderList(c,isPco(widget.deviceId)?_moveOrders:_moveOrders.where((o)=>o.targetId==widget.deviceId||o.createdBy==widget.deviceId).toList(),
         onOpen:(o){Navigator.pop(c);_fitPoints([o.destination]);_showMoveOrder(o);}),
@@ -2118,17 +2140,17 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
 
   /// Exports the event's drawn objects as GeoJSON: a local copy on the device,
   /// and an upload to the event's shared files so the PCO receives it.
-  Future<void> _exportGeoJson() async {
+  Future<void> _exportGeoJson({List<MapFeature>? only}) async {
     final messenger=ScaffoldMessenger.of(context);
     final stamp=DateTime.now().toIso8601String().substring(0,16).replaceAll(RegExp(r'[:T]'),'-');
     final name='sarcade-objets-${widget.eventId}-$stamp.geojson'.replaceAll(RegExp(r'[\\/:*?"<>|]'),'_');
-    final bytes=utf8.encode(const JsonEncoder.withIndent('  ').convert(featureCollection(_drawing.features)));
+    final bytes=only==null?utf8.encode(const JsonEncoder.withIndent('  ').convert(featureCollection(_drawing.features))):selectionGeoJson(only);
     String? localPath;
     try{localPath=await saveFile(name,bytes,mimeType:'application/geo+json');}catch(_){localPath=null;}
     var shared=false;
     try{await widget.api.uploadFile(widget.eventId,widget.deviceId,name,'application/geo+json',bytes);shared=true;}catch(_){}
     if(!mounted)return;
-    final count=_drawing.features.length;
+    final count=only?.length??_drawing.features.length;
     messenger.showSnackBar(SnackBar(
       duration:const Duration(seconds:6),
       content:Text(shared?S.t('map.exportShared',{'n':count}):localPath!=null?S.t('map.exportLocal',{'n':count}):S.t('map.exportFailed')),
@@ -2145,7 +2167,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       if(event is! KeyDownEvent&&event is! KeyRepeatEvent)return KeyEventResult.ignored;
       final focused=FocusManager.instance.primaryFocus?.context;
       if(focused!=null&&(focused.widget is EditableText||focused.findAncestorWidgetOfExactType<EditableText>()!=null)){
-        return KeyEventResult.ignored;
+        // Échap still closes the panel being typed in (search of a list).
+        return event.logicalKey==LogicalKeyboardKey.escape&&_aim==null&&_escapePanel()?KeyEventResult.handled:KeyEventResult.ignored;
       }
       final keys=HardwareKeyboard.instance;
       final ctrl=keys.isControlPressed||keys.isMetaPressed;
@@ -2153,14 +2176,15 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       bool run(VoidCallback action){action();return true;}
       final handled=switch(key){
         LogicalKeyboardKey.escape when _aim!=null=>run(_cancelAim),
-        LogicalKeyboardKey.delete||LogicalKeyboardKey.backspace when _drawing.selected!=null=>run(_drawing.deleteSelected),
+        LogicalKeyboardKey.delete||LogicalKeyboardKey.backspace when _drawing.hasSelection=>run(()=>unawaited(deleteSelection(context,_drawing))),
         LogicalKeyboardKey.keyZ when ctrl&&keys.isShiftPressed=>run(_drawing.redo),
         LogicalKeyboardKey.keyZ when ctrl=>run(_drawing.undo),
         LogicalKeyboardKey.keyY when ctrl=>run(_drawing.redo),
-        LogicalKeyboardKey.keyD when ctrl&&_drawing.selected!=null=>run(()=>_drawing.duplicateSelected()),
+        LogicalKeyboardKey.keyD when ctrl&&_drawing.hasSelection=>run(()=>_drawing.duplicateSelected()),
         LogicalKeyboardKey.enter||LogicalKeyboardKey.numpadEnter when _drawing.canFinish=>run(()=>_drawing.finish()),
         LogicalKeyboardKey.escape when _drawing.isDrawing=>run(()=>_drawing.selectTool(null)),
-        LogicalKeyboardKey.escape when _drawing.selected!=null=>run(()=>_drawing.select(null)),
+        LogicalKeyboardKey.escape when _drawing.hasSelection||_drawing.selectMode=>run((){_drawing.select(null);_drawing.setSelectMode(false);}),
+        LogicalKeyboardKey.escape=>_escapePanel(),
         _=>false,
       };
       return handled?KeyEventResult.handled:KeyEventResult.ignored;
@@ -2195,6 +2219,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     final traced=_traceIds(onMap);
     final screenWidth=MediaQuery.sizeOf(context).width;
     final compact=screenWidth<_compactWidth;
+    _syncEscapes();
     // On a phone a panel takes most of the width, leaving a strip of map visible.
     double panelWidth(double w)=>compact?(screenWidth*0.85).clamp(0.0,w):w;
     void toggleOperators()=>setState((){_deskPage=null;_deskId=null;_showPanel=!_showPanel;if(_showPanel){_showReferencePanel=false;_showResection=false;}});
@@ -2230,7 +2255,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     final banners=OperationsBanners(settings:_ops.settings,update:_ops.update,
           alert:syncAlert(_sync.currentItems,DateTime.now(),_ops.settings.syncAlertMinutes),
           heldPhotos:_sync.lowBandwidth?widget.store.pendingUploads().length:0,
-          onSyncNow:() async {await _sync.syncNow();if(mounted)setState((){});},
+          onSyncNow:_retryAllUnsent,alertWhat:unsentWhat(_sync.currentItems),onOpenUnsent:_openUnsent,
           onUpdate:()=>downloadUpdate(context,widget.api,_ops.update),
           accessRequired:AccessManager.instance.requiredFor(widget.api.baseUrl),
           accessRenewBy:_accessRenewBy,onSignIn:_signIn,
@@ -2345,6 +2370,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           onPanStart:_onFreehandStart,onPanUpdate:_onFreehandUpdate,onPanEnd:_onFreehandEnd,
           child:CustomPaint(painter:_StrokePainter(_stroke,Color(_drawing.color),_drawing.strokeWidth)),
         )),
+        if(_rectSelecting)Positioned.fill(child:SelectionRectOverlay(onRect:_onSelectionRect,onTap:_onSelectionTap)),
+        ShiftWatcher(onChanged:(v){if(mounted)setState(()=>_shiftDown=v);}),
         // Phone (card « Téléphone, carte en portrait », 1 h 32): the map goes
         // under the status bar and the floating tab bar; buttons stay in
         // the safe area.
@@ -2377,17 +2404,23 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
               Flexible(child:DrawingToolbar(controller:_drawing,onExport:_exportGeoJson,onImport:_importFile,onClose:_toggleDrawingTools)),
             ]else...[
               const SizedBox(width:8),
-              Flexible(child:MapSearchBar(items:_searchables,addresses:_searchAddresses,near:_mapCentre,onPick:_onSearchPick)),
-              const SizedBox(width:8),
               // Computer (29 Oct 2026): « Suivi de position » right after the
-              // search, weather and « Connecté » at the top right.
-              if(!compact)...[_trackingBadge(),const Spacer()],
+              // search; the weather pill against the right edge, same margin
+              // as the drawing button (card « Carte web, pastille météo +
+              // liaison collée au bord droit », 30 Oct 2026): one flexible
+              // child only, so no free space is left after the pill.
+              Expanded(child:Row(children:[
+                Flexible(child:MapSearchBar(items:_searchables,addresses:_searchAddresses,near:_mapCentre,onPick:_onSearchPick)),
+                if(!compact)...[const SizedBox(width:8),_trackingBadge()],
+              ])),
+              const SizedBox(width:8),
               _linkWeatherPill(),
             ],
           ]),
           // Phone: filters in one button; computer: chips visible.
           if(!_drawingTools)Padding(padding:const EdgeInsets.only(top:8),child:Wrap(spacing:8,runSpacing:8,children:[?_staleBanner(),?_orderBanner()])),
           if(_drawing.isDrawing)Padding(padding:const EdgeInsets.only(top:8),child:DraftBar(controller:_drawing)),
+          if(_drawing.isMulti)Padding(padding:const EdgeInsets.only(top:8),child:MultiSelectionBar(controller:_drawing,onExport:()=>_exportGeoJson(only:_drawing.selection))),
           if(_drawing.selected!=null)Padding(padding:const EdgeInsets.only(top:8),child:SelectionBar(controller:_drawing,onEditLabel:_editSelectedLabel,canFence:isPco(widget.deviceId))),
           if(_drawingClosure)Padding(padding:const EdgeInsets.only(top:8),child:Card(child:Padding(padding:const EdgeInsets.symmetric(horizontal:12,vertical:6),child:Row(mainAxisSize:MainAxisSize.min,children:[
             const Icon(Icons.block,color:Colors.red),const SizedBox(width:8),
@@ -2405,8 +2438,6 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         else if(selected!=null)Positioned(left:12,right:compact?12:null,bottom:compact?12:24,
           child:ConstrainedBox(constraints:const BoxConstraints(maxWidth:420),child:_stationSheet(selected))),
         Positioned(left:16,bottom:compact?56:24,child:IgnorePointer(child:_scaleBar())),
-        if(_showBearings&&!_bearings.taking&&selected==null)Positioned(left:12,bottom:compact?96:56,child:BearingLegend(bearings:_bearings.all,
-          open:_legendOpen??!compact,onOpen:(v)=>setState(()=>_legendOpen=v))),
         Positioned(left:0,right:0,bottom:compact?60:72,child:Center(child:ConstrainedBox(constraints:const BoxConstraints(maxWidth:520),child:Column(mainAxisSize:MainAxisSize.min,children:[
           MeasureCard(m:_measure,format:_coordFormat,onSavePoi:_savePoi,onSendMessage:_sendMeasure,
             onFit:(){final o=_measure.origin,t=_measure.target;if(t!=null)_fitPoints([?o?.point,t]);},

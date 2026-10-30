@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'drawing_controller.dart';
 import 'geometry.dart';
 import 'map_feature.dart';
+import 'multi_select.dart';
 
 IconData toolIcon(FeatureKind k)=>switch(k){
   FeatureKind.point=>Icons.place_outlined,
@@ -47,6 +48,15 @@ class DrawingToolbar extends StatelessWidget {
             padding:const EdgeInsets.symmetric(horizontal:2),
             child:_ToolButton(kind:k,active:c.tool==k,onTap:()=>c.selectTool(c.tool==k?null:k)),
           ),
+          // Phone: « Sélection » then drag a rectangle (multiple selection).
+          Padding(padding:const EdgeInsets.symmetric(horizontal:2),child:Tooltip(message:S.t('draw.selectHelp'),child:InkWell(key:const ValueKey('draw-select'),
+            borderRadius:BorderRadius.circular(10),onTap:()=>c.setSelectMode(!c.selectMode),
+            child:Container(width:54,padding:const EdgeInsets.symmetric(vertical:4),
+              decoration:BoxDecoration(color:c.selectMode?scheme.primaryContainer:null,borderRadius:BorderRadius.circular(10)),
+              child:Column(mainAxisSize:MainAxisSize.min,children:[
+                Icon(Icons.highlight_alt,color:c.selectMode?scheme.onPrimaryContainer:scheme.onSurface),const SizedBox(height:2),
+                Text(S.t('draw.select'),style:TextStyle(fontSize:11,fontWeight:c.selectMode?FontWeight.bold:FontWeight.normal,color:c.selectMode?scheme.onPrimaryContainer:scheme.onSurfaceVariant)),
+              ]))))),
           const SizedBox(height:40,child:VerticalDivider(width:12)),
           IconButton(tooltip:S.t('draw.undo'),onPressed:c.canUndo?c.undo:null,icon:const Icon(Icons.undo)),
           IconButton(tooltip:S.t('draw.redo'),onPressed:c.canRedo?c.redo:null,icon:const Icon(Icons.redo)),
@@ -154,6 +164,7 @@ class SelectionBar extends StatelessWidget {
               itemBuilder:(_)=>[for(final o in drawingOpacities)CheckedPopupMenuItem(value:o,checked:(f.opacity-o).abs()<0.01,child:Text('${(o*100).round()} %'))],
               child:Padding(padding:const EdgeInsets.all(10),child:Icon(Icons.opacity,color:Color(f.color).withValues(alpha:f.opacity))),
             ),
+            if(f.kind==FeatureKind.text)fontSizeButton(c,f),
             IconButton(tooltip:f.kind==FeatureKind.text?S.t('draw.editText'):S.t('groups.name'),onPressed:onEditLabel,icon:const Icon(Icons.edit_outlined)),
             // Géorepérage (PCO): alert when a team enters or leaves the zone.
             if(f.isClosed&&canFence)IconButton(tooltip:S.t(f.geofence?'draw.geofenceOff':'draw.geofenceOn'),onPressed:c.toggleGeofence,

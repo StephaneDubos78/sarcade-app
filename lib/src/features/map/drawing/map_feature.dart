@@ -34,6 +34,11 @@ extension FeatureKindInfo on FeatureKind {
   };
 }
 
+/// Font size of a Texte object without a chosen size, and the choices of
+/// the selection bar.
+const defaultFontSize=15.0;
+const textFontSizes=<double>[11,15,20,28,40];
+
 /// A structured, georeferenced map object.
 ///
 /// Geometry by kind:
@@ -59,13 +64,16 @@ class MapFeature {
   final bool geofence;
   /// Transparency of the object (0.1 to 1, seen by everyone), 1 by default.
   final double opacity;
+  /// Font size of a Texte object (card « Dessin, objet Texte : pouvoir
+  /// changer la taille de la police »), synchronised; [defaultFontSize] by default.
+  final double fontSize;
 
-  const MapFeature({required this.id,required this.eventId,required this.kind,required this.points,this.radiusM,required this.color,required this.strokeWidth,this.label='',this.createdBy,this.updatedBy,required this.updatedAt,this.geofence=false,this.opacity=1});
+  const MapFeature({required this.id,required this.eventId,required this.kind,required this.points,this.radiusM,required this.color,required this.strokeWidth,this.label='',this.createdBy,this.updatedBy,required this.updatedAt,this.geofence=false,this.opacity=1,this.fontSize=defaultFontSize});
 
-  MapFeature copyWith({List<LatLng>? points,double? radiusM,int? color,double? strokeWidth,String? label,String? id,String? updatedBy,DateTime? updatedAt,bool? geofence,double? opacity})=>MapFeature(
+  MapFeature copyWith({List<LatLng>? points,double? radiusM,int? color,double? strokeWidth,String? label,String? id,String? updatedBy,DateTime? updatedAt,bool? geofence,double? opacity,double? fontSize})=>MapFeature(
     id:id??this.id,eventId:eventId,kind:kind,points:points??this.points,radiusM:radiusM??this.radiusM,
     color:color??this.color,strokeWidth:strokeWidth??this.strokeWidth,label:label??this.label,createdBy:createdBy,
-    updatedBy:updatedBy??this.updatedBy,updatedAt:updatedAt??DateTime.now().toUtc(),geofence:geofence??this.geofence,opacity:opacity??this.opacity,
+    updatedBy:updatedBy??this.updatedBy,updatedAt:updatedAt??DateTime.now().toUtc(),geofence:geofence??this.geofence,opacity:opacity??this.opacity,fontSize:fontSize??this.fontSize,
   );
 
   /// Vertices of the polygon outline for closed shapes.
@@ -104,6 +112,7 @@ class MapFeature {
     'created_by':createdBy,'updated_by':updatedBy??createdBy,'updated_at':updatedAt.toUtc().toIso8601String(),
     if(geofence)'geofence':true,
     if(opacity<1)'opacity':opacity,
+    if(kind==FeatureKind.text&&fontSize!=defaultFontSize)'font_size':fontSize,
   };
 
   factory MapFeature.fromJson(Map<String,dynamic> j)=>MapFeature(
@@ -115,6 +124,7 @@ class MapFeature {
     label:(j['label'] as String?)??'',createdBy:j['created_by'] as String?,updatedBy:j['updated_by'] as String?,
     updatedAt:DateTime.parse(j['updated_at'] as String),geofence:j['geofence']==true,
     opacity:((j['opacity'] as num?)?.toDouble()??1.0).clamp(0.1,1.0),
+    fontSize:((j['font_size'] as num?)?.toDouble()??defaultFontSize).clamp(8.0,72.0),
   );
 
   /// GeoJSON Feature. Coordinates are [longitude, latitude] as the spec requires.

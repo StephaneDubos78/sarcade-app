@@ -29,8 +29,10 @@ Future<void> showBasemapSheet(BuildContext context,{required List<Basemap> catal
     ]);
     final height=MediaQuery.sizeOf(c).height*0.7;
     return SafeArea(child:SizedBox(height:height,child:DefaultTabController(length:layers==null?1:2,child:Column(children:[
-      TabBar(tabs:[Tab(text:S.t('basemap.title')),if(layers!=null)Tab(text:S.t('display.layers'))]),
-      Expanded(child:TabBarView(children:[basemaps,if(layers!=null)ListView(children:layers(c,set))])),
+      // « Affichage » on the left and open by default, « Fond de carte » on
+      // the right (card « Bouton Fond et affichage », 30 Oct 2026, 10 h 31).
+      TabBar(tabs:[if(layers!=null)Tab(text:S.t('display.layers')),Tab(text:S.t('basemap.title'))]),
+      Expanded(child:TabBarView(children:[if(layers!=null)ListView(children:layers(c,set)),basemaps])),
     ]))));
   }));
 }

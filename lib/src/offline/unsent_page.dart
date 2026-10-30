@@ -5,17 +5,22 @@ import '../l10n/strings.dart';
 import '../platform/platform_services.dart';
 import 'outbox_policy.dart';
 import 'sync_service.dart';
+import 'unsent_summary.dart';
 
 /// « Éléments non envoyés » (« Robustesse de la synchronisation »): every
 /// item that cannot leave, with its reason, and what the operator can do.
 class UnsentPage extends StatefulWidget {
   final OfflineSyncService sync; final String actorId;
-  const UnsentPage({super.key,required this.sync,required this.actorId});
+  /// « Envoyer » of the banner failed again: Supprimer and Exporter are
+  /// offered on each item (card « iPhone, 1 élément(s) non envoyé(s) »).
+  final bool failedAgain;
+  const UnsentPage({super.key,required this.sync,required this.actorId,this.failedAgain=false});
   @override State<UnsentPage> createState()=>_UnsentPageState();
 }
 
 class _UnsentPageState extends State<UnsentPage> {
   OfflineSyncService get _sync=>widget.sync;
+  late bool _failedAgain=widget.failedAgain;
 
   List<Map<String,dynamic>> _items(){
     final now=DateTime.now().toUtc();
@@ -78,16 +83,20 @@ class _UnsentPageState extends State<UnsentPage> {
     return Scaffold(
       appBar:AppBar(title:Text('${S.t('unsent.title')} (${items.length})'),actions:[
         if(retryable.isNotEmpty)OutlinedButton.icon(
-          onPressed:()=>_run(() async {for(final op in retryable){await _sync.store.updatePending(resetForRetry(op));}await _sync.syncNow();}),
+          onPressed:()=>_run(() async {final left=await _sync.retryAll();_failedAgain=left.isNotEmpty;}),
           icon:const Icon(Icons.refresh),label:Text(S.t('unsent.retryAll'))),
       ]),
       body:items.isEmpty
         ? Center(child:Text(S.t('unsent.empty')))
         : ListView.separated(
-            itemCount:items.length,
+            itemCount:items.length+(_failedAgain?1:0),
             separatorBuilder:(_,_)=>const Divider(height:1),
-            itemBuilder:(context,i){
-              final op=items[i];
+            itemBuilder:(context,index){
+              if(_failedAgain&&index==0){
+                return Material(key:const ValueKey('unsent-failed-again'),color:Theme.of(context).colorScheme.errorContainer,child:Padding(padding:const EdgeInsets.all(12),
+                  child:Row(children:[const Icon(Icons.error_outline),const SizedBox(width:8),Expanded(child:Text(S.t('unsent.stillFailing')))])));
+              }
+              final op=items[index-(_failedAgain?1:0)];
               final here=_here(op);
               final server=itemServer(op);
               final where=<String>[
@@ -97,14 +106,20 @@ class _UnsentPageState extends State<UnsentPage> {
               final details=<String>[
                 ...where,
                 if(!here)S.t('unsent.waitsReturn'),
-                if(reasonOf(op)!=null)reasonOf(op)!,
+                ?readableReason(op),
                 '${S.t('unsent.attempts',{'n':attempts(op)})} · ${S.t('unsent.since',{'age':_age(op)})}',
               ];
               return ListTile(
                 leading:Icon(here?Icons.error_outline:Icons.schedule,color:here?Colors.deepOrange:Colors.blueGrey),
                 title:Text('${S.t('type.${op['object_type']}')}${itemSummary(op).isEmpty?'':' · ${itemSummary(op)}'}',maxLines:2,overflow:TextOverflow.ellipsis),
-                subtitle:Text(details.join('\n')),
-                isThreeLine:details.length>1,
+                subtitle:Column(crossAxisAlignment:CrossAxisAlignment.start,mainAxisSize:MainAxisSize.min,children:[
+                  Text(details.join('\n')),
+                  if(_failedAgain)Wrap(spacing:8,children:[
+                    TextButton.icon(onPressed:()=>_delete(op),icon:const Icon(Icons.delete_outline),label:Text(S.t('unsent.delete'))),
+                    TextButton.icon(onPressed:()=>_export(op),icon:const Icon(Icons.download),label:Text(S.t('unsent.export'))),
+                  ]),
+                ]),
+                isThreeLine:details.length>1||_failedAgain,
                 trailing:PopupMenuButton<String>(
                   onSelected:(v){switch(v){
                     case 'retry':_run(()=>_sync.retry(op));

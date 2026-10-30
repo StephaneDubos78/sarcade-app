@@ -6,6 +6,7 @@ import '../services/sarcade_api.dart';
 import 'local_store.dart';
 import 'outbox_policy.dart';
 import 'sync_operation.dart';
+import 'unsent_summary.dart';
 
 /// Object types of routes and navigation, cached in one box.
 const routeObjectKinds={'route','route_waypoint','route_passage','road_closure','itinerary','move_order'};
@@ -206,6 +207,16 @@ class OfflineSyncService {
     'rejected'=>'refusé par le serveur',
     _=>null,
   };
+
+  /// « Envoyer » of the banner = « Tout réessayer » (card « iPhone, 1
+  /// élément(s) non envoyé(s) », 30 Oct 2026): the items set aside go back to
+  /// the queue too. Returns the items still not sent afterwards.
+  Future<List<Map<String,dynamic>>> retryAll() async {
+    for(final op in retryAllOf(_all,server,eventId,DateTime.now().toUtc())){await store.updatePending(op);}
+    await syncNow();
+    final now=DateTime.now().toUtc();
+    return [for(final op in _all)if(belongsTo(op,server,eventId)&&isUnsent(op,server,eventId,now))op];
+  }
 
   /// « Réessayer » from the « Éléments non envoyés » screen.
   Future<void> retry(Map<String,dynamic> op) async {await store.updatePending(resetForRetry(op));await syncNow();}
