@@ -92,7 +92,18 @@ class TracesStore {
   }
 }
 
-/// Choice of the window, under the « Traces » line.
-Widget traceWindowChips(int current,ValueChanged<int> onPick)=>Padding(padding:const EdgeInsets.fromLTRB(16,0,8,4),
-  child:Wrap(spacing:6,runSpacing:4,children:[for(final w in traceWindows)ChoiceChip(key:ValueKey('trace-window-$w'),visualDensity:VisualDensity.compact,
-    label:Text(traceWindowLabel(w)),selected:current==w,onSelected:(_)=>onPick(w))]));
+/// « Durée des traces » and its choices (card « Fond et affichage, durée
+/// des traces ambiguë », 30 Oct 2026, 17 h 45): one window for every trace
+/// (operators, APRS stations, pinned traces), titled so that it does not
+/// read as an APRS option.
+Widget traceWindowChips(int current,ValueChanged<int> onPick)=>Padding(padding:const EdgeInsets.fromLTRB(16,4,8,4),
+  child:Column(crossAxisAlignment:CrossAxisAlignment.start,mainAxisSize:MainAxisSize.min,children:[
+    Builder(builder:(c)=>Text(S.t('traces.window'),style:Theme.of(c).textTheme.bodyMedium)),
+    const SizedBox(height:4),
+    Wrap(spacing:6,runSpacing:4,children:[for(final w in traceWindows)ChoiceChip(key:ValueKey('trace-window-$w'),visualDensity:VisualDensity.compact,
+      label:Text(traceWindowLabel(w)),selected:current==w,onSelected:(_)=>onPick(w))]),
+  ]));
+
+/// « Traces APRS » on by default (card of 30 Oct 2026, 16 h 13): stored
+/// « 0 » only when turned off; the fixed stations never have a trace.
+bool aprsTracesFrom(String? stored)=>stored!='0';
