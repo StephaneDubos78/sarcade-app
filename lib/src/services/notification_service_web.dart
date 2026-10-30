@@ -64,7 +64,9 @@ class NotificationService {
 
   void _show(String title,String body,String priority,NotificationPayload? payload){
     final n=web.Notification(title,web.NotificationOptions(body:body,
-      tag:payload==null?'sarcade-${DateTime.now().millisecondsSinceEpoch}':'sarcade-${payload.messageId}',
+      // One notification per message (or per distress): the same tag
+      // replaces it, renotify rings again (30 Oct 2026, 12 h 45).
+      tag:payload==null?'sarcade-${DateTime.now().millisecondsSinceEpoch}':'sarcade-${payload.key}',renotify:payload!=null,
       requireInteraction:isUrgentPriority(priority),
       silent:const {soundSilent,soundDiscreet}.contains(soundFor(priority,sounds,sos:isSosBody(body)))));
     if(payload!=null){
@@ -79,12 +81,13 @@ class NotificationService {
   Future<void> message({required String title,required String body,required String priority,NotificationPayload? payload}) async {
     if(_permission!='granted'){debugPrint('SARCADE notification [$priority] $title: $body');return;}
     try{
+      if(payload!=null){for(final t in _timers.remove(payload.key)??const <Timer>[]){t.cancel();}}
       _show(title,body,priority,payload);
       if(priority=='immediate'&&payload!=null){
         final times=reminderTimes(DateTime.now().toUtc());
         for(var k=1;k<=times.length;k++){
           final n=k;
-          _timers.putIfAbsent(payload.messageId,()=>[]).add(Timer(times[k-1].difference(DateTime.now().toUtc()),(){
+          _timers.putIfAbsent(payload.key,()=>[]).add(Timer(times[k-1].difference(DateTime.now().toUtc()),(){
             _show(S.t('notif.reminder',{'n':n,'total':times.length,'title':title}),body,priority,payload);
           }));
         }
@@ -94,8 +97,8 @@ class NotificationService {
     }
   }
 
-  Future<void> answered(String messageId,String status) async {
+  Future<void> answered(String messageId,String status,{String? key}) async {
     if(!stopsReminders(status))return;
-    for(final t in _timers.remove(messageId)??const <Timer>[]){t.cancel();}
+    for(final id in {messageId,?key}){for(final t in _timers.remove(id)??const <Timer>[]){t.cancel();}}
   }
 }
