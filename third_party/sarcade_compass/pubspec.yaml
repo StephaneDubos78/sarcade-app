@@ -1,0 +1,24 @@
+name: sarcade_compass
+description: >-
+  Heading given by the system, already fused and calibrated (Android rotation
+  vector sensor, iPhone Core Location heading), with its accuracy. Magnetic
+  north on both platforms. SARCADE card « Boussole instable », 30 Oct 2026.
+version: 1.0.0
+publish_to: none
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+  flutter: ">=3.3.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: org.sarcade.compass
+        pluginClass: SarcadeCompassPlugin
+      ios:
+        pluginClass: SarcadeCompassPlugin

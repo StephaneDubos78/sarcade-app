@@ -21,7 +21,24 @@ class BearingAim {
   bool fixed=false;
   /// Time of the bearing, corrected in the panel.
   DateTime takenAt=DateTime.now().toUtc();
-  BearingAim(this.origin);
+  /// Saved bearing being changed with the mouse (card « Relevé web,
+  /// modifier un relevé enregistré à la souris », 30 Oct 2026); null when
+  /// a new bearing is taken.
+  final Bearing? editing;
+  BearingAim(this.origin):editing=null;
+  /// « Modifier » on a computer: same origin, tip on the saved azimuth, fixed
+  /// until a click on it; the time of the bearing kept.
+  BearingAim.edit(Bearing b):origin=b.origin,editing=b{
+    azimuthDeg=normDeg(b.azimuthDeg); tip=geo.destination(origin,aimDefaultM,azimuthDeg!); fixed=true; takenAt=b.takenAt;
+  }
+
+  /// The edited bearing with the new aim: same identifier, author and rights,
+  /// length brought back to the usual one ([lengthM]).
+  Bearing? edited({required int strength,required String search,required bool exercise,double? frequencyMhz,required double lengthM,required String by,required DateTime at}){
+    final b=editing, az=azimuthDeg; if(b==null||az==null)return null;
+    return b.copyWith(azimuthDeg:az,lengthM:lengthM,strength:strength,search:search,exercise:exercise,frequencyMhz:frequencyMhz,
+      takenAt:takenAt,method:'map',updatedBy:by,updatedAt:at);
+  }
 
   /// Free length during the aim, in metres (0 before the first move).
   double get lengthM=>tip==null?0:geo.distanceM(origin,tip!);

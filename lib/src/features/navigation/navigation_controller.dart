@@ -2,8 +2,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
-import 'package:sensors_plus/sensors_plus.dart';
-import '../measure/measure_controller.dart' show compassHeading;
+import '../compass/shared_compass.dart';
 import '../measure/wmm.dart';
 import '../../services/location_service.dart';
 import '../../services/sarcade_api.dart';
@@ -23,7 +22,8 @@ class NavigationController extends ChangeNotifier {
   final SarcadeApi api; final RoutesController routes; final LocationService location; final String eventId;
   /// Road graph for itineraries computed on the device (level 3).
   final RoadGraphService? graphs;
-  NavigationController({required this.api,required this.routes,required this.location,required this.eventId,this.graphs});
+  final SharedCompass compass;
+  NavigationController({required this.api,required this.routes,required this.location,required this.eventId,this.graphs,SharedCompass? compass}):compass=compass??SharedCompass.instance;
 
   NavState state=NavState.idle;
   String mode='car'; String label=''; LatLng? destination;
@@ -34,8 +34,7 @@ class NavigationController extends ChangeNotifier {
   double? course; double? speedMs;
   /// True heading of the device from the compass (follow mode, stationary).
   double? compassTrue;
-  StreamSubscription<AccelerometerEvent>? _acc; StreamSubscription<MagnetometerEvent>? _mag;
-  List<double>? _gravity, _field;
+  bool _compassOn=false;
   /// Message when the engine is unavailable or no itinerary exists.
   String? notice;
   String? _sharedId; StreamSubscription<Position>? _gps; DateTime _lastShare=DateTime.fromMillisecondsSinceEpoch(0);
@@ -141,17 +140,13 @@ class NavigationController extends ChangeNotifier {
 
   /// Compass of the follow mode when the operator does not move (phones).
   void startCompass(){
-    if(_acc!=null)return;
-    try{
-      _acc=accelerometerEventStream().listen((e){_gravity=[e.x,e.y,e.z];_updateHeading();},onError:(_){});
-      _mag=magnetometerEventStream().listen((e){_field=[e.x,e.y,e.z];_updateHeading();},onError:(_){});
-    }catch(_){/* no sensor on this device */}
+    // Browser: no compass here, as before.
+    if(_compassOn||kIsWeb)return;
+    _compassOn=true; compass.start(); compass.addListener(_updateHeading);
   }
 
   void _updateHeading(){
-    final g=_gravity, f=_field, p=position;
-    if(g==null||f==null)return;
-    final m=compassHeading(g,f);
+    final m=compass.heading, p=position;
     if(m==null)return;
     final decl=p==null?0.0:magneticDeclination(p.latitude,p.longitude,DateTime.now());
     final next=(m+decl+360)%360;
@@ -161,7 +156,7 @@ class NavigationController extends ChangeNotifier {
     notifyListeners();
   }
 
-  void stopCompass(){_acc?.cancel();_mag?.cancel();_acc=null;_mag=null;compassTrue=null;}
+  void stopCompass(){if(_compassOn){_compassOn=false;compass.removeListener(_updateHeading);compass.stop();}compassTrue=null;}
 
   /// Bearing to the destination, for the straight-line mode.
   double? get bearing=>position==null||destination==null?null:bearingDeg(position!,destination!);

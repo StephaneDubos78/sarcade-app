@@ -56,6 +56,9 @@ class _ResectionPanelState extends State<ResectionPanel> {
 
   Widget _sight(int i){
     final t=Theme.of(context); final s=c.sights[i]; final k=s.known;
+    // Field still to fill before « Calculer »: circled in colour.
+    final miss=c.missing, mark=t.colorScheme.tertiary;
+    final needPoint=miss.points.contains(i), needAz=miss.azimuths.contains(i);
     return Card(elevation:0,color:t.colorScheme.surfaceContainerLow,margin:const EdgeInsets.only(bottom:10),child:Padding(padding:const EdgeInsets.all(12),
       child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
         Row(children:[
@@ -67,14 +70,15 @@ class _ResectionPanelState extends State<ResectionPanel> {
         ]),
         const SizedBox(height:8),
         OutlinedButton.icon(style:OutlinedButton.styleFrom(alignment:Alignment.centerLeft,minimumSize:const Size.fromHeight(44),
-            shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(10))),
+            side:needPoint?BorderSide(color:mark,width:2):null,shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(10))),
           onPressed:()=>_choosePoint(i),
           icon:Icon(k?.site==null?(k==null?Icons.search:Icons.place_outlined):(k!.site!.isHighPoint?Icons.terrain:Icons.cell_tower)),
           label:Text(k?.label??S.t('resection.choosePoint'),overflow:TextOverflow.ellipsis)),
         const SizedBox(height:8),
         Row(children:[
           Expanded(child:TextField(controller:_az[i],keyboardType:const TextInputType.numberWithOptions(decimal:true),
-            decoration:InputDecoration(isDense:true,labelText:S.t('resection.azimuth'),suffixText:'°',border:OutlineInputBorder(borderRadius:BorderRadius.circular(10))),
+            decoration:InputDecoration(isDense:true,labelText:S.t('resection.azimuth'),suffixText:'°',border:OutlineInputBorder(borderRadius:BorderRadius.circular(10)),
+              enabledBorder:needAz?OutlineInputBorder(borderRadius:BorderRadius.circular(10),borderSide:BorderSide(color:mark,width:2)):null),
             onChanged:(v){final d=double.tryParse(v.replaceAll(',','.').trim());c.setAzimuth(i,d==null||d<0||d>360?null:d);})),
           if(widget.canCompass)...[
             const SizedBox(width:6),
@@ -105,14 +109,19 @@ class _ResectionPanelState extends State<ResectionPanel> {
           child:Row(children:[
             SizedBox(width:64,height:56,child:CustomPaint(painter:_SchemaPainter(t.colorScheme.primary,t.colorScheme.error))),
             const SizedBox(width:12),
-            Expanded(child:Text(S.t('resection.helpLong'),style:t.textTheme.bodySmall)),
+            Expanded(child:Text(S.t('resection.helpShort'),style:t.textTheme.bodyMedium)),
           ]))),
         for(var i=0;i<3;i++)_sight(i),
         if(angle!=null&&c.poorGeometry)Card(elevation:0,color:const Color(0xFFFFF4E5),margin:const EdgeInsets.only(bottom:10),child:Padding(padding:const EdgeInsets.all(10),
           child:Row(children:[const Icon(Icons.warning_amber,color:Color(0xFFE8710A)),const SizedBox(width:8),
             Expanded(child:Text(S.t('resection.poor',{'a':angle.toStringAsFixed(0)}),style:const TextStyle(color:Color(0xFF7A3E00))))]))),
-        FilledButton.icon(style:FilledButton.styleFrom(minimumSize:const Size.fromHeight(48),shape:const StadiumBorder()),
-          onPressed:c.validSights.length<2?null:(){final res=c.compute();if(res?.centre!=null)widget.onFocus(res!.centre!);},
+        // Not a greyed button: what is missing, the fields circled above.
+        if(c.validSights.length<2)Container(key:const ValueKey('resection-missing'),padding:const EdgeInsets.symmetric(horizontal:14,vertical:12),
+          decoration:BoxDecoration(borderRadius:BorderRadius.circular(24),border:Border.all(color:t.colorScheme.tertiary,width:2)),
+          child:Row(children:[Icon(Icons.edit_note,color:t.colorScheme.tertiary),const SizedBox(width:10),
+            Expanded(child:Text(resectionMissingText(c.missing),style:t.textTheme.bodyMedium?.copyWith(fontWeight:FontWeight.w600)))]))
+        else FilledButton.icon(style:FilledButton.styleFrom(minimumSize:const Size.fromHeight(48),shape:const StadiumBorder()),
+          onPressed:(){final res=c.compute();if(res?.centre!=null)widget.onFocus(res!.centre!);},
           icon:const Icon(Icons.calculate_outlined),label:Text(S.t('resection.compute'))),
         if(r!=null)...[
           const SizedBox(height:12),
@@ -132,6 +141,14 @@ class _ResectionPanelState extends State<ResectionPanel> {
       ])),
     ])));
   }
+}
+
+/// « Saisir l’azimut des visées 1 et 2 », « Choisir le point connu de la
+/// visée 2 », both joined.
+String resectionMissingText(({List<int> points,List<int> azimuths}) m){
+  String n(List<int> l)=>l.length==1?S.t('resection.one',{'n':'${l.first+1}'}):S.t('resection.both',{'a':'${l.first+1}','b':'${l.last+1}'});
+  final parts=[if(m.points.isNotEmpty)S.t('resection.missingPoint',{'s':n(m.points)}),if(m.azimuths.isNotEmpty)S.t('resection.missingAzimuth',{'s':n(m.azimuths)})];
+  return [for(var i=0;i<parts.length;i++)i==0?parts[i]:parts[i][0].toLowerCase()+parts[i].substring(1)].join(S.t('resection.and'));
 }
 
 /// Two known points (triangles) and the sights crossing where you are.
