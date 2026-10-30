@@ -60,13 +60,19 @@ ThemeData _base(ColorScheme scheme){
   // Cards and groups: grey-blue background, round corners (no border by day).
   cardTheme:CardThemeData(color:scheme.surfaceContainer,shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(16),
     side:day?BorderSide.none:BorderSide(color:scheme.outlineVariant))),
-  // Chips and filters: light blue when selected.
-  chipTheme:ChipThemeData(shape:StadiumBorder(side:BorderSide(color:day?scheme.outlineVariant:scheme.outline)),
-    selectedColor:scheme.secondaryContainer,checkmarkColor:scheme.onSecondaryContainer),
-  // Charte des boutons (decision of the project owner, 30 Oct 2026, 2 h 15):
-  // the main action of a screen (Enregistrer, Envoyer, SOS) is a FilledButton,
-  // a full blue pill; every other button is an OutlinedButton, drawn as the
-  // « Tester le réveil » pill: light blue, icon + label, no border.
+  // Charte par rôle (validated on 30 Oct 2026, 10 h 46), rule 4: filters,
+  // sorts and choices are pills without contour, light grey, light blue when
+  // selected (as ChoicePills).
+  chipTheme:ChipThemeData(shape:const StadiumBorder(),side:BorderSide.none,backgroundColor:scheme.surfaceContainerHighest,
+    selectedColor:scheme.primaryContainer,checkmarkColor:scheme.onPrimaryContainer,
+    secondarySelectedColor:scheme.primaryContainer,labelStyle:TextStyle(color:scheme.onSurface)),
+  // Charte des boutons par rôle (validated on 30 Oct 2026, 10 h 46):
+  // 1) create (« Nouveau », « Nouveau groupe », « Ajouter »…) and 2) validate
+  // (« Enregistrer », « Appliquer », « Envoyer ») are a FilledButton, a full
+  // blue pill; 3) every other action (« Voir la liste », « Ouvrir »,
+  // « Modifier »…) is an OutlinedButton, drawn as a discreet dark pill with
+  // no border; 4) filters: chipTheme above and ChoicePills; 5) icon only:
+  // RoundIconButton (ui/action_buttons.dart).
   filledButtonTheme:FilledButtonThemeData(style:FilledButton.styleFrom(shape:const StadiumBorder())),
   outlinedButtonTheme:OutlinedButtonThemeData(style:secondaryPill(scheme)),
   textButtonTheme:TextButtonThemeData(style:TextButton.styleFrom(foregroundColor:scheme.primary)),
@@ -78,12 +84,15 @@ ThemeData _base(ColorScheme scheme){
   );
 }
 
-/// Secondary button of the charte: light blue pill, no border (readable by
-/// night too: dark cyan background, pale cyan text).
+/// « Autres actions » of the charte: discreet dark pill, no border (by day
+/// the grey-blue of the cards, by night a dark panel with light text).
 ButtonStyle secondaryPill(ColorScheme s)=>OutlinedButton.styleFrom(shape:const StadiumBorder(),side:BorderSide.none,
-  backgroundColor:s.primaryContainer,foregroundColor:s.onPrimaryContainer,iconColor:s.onPrimaryContainer,
+  backgroundColor:s.surfaceContainerHighest,foregroundColor:s.onSurface,iconColor:s.onSurface,
   disabledBackgroundColor:s.onSurface.withValues(alpha:0.08),disabledForegroundColor:s.onSurface.withValues(alpha:0.38),
   padding:const EdgeInsets.symmetric(horizontal:18,vertical:10));
+
+/// Background of the small round behind an icon-only button (rule 5).
+Color roundIconBackground(ColorScheme s)=>s.surfaceContainerHighest;
 
 /// Panel floating over the map: rounded, bordered, nearly opaque (no blur:
 /// too slow in the web app and on old phones).

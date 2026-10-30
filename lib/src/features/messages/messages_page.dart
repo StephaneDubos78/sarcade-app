@@ -21,6 +21,7 @@ import 'photo_attachment.dart';
 import 'message_deletion.dart';
 import '../settings/quick_messages_editor.dart' show defaultQuickMessages;
 import '../dictation/dictation_button.dart';
+import '../../ui/action_buttons.dart';
 
 class MessagesPage extends StatefulWidget {
  final SarcadeApi api; final String eventId,actorId; final OfflineSyncService sync; final LocalStore store;
@@ -462,7 +463,7 @@ class _MessagesPageState extends State<MessagesPage>{
    if(mounted)setState((){});
  }
 
- Widget _bubble(SarcadeMessage m,List<SarcadeAck> ma,{required bool showAuthor}){
+ Widget _bubble(SarcadeMessage m,List<SarcadeAck> ma,{required bool showAuthor,bool named=true}){
    final t=Theme.of(context); final s=t.colorScheme;
    final mine=m.senderId==widget.actorId;
    final photos=m.attachments.where((a)=>a.isImage).toList();
@@ -470,7 +471,7 @@ class _MessagesPageState extends State<MessagesPage>{
    final prio=immediate?s.error:const Color(0xFFE8710A);
    final grey=_night?const Color(0xFF8696A0):const Color(0xFF667781);
    final myAck=ma.where((a)=>a.actorId==widget.actorId).map((a)=>a.status).toSet();
-   if(m.deleted)return _deletedBubble(m,ma,mine:mine,showAuthor:showAuthor,grey:grey);
+   if(m.deleted)return _deletedBubble(m,ma,mine:mine,showAuthor:showAuthor&&named,grey:grey);
    final needsAnswer=!mine&&immediate&&!myAck.contains('accepted')&&!myAck.contains('rejected');
    final meta=Row(mainAxisSize:MainAxisSize.min,children:[
      Text(_hm(m.createdAt),style:TextStyle(fontSize:11,color:grey)),
@@ -480,7 +481,7 @@ class _MessagesPageState extends State<MessagesPage>{
      if(urgent)Padding(padding:const EdgeInsets.only(bottom:3),child:Container(padding:const EdgeInsets.symmetric(horizontal:6,vertical:1),
        decoration:BoxDecoration(color:prio.withValues(alpha:0.14),borderRadius:BorderRadius.circular(6)),
        child:Text(S.t('priority.${m.priority}').toUpperCase(),style:TextStyle(fontSize:10,fontWeight:FontWeight.w800,color:prio,letterSpacing:0.4)))),
-     if(showAuthor&&!mine)Padding(padding:const EdgeInsets.only(bottom:2),child:Text(m.senderId,
+     if(showAuthor&&named&&!mine)Padding(padding:const EdgeInsets.only(bottom:2),child:Text(m.senderId,
        style:TextStyle(fontWeight:FontWeight.w700,fontSize:13,color:Color(authorColor(m.senderId))))),
      if(photos.isNotEmpty)Padding(padding:const EdgeInsets.only(bottom:6),child:Wrap(spacing:6,runSpacing:6,children:[
        for(final p in photos)_PhotoThumb(key:ValueKey(p.fileId),attachment:p,api:widget.api,store:widget.store,eventId:widget.eventId),
@@ -504,9 +505,10 @@ class _MessagesPageState extends State<MessagesPage>{
          border:urgent?Border(left:BorderSide(color:prio,width:4)):null,
          boxShadow:const [BoxShadow(blurRadius:1,offset:Offset(0,1),color:Color(0x22000000))]),
        child:body));
-   // Others in a channel: the pastille before the first message of a series.
-   final several=peerOf(_conv)==null;
-   final avatar=!mine&&several?Padding(padding:const EdgeInsets.only(right:6,top:2),
+   // Others, in a channel and in a direct chat too (decision of the project
+   // owner, 30 Oct 2026, 9 h 56): the pastille before the first message of a
+   // series; the name above it only where several people talk.
+   final avatar=!mine?Padding(padding:const EdgeInsets.only(right:6,top:2),
      child:showAuthor?_personAvatar(m.senderId):const SizedBox(width:30)):null;
    return Padding(padding:EdgeInsets.fromLTRB(10,showAuthor?6:1,10,1),child:Align(alignment:mine?Alignment.centerRight:Alignment.centerLeft,
      child:ConstrainedBox(constraints:const BoxConstraints(maxWidth:600),child:MergeSemantics(child:Row(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.start,children:[
@@ -633,7 +635,7 @@ class _MessagesPageState extends State<MessagesPage>{
          if(m.senderId!=widget.actorId)_autoRead(m,ma);
          final newDay=i==0||dayKey(messages[i-1].createdAt)!=dayKey(m.createdAt);
          final sameAuthor=!newDay&&i>0&&messages[i-1].senderId==m.senderId;
-         final b=_bubble(m,ma,showAuthor:showAuthor&&!sameAuthor);
+         final b=_bubble(m,ma,showAuthor:!sameAuthor,named:showAuthor);
          if(i!=firstUnread&&!newDay)return b;
          return Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
            if(newDay)Padding(padding:const EdgeInsets.symmetric(vertical:8),child:Center(child:Container(
@@ -663,12 +665,12 @@ class _MessagesPageState extends State<MessagesPage>{
    return LayoutBuilder(builder:(context,c){
      final wide=c.maxWidth>=900;
      final listOnly=!wide&&!_chatOpen;
-     final newGroup=IconButton(tooltip:S.t('groups.new'),onPressed:()=>_editGroup(null),icon:const Icon(Icons.group_add_outlined));
+     final newGroup=RoundIconButton(tooltip:S.t('groups.new'),onPressed:()=>_editGroup(null),icon:Icons.group_add_outlined);
      // PCO: channels of the ADRASEC model added in one touch (28 Oct 2026).
      final adrasec=isPco(widget.actorId)?PopupMenuButton<String>(onSelected:(_)=>_addTemplate(),itemBuilder:(_)=>[
        PopupMenuItem(value:'adrasec',child:Text(S.t('groups.addAdrasec')))]):null;
      final editGroup=group!=null&&group.canManage(widget.actorId)
-       ?IconButton(tooltip:S.t('groups.edit'),onPressed:()=>_editGroup(group),icon:const Icon(Icons.edit_outlined)):null;
+       ?RoundIconButton(tooltip:S.t('groups.edit'),onPressed:()=>_editGroup(group),icon:Icons.edit_outlined):null;
      final pending=_pendingPill();
      if(listOnly){
        return Scaffold(

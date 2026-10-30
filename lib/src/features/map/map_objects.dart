@@ -9,7 +9,7 @@ import '../../models/position.dart';
 
 /// « Voir la liste » on the right of the « Points d'intérêt (n) » line,
 /// hidden without any point (card « Bouton Fond et affichage », 30 Oct 2026).
-Widget? poiSeeListLink(int count,{required VoidCallback onTap})=>count==0?null:TextButton.icon(key:const ValueKey('poi-see-list'),onPressed:onTap,
+Widget? poiSeeListLink(int count,{required VoidCallback onTap})=>count==0?null:OutlinedButton.icon(key:const ValueKey('poi-see-list'),onPressed:onTap,
   icon:const Icon(Icons.list,size:18),label:Text(S.t('poi.seeList')));
 
 /// Stations whose trace is drawn: the pinned ones, and with « Toutes les
