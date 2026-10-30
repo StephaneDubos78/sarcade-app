@@ -58,7 +58,13 @@ bool isFixedStation(SarcadePosition p,{String? forced,bool moved=false,bool stil
   return still;
 }
 
-/// Forced classifications kept on the device, « id=f|id=m ».
+/// Server classes (fixed / mobile) as « f » / « m ».
+Map<String,String> forcedFromServer(Map<String,String> classes)=>{for(final e in classes.entries)if(e.value=='fixed'||e.value=='mobile')e.key:e.value=='fixed'?'f':'m'};
+/// « f » / « m » / « auto » as sent to the server.
+String serverKind(String v)=>v=='f'?'fixed':v=='m'?'mobile':'auto';
+
+/// Forced classifications shared by the event (server, migration 0025),
+/// cached on the device for offline use, « id=f|id=m ».
 Map<String,String> parseForced(String? v){
   final out=<String,String>{};
   for(final s in (v??'').split('|')){

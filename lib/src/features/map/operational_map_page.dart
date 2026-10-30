@@ -317,6 +317,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       if(!mounted)return;
       setState((){for(final d in list){_devices['${d['device_id']}']=d;}});
     }catch(_){/* offline: the last list stays */}
+    unawaited(_loadFixedClasses());
   }
   /// « SARCADE 0.1.0+415 · Android · dernier contact il y a 12 s ».
   String? _deviceLine(String deviceId){
@@ -330,6 +331,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   }
 
   void _onRealtime(RealtimeEvent e){
+    if(e.type=='aprs.class.updated'){unawaited(_applyFixedClass(e.data));}
     if(e.type=='device.updated'){final id='${e.data['device_id']??''}';if(id.isNotEmpty&&mounted)setState(()=>_devices[id]=Map<String,dynamic>.from(e.data));}
     if(e.type==RealtimeService.reconnectedType){unawaited(_reloadPositions());return;}
     if(e.type=='position.updated'){final p=SarcadePosition.fromJson(e.data);if(_validPosition(p)){widget.store.cachePosition(p.toJson());_traces.add(p);if(mounted)setState((){_positions[p.deviceId]=p;if(_selectedDevice==p.deviceId)_trace.add(p);});}}
@@ -1660,7 +1662,16 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   bool _isFixed(SarcadePosition p)=>isFixedStation(p,forced:_forced[p.deviceId],moved:_moves.moved(p.deviceId),still:_moves.still(p.deviceId,DateTime.now().toUtc()));
   bool get _showFixed=>widget.store.preference('show_fixed:${widget.eventId}')=='1';
   bool _showFixedList=false;
-  Future<void> _forceFixed(String id,String v) async {final m=_forced;if(v=='auto'){m.remove(id);}else{m[id]=v;}await widget.store.setPreference('fixed_forced:${widget.eventId}',encodeForced(m));if(mounted)setState((){});}
+  Future<void> _saveForced(Map<String,String> m) async {await widget.store.setPreference('fixed_forced:${widget.eventId}',encodeForced(m));if(mounted)setState((){});}
+  Future<void> _forceFixed(String id,String v) async {
+    final m=_forced;if(v=='auto'){m.remove(id);}else{m[id]=v;}await _saveForced(m);
+    try{await widget.api.setAprsClass(widget.eventId,id,widget.deviceId,serverKind(v));}catch(e){debugPrint('SARCADE APRS class not sent: $e');}
+  }
+  Future<void> _loadFixedClasses() async {try{final c=await widget.api.aprsClasses(widget.eventId);await _saveForced(forcedFromServer(c));}catch(_){/* offline: the cached classes stay */}}
+  Future<void> _applyFixedClass(Map<String,dynamic> d) async {
+    final id='${d['device_id']??''}';if(id.isEmpty)return;final m=_forced;final k='${d['kind']??''}';
+    if(k=='fixed'){m[id]='f';}else if(k=='mobile'){m[id]='m';}else{m.remove(id);}await _saveForced(m);
+  }
   Marker _fixedMarker(SarcadePosition p)=>Marker(point:LatLng(p.lat,p.lon),width:22,height:22,child:Tooltip(message:p.label,child:GestureDetector(onTap:()=>_tapStation(p),
     child:Opacity(opacity:0.7,child:_stationIcon(p,size:20)))));
   Future<void> _setTraceHours(int h) async {

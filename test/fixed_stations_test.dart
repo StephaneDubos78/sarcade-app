@@ -44,4 +44,9 @@ void main() {
     expect(encodeForced(f), 'aprs:A=f|aprs:B-2=m');
     expect(encodeForced({}), isNull);
   });
+
+  test('classification shared through the server', () {
+    expect(forcedFromServer({'aprs:A': 'fixed', 'aprs:B': 'mobile', 'aprs:C': 'x'}), {'aprs:A': 'f', 'aprs:B': 'm'});
+    expect([serverKind('f'), serverKind('m'), serverKind('auto')], ['fixed', 'mobile', 'auto']);
+  });
 }
