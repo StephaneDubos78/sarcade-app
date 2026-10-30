@@ -116,10 +116,9 @@ Future<String?> showPoiSheet(BuildContext context,SarcadePoi p,{required CoordFo
 }
 
 /// « Points d'intérêt » in the layers panel: show / hide, then the list.
-List<Widget> poiLayerSection(BuildContext c,{required List<SarcadePoi> pois,required bool shown,required ValueChanged<bool> onShown,required ValueChanged<SarcadePoi> onOpen}){
+List<Widget> poiLayerList(BuildContext c,{required List<SarcadePoi> pois,required ValueChanged<SarcadePoi> onOpen}){
   final sorted=[...pois]..sort((a,b)=>b.createdAt.compareTo(a.createdAt));
   return [
-    SwitchListTile(dense:true,title:Text('${S.t('poi.layer')} (${pois.length})'),value:shown,onChanged:onShown),
     for(final p in sorted)ListTile(dense:true,visualDensity:VisualDensity.compact,
       leading:Icon(Icons.location_on,color:Color(poiColor(p))),title:Text(poiName(p),maxLines:1,overflow:TextOverflow.ellipsis),
       subtitle:Text('${p.createdBy??S.t('poi.unknownAuthor')} · ${poiTime(p.createdAt)}'),onTap:()=>onOpen(p)),

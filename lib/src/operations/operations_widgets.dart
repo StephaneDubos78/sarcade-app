@@ -32,6 +32,11 @@ class OperationsBanners extends StatelessWidget {
 
   String _time(DateTime t){final l=t.toLocal();return '${l.hour.toString().padLeft(2,'0')}:${l.minute.toString().padLeft(2,'0')}';}
 
+  /// Something to show: the phone map then starts below the banners
+  /// instead of under the status bar.
+  bool get visible=>accessRequired||accessRenewBy!=null||onReload!=null||onWebUpdate!=null||onEnableNotifications!=null||
+    settings.eventEnded||update.status==UpdateStatus.invited||update.status==UpdateStatus.deferred||settings.lowBandwidth||alert!=null;
+
   @override
   Widget build(BuildContext context){
     final scheme=Theme.of(context).colorScheme;

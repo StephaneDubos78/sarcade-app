@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../config/version.dart';
 import '../../l10n/strings.dart';
+import '../basemaps/basemap_models.dart';
+import '../basemaps/basemap_sheet.dart' show basemapNotices;
 import 'notifications_panel.dart' show VersionStatus;
 
 class SarcadeAboutPage extends StatelessWidget {
@@ -81,6 +83,13 @@ class SarcadeAboutContent extends StatelessWidget {
           title: Text(S.t('about.credits')),
           trailing: const Icon(Icons.chevron_right),
           onTap: () => showLicensePage(context: context, applicationName: 'SARCADE', applicationVersion: appVersion),
+        ),
+        // Licence notices of the base maps, also behind the ⓘ of the map
+        // (card « Panneau Fond de carte », 30 Oct 2026, 1 h 35).
+        ListTile(
+          leading: const Icon(Icons.map_outlined),
+          title: Text(S.t('about.mapNotices')),
+          subtitle: Text(basemapNotices(builtInBasemaps).join('\n')),
         ),
       ]);
 }
