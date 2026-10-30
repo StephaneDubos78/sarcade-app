@@ -58,9 +58,9 @@ class NotificationPayload {
   final String eventId, messageId, deviceId, priority;
   /// Key of the notification (notification_keys.dart): the message itself,
   /// or the distress of its sender, shared with its « Fin de détresse ».
-  final String? _key;
-  String get key=>_key??messageId;
-  const NotificationPayload({required this.eventId,required this.messageId,required this.deviceId,required this.priority,String? key}):_key=key;
+  final String? tag;
+  String get key=>tag??messageId;
+  const NotificationPayload({required this.eventId,required this.messageId,required this.deviceId,required this.priority,this.tag});
 
   String encode([String? action])=>jsonEncode({'e':eventId,'m':messageId,'d':deviceId,'p':priority,'a':?action,if(key!=messageId)'k':key});
 
@@ -70,7 +70,7 @@ class NotificationPayload {
       final j=jsonDecode(text);
       if(j is! Map||j['m'] is! String||j['e'] is! String)return null;
       return NotificationPayload(eventId:j['e'] as String,messageId:j['m'] as String,
-        deviceId:(j['d'] as String?)??'',priority:(j['p'] as String?)??'routine',key:j['k'] is String?j['k'] as String:null);
+        deviceId:(j['d'] as String?)??'',priority:(j['p'] as String?)??'routine',tag:j['k'] is String?j['k'] as String:null);
     }catch(_){
       return null;
     }

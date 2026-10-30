@@ -389,7 +389,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       // first arrival notifies; an old message caught up later stays silent.
       if(shouldNotifyMessage(alreadyReceived:existing,createdAt:m.createdAt,now:DateTime.now().toUtc())){
         await _notifications.message(title:'SARCADE · ${S.t('priority.${m.priority}')} · ${m.senderId}',body:m.body,priority:m.priority,
-          payload:NotificationPayload(eventId:widget.eventId,messageId:m.id,deviceId:widget.deviceId,priority:m.priority,key:messageNotificationKey(m)));
+          payload:NotificationPayload(eventId:widget.eventId,messageId:m.id,deviceId:widget.deviceId,priority:m.priority,tag:messageNotificationKey(m)));
       }
     }
     if(mounted)setState((){});

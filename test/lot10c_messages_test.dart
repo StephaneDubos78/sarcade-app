@@ -23,7 +23,7 @@ void main() {
   });
 
   test('the key travels with the payload', () {
-    const p = NotificationPayload(eventId: 'e', messageId: 'm', deviceId: 'd', priority: 'immediate', key: 'sos-1');
+    const p = NotificationPayload(eventId: 'e', messageId: 'm', deviceId: 'd', priority: 'immediate', tag: 'sos-1');
     expect(NotificationPayload.decode(p.encode())!.key, 'sos-1');
     const q = NotificationPayload(eventId: 'e', messageId: 'm', deviceId: 'd', priority: 'routine');
     expect(NotificationPayload.decode(q.encode())!.key, 'm');
