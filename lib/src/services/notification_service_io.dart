@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:url_launcher/url_launcher.dart';
 import 'package:uuid/uuid.dart';
+import '../features/car/car_background_io.dart' show sendAnswerNow;
 import '../l10n/strings.dart';
 import 'notification_actions.dart';
 
@@ -95,8 +96,12 @@ Future<void> notificationBackgroundHandler(NotificationResponse response) async 
   final payload=NotificationPayload.decode(response.payload);
   final status=ackStatusForAction(resolveAction(response.actionId,response.payload));
   if(payload==null||status==null)return;
-  await appendPendingAnswer(PendingAnswer(id:const Uuid().v4(),eventId:payload.eventId,messageId:payload.messageId,
-    deviceId:payload.deviceId,status:status,time:DateTime.now().toUtc()));
+  final answer=PendingAnswer(id:const Uuid().v4(),eventId:payload.eventId,messageId:payload.messageId,
+    deviceId:payload.deviceId,status:status,time:DateTime.now().toUtc());
+  await appendPendingAnswer(answer);
+  // In the car the answer cannot wait for the application (lot 1a):
+  // sent at once, kept in the file as well (the server keeps one).
+  await sendAnswerNow(answer);
   final plugin=FlutterLocalNotificationsPlugin();
   for(var k=1;k<=reminderCount;k++){
     try{await plugin.cancel(notificationIdFor(payload.key,k));}catch(_){/* already shown or gone */}
