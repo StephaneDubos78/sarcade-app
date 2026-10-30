@@ -137,3 +137,8 @@ List<String> hourDetailLines(WeatherHour h){
     if(h.apparentC!=null)S.t('weather.feels',{'t':'${h.apparentC!.round()}°'}),
   ];
 }
+
+/// « Prévision du …, peut-être dépassée » only when a forecast exists
+/// (revue d'ergonomie n° 50: « Prévision du - » was shown without any).
+bool weatherShowsStale(WeatherReport? r,{required bool offline})=>
+  r!=null&&r.fetchedAt!=null&&(r.hours.isNotEmpty||r.days.isNotEmpty)&&(r.stale||offline);
