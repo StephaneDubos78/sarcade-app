@@ -13,7 +13,7 @@ import '../measure/coordinates.dart';
 
 const guidedFormats=[CoordFormat.dd,CoordFormat.dm,CoordFormat.dms,CoordFormat.utm,CoordFormat.mgrs,CoordFormat.qth,CoordFormat.l93,CoordFormat.dfci];
 
-/// Keys of the fields of a format, in order (label: « converter.f.<key> »).
+/// Keys of the fields of a format, in order (label: « converter.f.KEY »).
 List<String> guidedFieldsOf(CoordFormat f)=>switch(f){
   CoordFormat.dd=>['lat','ns','lon','eo'],
   CoordFormat.dm=>['latD','latM','ns','lonD','lonM','eo'],

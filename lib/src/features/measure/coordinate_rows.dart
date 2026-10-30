@@ -81,7 +81,7 @@ class InfoBlock extends StatelessWidget {
     return Padding(padding:const EdgeInsets.only(bottom:12),child:Card(elevation:0,margin:EdgeInsets.zero,color:t.colorScheme.surfaceContainerLow,
       child:Padding(padding:const EdgeInsets.symmetric(vertical:6),child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
         Padding(padding:const EdgeInsets.fromLTRB(12,4,4,2),child:Row(children:[
-          Expanded(child:Text(title,style:t.textTheme.titleSmall?.copyWith(fontWeight:FontWeight.w700))),if(trailing!=null)trailing!])),
+          Expanded(child:Text(title,style:t.textTheme.titleSmall?.copyWith(fontWeight:FontWeight.w700))),?trailing])),
         ...children,
       ]))));
   }
