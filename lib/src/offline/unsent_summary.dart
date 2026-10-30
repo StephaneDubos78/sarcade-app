@@ -28,7 +28,8 @@ String unsentWhat(Iterable<Map<String,dynamic>> items){
   for(final op in items){final k=unsentKind(op);count[k]=(count[k]??0)+1;}
   if(count.isEmpty)return '';
   final kinds=count.keys.toList()..sort((a,b){final c=count[b]!.compareTo(count[a]!);return c!=0?c:a.compareTo(b);});
-  final shown=[for(final k in kinds.take(2))S.t('unsent.what.$k',{'n':count[k]})];
+  // Singular for one item: « 1 photo non envoyée » (30 Oct 2026).
+  final shown=[for(final k in kinds.take(2))S.t(count[k]==1?'unsent.what.$k.one':'unsent.what.$k',{'n':count[k]})];
   final rest=kinds.skip(2).fold<int>(0,(s,k)=>s+count[k]!);
   return [...shown,if(rest>0)'+$rest'].join(' · ');
 }

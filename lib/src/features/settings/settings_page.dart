@@ -79,6 +79,9 @@ class _SettingsPageState extends State<SettingsPage> {
 
   @override void initState(){
     super.initState();
+    // Red dot on Paramètres: the screen opens on the Diagnostic (card
+    // « Diagnostic, point d'arrivée unique des problèmes », 30 Oct 2026).
+    if(!widget.firstRun&&diagnosticsAlert())_tab=_tabs.indexOf('diagnostics');
     _events=widget.cachedEvents?.call(_serverText)??[];
     if(widget.loadEvents!=null)WidgetsBinding.instance.addPostFrameCallback((_){if(mounted)_loadEvents();});
   }
@@ -494,7 +497,7 @@ class _SettingsPageState extends State<SettingsPage> {
     })),
     if(VersionStatus.shown)const Padding(padding:EdgeInsets.only(bottom:12),child:VersionStatus()),
     // Cet appareil, Liaisons, Serveur (PCO / admin), « Copier le rapport » (lot 5).
-    if(widget.api!=null)DiagnosticsPanel(api:widget.api!,server:widget.initial.serverUrl,eventId:widget.initial.eventId),
+    if(widget.api!=null)DiagnosticsPanel(api:widget.api!,server:widget.initial.serverUrl,eventId:widget.initial.eventId,actorId:widget.initial.deviceId),
   ]);
 
   Widget _tabBody(String id)=>switch(id){
@@ -559,7 +562,9 @@ class _SettingsPageState extends State<SettingsPage> {
             if(c.index!=_tab)c.animateTo(_tab);
             return TabBar(isScrollable:true,tabAlignment:TabAlignment.start,
               onTap:(i)=>setState(()=>_tab=i),
-              tabs:[for(final id in _tabs)Tab(text:S.t('settings.tab.$id'))]);
+              tabs:[for(final id in _tabs)id=='diagnostics'&&diagnosticsAlert()
+                ?Tab(child:Badge(key:const ValueKey('diag-tab-alert'),smallSize:8,offset:const Offset(8,-2),child:Text(S.t('settings.tab.$id'))))
+                :Tab(text:S.t('settings.tab.$id'))]);
           })),
           const Divider(height:1),
           Expanded(child:IndexedStack(index:_tab,children:[for(final id in _tabs)ListView(
