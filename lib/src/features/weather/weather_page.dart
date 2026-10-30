@@ -123,27 +123,43 @@ class _WeatherPageState extends State<WeatherPage> {
       ]));
   }
 
+  /// An hour of the strip touched: bubble with the detail (sky, wind,
+  /// gusts, rain, feels like) — replaces the list « Heure par heure ».
+  void _hourDetail(WeatherHour h,({double lat,double lon})? loc){
+    final key=weatherKey(h.weatherCode); final night=_night(h.time,loc);
+    showDialog<void>(context:context,builder:(c)=>AlertDialog(
+      icon:Icon(weatherIcon(key,night:night),color:weatherColor(key,night:night),size:36),
+      title:Text('${_hm(h.time)} · ${_num(h.temperatureC,'°').replaceAll(' ','')}'),
+      content:Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.start,children:[
+        for(final line in hourDetailLines(h))Padding(padding:const EdgeInsets.symmetric(vertical:2),child:Text(line)),
+      ]),
+      actions:[TextButton(onPressed:()=>Navigator.pop(c),child:Text(S.t('common.close')))]));
+  }
+
   /// 24 h at a glance: « Maintenant » first in a blue pill, coloured
-  /// temperature, small rain bar, wind arrow; sunrise and sunset as small
-  /// marks between two hours, with their time.
+  /// temperature, wind arrow with its speed, rain when above 0; sunrise
+  /// and sunset as small marks between two hours, with their time.
   Widget _strip(List<WeatherHour> hours,({double lat,double lon})? loc){
     final s=Theme.of(context).colorScheme;
     final cells=<Widget>[];
     for(var i=0;i<hours.length&&i<24;i++){
       final h=hours[i]; final night=_night(h.time,loc); final key=weatherKey(h.weatherCode); final now=i==0;
-      final rain=(h.precipitationProbability??0)/100;
-      cells.add(Container(width:62,margin:const EdgeInsets.symmetric(horizontal:2,vertical:6),padding:const EdgeInsets.symmetric(vertical:6),
+      final fg=now?s.onPrimary:s.onSurfaceVariant;
+      final mm=h.precipitationMm??0;
+      cells.add(InkWell(key:ValueKey('weather-hour-$i'),borderRadius:BorderRadius.circular(16),onTap:()=>_hourDetail(h,loc),child:Container(width:62,margin:const EdgeInsets.symmetric(horizontal:2,vertical:6),padding:const EdgeInsets.symmetric(vertical:6),
         decoration:BoxDecoration(borderRadius:BorderRadius.circular(16),
           color:now?s.primary:(h.gustKmh??0)>=70?Colors.orange.withValues(alpha:0.15):s.surfaceContainer),
         child:Column(mainAxisAlignment:MainAxisAlignment.spaceBetween,children:[
           Text(now?S.t('weather.now'):_hm(h.time),style:TextStyle(fontSize:11,fontWeight:now?FontWeight.w700:FontWeight.w500,color:now?s.onPrimary:s.onSurfaceVariant)),
           Icon(weatherIcon(key,night:night),size:24,color:now?s.onPrimary:weatherColor(key,night:night)),
           Text(_num(h.temperatureC,'°').replaceAll(' ',''),style:TextStyle(fontWeight:FontWeight.w700,fontSize:15,color:now?s.onPrimary:temperatureColor(h.temperatureC))),
-          Container(width:36,height:4,decoration:BoxDecoration(color:(now?s.onPrimary:const Color(0xFF1A73E8)).withValues(alpha:0.15),borderRadius:BorderRadius.circular(2)),
-            alignment:Alignment.centerLeft,child:FractionallySizedBox(widthFactor:rain.clamp(0.0,1.0),child:Container(decoration:BoxDecoration(
-              color:now?s.onPrimary:const Color(0xFF1A73E8),borderRadius:BorderRadius.circular(2))))),
-          _windArrow(h.windDirectionDeg,size:14,color:now?s.onPrimary:s.onSurfaceVariant),
-        ])));
+          _windArrow(h.windDirectionDeg,size:14,color:fg),
+          // Wind speed under the arrow; rain only when there is some (lot 5).
+          Text(h.windKmh==null?'':'${h.windKmh!.round()}',style:TextStyle(fontSize:11,fontWeight:FontWeight.w600,color:fg)),
+          if(mm>0)Row(mainAxisSize:MainAxisSize.min,children:[Icon(Icons.water_drop,size:10,color:now?s.onPrimary:const Color(0xFF1A73E8)),
+            Text(rainLabel(mm),style:TextStyle(fontSize:10,color:now?s.onPrimary:const Color(0xFF1A73E8)))])
+          else const SizedBox(height:12),
+        ]))));
       final ev=loc==null?null:sunEventIn(h.time,loc.lat,loc.lon);
       if(ev!=null){
         cells.add(SizedBox(width:40,child:Column(mainAxisAlignment:MainAxisAlignment.center,children:[
@@ -153,15 +169,13 @@ class _WeatherPageState extends State<WeatherPage> {
         ])));
       }
     }
-    return SizedBox(height:132,child:ListView(scrollDirection:Axis.horizontal,padding:const EdgeInsets.symmetric(horizontal:12),children:cells));
+    return SizedBox(height:150,child:ListView(scrollDirection:Axis.horizontal,padding:const EdgeInsets.symmetric(horizontal:12),children:cells));
   }
 
   @override Widget build(BuildContext context){
     final r=_report; final now=DateTime.now();
     final hours=r?.upcoming(now)??const <WeatherHour>[];
     final loc=widget.point!=null?(lat:widget.point!.lat,lon:widget.point!.lon):(r?.lat!=null&&r?.lon!=null?(lat:r!.lat!,lon:r.lon!):widget.fallback);
-    final today=r?.days.isNotEmpty==true?r!.days.first:null;
-    final sun=loc==null?null:sunTimes(now.toUtc(),loc.lat,loc.lon);
     final title=widget.point==null?S.t('weather.title'):S.t('weather.pointTitle',{'label':widget.point!.label});
     final t=Theme.of(context); final s=t.colorScheme;
     return Scaffold(
@@ -183,10 +197,6 @@ class _WeatherPageState extends State<WeatherPage> {
         if(r!=null&&(r.stale||_offline))ListTile(leading:const Icon(Icons.history),title:Text(S.t('weather.stale',{'time':_hm(r.fetchedAt)}))),
         if(r==null||r.isEmpty)Padding(padding:const EdgeInsets.all(20),child:Text(_loading?S.t('weather.loading'):S.t('weather.none'))),
         if(hours.isNotEmpty)_nowCard(hours.first,loc),
-        Padding(padding:const EdgeInsets.symmetric(horizontal:20,vertical:4),child:Row(children:[
-          const Icon(Icons.wb_twilight,size:18,color:Color(0xFFE8710A)),const SizedBox(width:8),
-          Text(S.t('weather.sun',{'rise':_hm(today?.sunrise??sun?.sunrise),'set':_hm(today?.sunset??sun?.sunset)}),style:t.textTheme.bodyMedium),
-        ])),
         if(hours.isNotEmpty)_strip(hours,loc),
         // Temperatures over 24 h.
         if(hours.where((h)=>h.temperatureC!=null).length>=2)Padding(padding:const EdgeInsets.fromLTRB(16,8,16,8),child:Card(elevation:0,child:Padding(
@@ -195,26 +205,6 @@ class _WeatherPageState extends State<WeatherPage> {
             const SizedBox(height:6),
             SizedBox(height:90,child:CustomPaint(size:Size.infinite,painter:_TempCurve([for(final h in hours.take(24))h.temperatureC],s.onSurfaceVariant))),
           ])))),
-        Padding(padding:const EdgeInsets.fromLTRB(20,8,20,4),child:Text(S.t('weather.detail'),style:t.textTheme.titleSmall)),
-        for(final h in hours)Builder(builder:(c){
-          final night=_night(h.time,loc); final key=weatherKey(h.weatherCode); final windy=(h.gustKmh??0)>=70;
-          return Card(elevation:0,margin:const EdgeInsets.fromLTRB(16,4,16,4),color:windy?Colors.orange.withValues(alpha:0.12):null,child:Padding(
-            padding:const EdgeInsets.symmetric(horizontal:12,vertical:10),child:Row(children:[
-              SizedBox(width:46,child:Text(_hm(h.time),style:const TextStyle(fontWeight:FontWeight.w600))),
-              Icon(weatherIcon(key,night:night),color:weatherColor(key,night:night)),
-              const SizedBox(width:10),
-              Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-                Text(S.t('weather.code.$key'),style:const TextStyle(fontWeight:FontWeight.w500)),
-                Row(children:[_windArrow(h.windDirectionDeg,size:13,color:s.onSurfaceVariant),const SizedBox(width:3),
-                  Flexible(child:Text([
-                    S.t('weather.wind',{'dir':windDirection(h.windDirectionDeg),'speed':_num(h.windKmh,'km/h'),'gust':_num(h.gustKmh,'km/h')}),
-                    if(h.precipitationMm!=null)S.t('weather.rain',{'mm':h.precipitationMm!.toStringAsFixed(1)}),
-                    if(h.precipitationProbability!=null)'${h.precipitationProbability} %',
-                  ].join(' · '),style:t.textTheme.bodySmall))]),
-              ])),
-              Text(_num(h.temperatureC,'°').replaceAll(' ',''),style:TextStyle(fontSize:18,fontWeight:FontWeight.w700,color:temperatureColor(h.temperatureC))),
-            ])));
-        }),
         if(r?.provider!=null)Padding(padding:const EdgeInsets.all(16),child:Text(S.t('weather.source',{'provider':r!.provider}),style:t.textTheme.bodySmall)),
       ])),
     );

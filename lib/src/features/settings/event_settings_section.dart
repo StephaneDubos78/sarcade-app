@@ -6,8 +6,9 @@ import 'quick_messages_editor.dart';
 
 /// Paramètres › Événement (PCO): settings of the active event kept by the
 /// server, applied at once and written in the logbook by the server —
-/// local radio transmission and its callsign (chosen by the PCO, the
-/// ADRASEC has none), « old » stations threshold, APRS followed.
+/// « old » stations threshold, predefined messages, APRS followed. The
+/// local radio transmission and its callsign moved to the APRS screen
+/// (lot 5, decision of 30 Oct 2026, 2 h 47).
 class EventSettingsSection extends StatefulWidget {
   final SarcadeApi api; final String eventId, actorId;
   const EventSettingsSection({super.key,required this.api,required this.eventId,required this.actorId});
@@ -16,18 +17,16 @@ class EventSettingsSection extends StatefulWidget {
 
 class _EventSettingsSectionState extends State<EventSettingsSection> {
   Map<String,dynamic>? _s; String? _error; bool _busy=false;
-  final _call=TextEditingController();
   static const oldChoices=[30,60,120,240,480,1440];
 
   @override void initState(){super.initState();_load();}
-  @override void dispose(){_call.dispose();super.dispose();}
 
   Future<void> _load() async {
     try{
       final e=await widget.api.event(widget.eventId);
       final s=Map<String,dynamic>.from(e['settings'] as Map? ?? {});
       if(!mounted)return;
-      setState((){_s=s;_error=null;_call.text='${s['aprs_tx_callsign']??''}';});
+      setState((){_s=s;_error=null;});
     }catch(e){
       if(mounted)setState(()=>_error='$e');
     }
@@ -81,19 +80,13 @@ class _EventSettingsSectionState extends State<EventSettingsSection> {
     String dur(int m)=>m%60==0?'${m~/60} h':'$m min';
     return AbsorbPointer(absorbing:_busy,child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
       Padding(padding:const EdgeInsets.only(top:12),child:Text(S.t('event.intro',{'event':widget.eventId}))),
-      _row(S.t('event.radioTx'),help:S.t('event.radioTxHelp'),child:Switch(value:s['aprs_tx_rf']==true,
-        onChanged:(v)=>_patch({'aprs_tx_rf':v}))),
-      _row(S.t('event.radioCallsign'),help:S.t('event.radioCallsignHelp'),child:SizedBox(width:220,child:Row(children:[
-        Expanded(child:TextField(controller:_call,textCapitalization:TextCapitalization.characters,
-          decoration:InputDecoration(isDense:true,hintText:'F4ABC',border:OutlineInputBorder(borderRadius:BorderRadius.circular(8))))),
-        TextButton(onPressed:()=>_patch({'aprs_tx_callsign':_call.text.trim().isEmpty?null:_call.text.trim()}),child:Text(S.t('event.apply'))),
-      ]))),
       _row(S.t('event.oldThreshold'),help:S.t('event.oldThresholdHelp'),child:DropdownButton<int>(value:oldChoices.contains(old)?old:120,
         items:[for(final m in oldChoices)DropdownMenuItem(value:m,child:Text(dur(m)))],
         onChanged:(v){if(v!=null)_patch({'position_old_min':v});})),
       _row(S.t('event.quick'),help:S.t('event.quickHelp',{'n':(s['quick_messages'] as List?)?.length??0}),
         child:TextButton(onPressed:_editQuick,child:Text(S.t('event.edit')))),
-      _row(S.t('event.aprsFollowed'),help:S.t('event.aprsFollowedHelp',{'g':(s['aprs_groups'] as List?)?.length??0,'c':(s['aprs_callsigns'] as List?)?.length??0}),
+      _row(S.t('event.aprsFollowed'),help:[S.t('event.aprsFollowedHelp',{'g':(s['aprs_groups'] as List?)?.length??0,'c':(s['aprs_callsigns'] as List?)?.length??0}),
+          if(s['aprs_tx_rf']==true)S.t('event.aprsTxOn',{'call':'${s['aprs_tx_callsign']??'—'}'})].join(' · '),
         child:TextButton(onPressed:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>AprsPage(api:widget.api,eventId:widget.eventId,actorId:widget.actorId))).then((_)=>_load()),
           child:Text(S.t('diagnostics.open')))),
     ]));

@@ -5,6 +5,8 @@ library;
 
 import 'dart:math' as math;
 
+import '../../l10n/strings.dart';
+
 class WeatherHour {
   final DateTime time; final double? temperatureC, apparentC, precipitationMm, windKmh, gustKmh;
   final int? precipitationProbability, weatherCode, windDirectionDeg, cloudCoverPct;
@@ -119,4 +121,19 @@ bool isNightAt(DateTime t,double lat,double lon){
     if(at!=null&&!at.isBefore(u)&&at.isBefore(end))return (kind:e.$1,at:at);
   }
   return null;
+}
+
+/// « 0,4 mm » (strip of the weather screen, only when above 0).
+String rainLabel(double mm)=>'${mm<10?mm.toStringAsFixed(1).replaceAll('.',','):mm.round()} mm';
+
+/// Lines of the bubble of an hour: sky, wind, gusts, rain, feels like.
+List<String> hourDetailLines(WeatherHour h){
+  String n(double? v,String u)=>v==null?'-':'${v.round()} $u';
+  return [
+    S.t('weather.code.${weatherKey(h.weatherCode)}'),
+    S.t('weather.windLine',{'dir':windDirection(h.windDirectionDeg),'speed':n(h.windKmh,'km/h')}),
+    if(h.gustKmh!=null)S.t('weather.gusts',{'v':n(h.gustKmh,'km/h')}),
+    S.t('weather.rainLine',{'mm':rainLabel(h.precipitationMm??0),'p':h.precipitationProbability==null?'':' · ${h.precipitationProbability} %'}),
+    if(h.apparentC!=null)S.t('weather.feels',{'t':'${h.apparentC!.round()}°'}),
+  ];
 }

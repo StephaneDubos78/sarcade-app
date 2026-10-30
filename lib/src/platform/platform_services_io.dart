@@ -100,3 +100,11 @@ Stream<CompassReading>? compassReadings(){
   if(!(Platform.isAndroid||Platform.isIOS))return null;
   return systemCompassEvents().map((e)=>CompassReading(e[0]<0?null:e[0],accuracyDeg:e.length>1&&e[1]>=0?e[1]:null,status:e.length>2?e[2].round():-1));
 }
+
+/// Local IPv4 addresses of the device (Paramètres › Diagnostic, lot 5).
+Future<List<String>> localAddresses() async {
+  try{
+    final list=await NetworkInterface.list(type:InternetAddressType.IPv4,includeLoopback:false);
+    return [for(final i in list)for(final a in i.addresses)a.address];
+  }catch(_){return const [];}
+}

@@ -86,6 +86,8 @@ import '../tools/tools_page.dart';
 import 'sos_button.dart';
 import '../tools/coordinate_converter_page.dart';
 import '../places/readable_place.dart';
+import '../measure/point_info_open.dart';
+import '../aprs/callsign_links.dart';
 import '../tools/resection.dart';
 import '../tools/resection_panel.dart';
 import '../tv/tv_screens_page.dart';
@@ -423,6 +425,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       case PointAction.route: await _routeToHere(point);
       case PointAction.external: await _openElsewhere(point,label);
       case PointAction.weather: _openWeather(point:(lat:point.latitude,lon:point.longitude,label:label));
+      case PointAction.info: await openPointInfo(context,point:point,places:_places,from:me,onSendMessage:_sendText);
     }
   }
 
@@ -731,20 +734,33 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     ToolItem(icon:Icons.route,title:S.t('routes.menu'),subtitle:S.t('tools.routesHelp'),color:Colors.green,onTap:_openRoutesPanel),
     ToolItem(icon:Icons.my_location,title:S.t('resection.title'),subtitle:S.t('tools.resectionHelp'),color:Colors.indigo,onTap:_openResection),
     ToolItem(icon:Icons.pin_drop_outlined,title:S.t('converter.title'),subtitle:S.t('tools.converterHelp'),color:Colors.blue,
-      onTap:()=>_openDesk('converter',()=>CoordinateConverterPage(key:const ValueKey('desk-converter'),
-        onShow:(p)=>_onMapNow((){setState(()=>_searchPin=p);_map.move(p,15);}),
-        onMeasure:(p)=>_onMapNow(()=>_measureTo(p,S.t('nav.point')))))),
+      onTap:()=>_openConverter()),
     ToolItem(icon:Icons.tv,title:S.t('tv.menu'),subtitle:S.t('tools.tvHelp'),color:Colors.deepPurple,
       onTap:()=>_openDesk('tv',()=>TvScreensPage(key:const ValueKey('desk-tv'),api:widget.api,eventId:widget.eventId))),
     if(isPco(widget.deviceId))ToolItem(icon:Icons.settings_input_antenna,title:S.t('aprs.title'),subtitle:S.t('tools.aprsHelp'),color:Colors.purple,
-      onTap:()=>_openDesk('aprs',()=>AprsPage(api:widget.api,eventId:widget.eventId,actorId:widget.deviceId))),
+      onTap:()=>_openDesk('aprs',()=>AprsPage(api:widget.api,eventId:widget.eventId,actorId:widget.deviceId,
+        onShowOnMap:(p,_)=>_onMapNow((){setState(()=>_searchPin=p);_map.move(p,15);})))),
     ToolItem(icon:Icons.cloud_outlined,title:S.t('weather.menu'),subtitle:S.t('tools.weatherHelp'),color:Colors.orange,onTap:()=>_openWeather()),
   ];
+  /// Convertisseur étoffé (lot 5): actions handed back to the map.
+  void _openConverter({LatLng? initial})=>_openDesk('converter',()=>CoordinateConverterPage(key:ValueKey('desk-converter-$initial'),initial:initial,
+    location:_location,store:widget.store,items:_searchables,addresses:_searchAddresses,tileUrl:_tileUrl,
+    actions:ConverterActions(
+      show:(p)=>_onMapNow((){setState(()=>_searchPin=p);_map.move(p,15);}),
+      measure:(p)=>_onMapNow(()=>_measureTo(p,S.t('nav.point'))),
+      poi:(p)=>_onMapNow(()=>_createPoiHere(p)),
+      bearing:(p)=>_onMapNow(()=>_bearings.startTaking(from:p)),
+      order:isPco(widget.deviceId)?((p)=>_onMapNow(()=>_sendOperatorHere(p))):null,
+      message:_sendText,
+      pickOnMap:()=>_startPick(S.t('converter.touchMap'),(p,_)=>_openConverter(initial:p)))));
   void _openTools(){if(_isCompact){_goTab(3);return;}_openDesk('tools',()=>ToolsPage(key:const ValueKey('desk-tools'),items:_toolItems()));}
 
   /// A tool acting on the map: back to the map (tab, desk closed) first.
   void _onMapNow(VoidCallback f){setState((){_tab=0;_deskPage=null;_deskId=null;});f();}
 
+  /// A text ready in Messages (fiche « Infos du point », convertisseur).
+  void _sendText(String text)=>Navigator.push(context,MaterialPageRoute(builder:(_)=>MessagesPage(api:widget.api,eventId:widget.eventId,
+    actorId:widget.deviceId,sync:_sync,store:widget.store,initialText:text)));
   void _sendMeasure()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>MessagesPage(api:widget.api,eventId:widget.eventId,
     actorId:widget.deviceId,sync:_sync,store:widget.store,initialText:measureMessage(_measure,_coordFormat,mgrsDigits:_mgrsDigits))));
 
@@ -1713,6 +1729,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
             api:widget.api,eventId:widget.eventId,actorId:widget.deviceId,sync:_sync,store:widget.store,initialPeer:p.deviceId))),icon:const Icon(Icons.chat_outlined)),
           IconButton(tooltip:S.t('common.close'),onPressed:()=>setState((){_selectedDevice=null;_trace=[];_history=[];_scrub=null;}),icon:const Icon(Icons.close)),
         ]),
+        if(callsignAmong([p.callsign,p.label,_devices[p.deviceId]?['callsign']?.toString()]) case final call?)Padding(padding:const EdgeInsets.only(top:6),child:CallsignLinks(callsign:call)),
         const SizedBox(height:8),
         Container(padding:const EdgeInsets.symmetric(horizontal:10,vertical:8),decoration:BoxDecoration(color:s.surfaceContainerHigh,borderRadius:BorderRadius.circular(10)),
           child:Text([_sourceLabel(p),if(p.aprsPath?.isNotEmpty==true)S.t('station.via',{'path':p.aprsPath})].join(' · '),style:const TextStyle(fontSize:12,fontFamily:'monospace'))),
@@ -2308,7 +2325,9 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           if(_showPois)_faded('poi',PoiClusterLayer(pois:_pois.values.toList(),onTap:(p)=>unawaited(_openPoi(p)))),
           _faded('aprs',MarkerLayer(markers:_stationMarkers(onMap.where((p)=>p.isAprs).toList()))),
           _faded('ops',MarkerLayer(markers:_stationMarkers(onMap.where((p)=>!p.isAprs).toList()))),
-          if(_me!=null)MarkerLayer(markers:[Marker(point:_me!,width:22,height:22,child:Container(decoration:BoxDecoration(color:Colors.blue,shape:BoxShape.circle,border:Border.all(color:Colors.white,width:3),boxShadow:const [BoxShadow(blurRadius:4,color:Colors.black26)])))]),
+          if(_me!=null)MarkerLayer(markers:[Marker(point:_me!,width:22,height:22,child:GestureDetector(key:const ValueKey('me-dot'),
+            onTap:()=>openMyPositionInfo(context,location:_location,places:_places,fallback:_me,onSendMessage:_sendText),
+            child:Container(decoration:BoxDecoration(color:Colors.blue,shape:BoxShape.circle,border:Border.all(color:Colors.white,width:3),boxShadow:const [BoxShadow(blurRadius:4,color:Colors.black26)]))))]),
           if(_trace.isNotEmpty)MarkerLayer(markers:[for(final t in _trace)Marker(point:LatLng(t.lat,t.lon),width:8,height:8,
             child:Container(decoration:BoxDecoration(color:Theme.of(context).colorScheme.secondary,shape:BoxShape.circle)))]),
           if(_scrub!=null)MarkerLayer(markers:[Marker(point:LatLng(_scrub!.lat,_scrub!.lon),width:22,height:22,
