@@ -130,6 +130,7 @@ class DrawingController extends ChangeNotifier {
         if(r<1){return null;}
         return _commit(t,[_draft.first],radiusM:r);
       case FeatureKind.rectangle:
+      case FeatureKind.arrow:
         if(_draft.isEmpty){_draft.add(p);notifyListeners();return null;}
         if(_draft.first==p)return null;
         return _commit(t,[_draft.first,p]);

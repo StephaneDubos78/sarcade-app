@@ -9,7 +9,9 @@ import '../../offline/local_store.dart';
 import '../../platform/platform_services.dart';
 import '../../models/shared_file.dart';
 import '../../services/sarcade_api.dart';
+import 'drawings_section.dart';
 import 'file_tree.dart';
+export 'drawings_section.dart' show DrawingFileActions;
 import '../../ui/action_buttons.dart';
 
 /// Files screen (« Écran Fichiers enrichi », « Personnel », 28 Oct 2026;
@@ -20,7 +22,9 @@ class FilesPage extends StatefulWidget {
   final SarcadeApi api; final String eventId,actorId;
   /// Messages known on the device, to gather their photos.
   final LocalStore? store;
-  const FilesPage({super.key,required this.api,required this.eventId,required this.actorId,this.store});
+  /// Import and export of the drawings (PCO and admin, from the map).
+  final DrawingFileActions? drawings;
+  const FilesPage({super.key,required this.api,required this.eventId,required this.actorId,this.store,this.drawings});
   @override State<FilesPage> createState()=>_FilesPageState();
 }
 
@@ -489,6 +493,7 @@ class _FilesPageState extends State<FilesPage> with SingleTickerProviderStateMix
         if(photos.isNotEmpty)...[const SizedBox(width:8),FilterChip(avatar:const Icon(Icons.chat_outlined,size:16),label:Text(S.t('files.messagePhotos')),
           selected:_messagePhotos,onSelected:(v)=>setState(()=>_messagePhotos=v))],
       ])),
+      if(!searching&&_eventPath.isEmpty&&widget.drawings!=null&&canManageDrawings(widget.actorId))DrawingsSection(actions:widget.drawings!,onDone:_load),
       if(!searching)_toolbar(),
       const SizedBox(height:4),
       Expanded(child:searching?_items(const [],flat,showFolder:true):_items(childFolders(_folders,_eventPath),filesIn(_files,_eventPath))),
