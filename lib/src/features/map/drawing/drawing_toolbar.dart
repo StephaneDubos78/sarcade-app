@@ -5,6 +5,7 @@ import 'drawing_controller.dart';
 import 'geometry.dart';
 import 'map_feature.dart';
 import 'multi_select.dart';
+import '../../../ui/color_palette.dart';
 
 IconData toolIcon(FeatureKind k)=>switch(k){
   FeatureKind.point=>Icons.place_outlined,
@@ -25,43 +26,58 @@ String toolHint(FeatureKind k)=>switch(k){
   FeatureKind.rectangle=>S.t('draw.hint.rectangle'),
   FeatureKind.freehand=>S.t('draw.hint.freehand'),
   FeatureKind.zone=>S.t('draw.hint.zone'),
+  FeatureKind.arrow=>S.t('draw.hint.arrow'),
   _=>S.t('draw.hint.line'),
 };
 
-/// Compact drawing toolbar: the nine tools, undo/redo, export and close.
+/// Tools of the drawing toolbar: no « Mesure » (card « Barre de dessin,
+/// retirer Mesure », 30 Oct 2026, 13 h 28: « Mesurer jusqu'ici » of the
+/// point menu does it; the measures already saved stay editable).
+final drawingToolbarKinds=[for(final k in FeatureKind.values)if(k!=FeatureKind.measure)k];
+
+/// Same width for every tool button, fitted to the longest label on one line
+/// (card « Barre de dessin iPhone, libellé Rectangle coupé », 13 h 21).
+double toolButtonWidth(BuildContext context,Iterable<String> labels){
+  final scaler=MediaQuery.textScalerOf(context);
+  var w=0.0;
+  for(final l in labels){
+    final tp=TextPainter(text:TextSpan(text:l,style:const TextStyle(fontSize:11,fontWeight:FontWeight.bold)),textDirection:TextDirection.ltr,maxLines:1,textScaler:scaler)..layout();
+    if(tp.width>w)w=tp.width;
+  }
+  return (w+12).clamp(54.0,84.0).ceilToDouble();
+}
+
+/// Compact drawing toolbar: drawing tools only, selection, undo/redo and
+/// close (import and export moved to Plus › Fichiers, card of 13 h 27).
 class DrawingToolbar extends StatelessWidget {
   final DrawingController controller;
-  final VoidCallback onClose, onExport, onImport;
-  const DrawingToolbar({super.key,required this.controller,required this.onClose,required this.onExport,required this.onImport});
+  final VoidCallback onClose;
+  const DrawingToolbar({super.key,required this.controller,required this.onClose});
 
   @override
   Widget build(BuildContext context){
     final c=controller;
     final scheme=Theme.of(context).colorScheme;
+    final width=toolButtonWidth(context,[for(final k in drawingToolbarKinds)k.label,S.t('draw.select')]);
     return Material(
       elevation:4,borderRadius:BorderRadius.circular(14),color:scheme.surface,
       child:SingleChildScrollView(
         scrollDirection:Axis.horizontal,
         padding:const EdgeInsets.symmetric(horizontal:4,vertical:4),
         child:Row(mainAxisSize:MainAxisSize.min,children:[
-          for(final k in FeatureKind.values)Padding(
+          for(final k in drawingToolbarKinds)Padding(
             padding:const EdgeInsets.symmetric(horizontal:2),
-            child:_ToolButton(kind:k,active:c.tool==k,onTap:()=>c.selectTool(c.tool==k?null:k)),
+            child:_ToolButton(key:ValueKey('draw-tool-${k.name}'),kind:k,active:c.tool==k,width:width,onTap:()=>c.selectTool(c.tool==k?null:k)),
           ),
           // Phone: « Sélection » then drag a rectangle (multiple selection).
           Padding(padding:const EdgeInsets.symmetric(horizontal:2),child:Tooltip(message:S.t('draw.selectHelp'),child:InkWell(key:const ValueKey('draw-select'),
             borderRadius:BorderRadius.circular(10),onTap:()=>c.setSelectMode(!c.selectMode),
-            child:Container(width:54,padding:const EdgeInsets.symmetric(vertical:4),
+            child:Container(width:width,padding:const EdgeInsets.symmetric(vertical:4),
               decoration:BoxDecoration(color:c.selectMode?scheme.primaryContainer:null,borderRadius:BorderRadius.circular(10)),
-              child:Column(mainAxisSize:MainAxisSize.min,children:[
-                Icon(Icons.highlight_alt,color:c.selectMode?scheme.onPrimaryContainer:scheme.onSurface),const SizedBox(height:2),
-                Text(S.t('draw.select'),style:TextStyle(fontSize:11,fontWeight:c.selectMode?FontWeight.bold:FontWeight.normal,color:c.selectMode?scheme.onPrimaryContainer:scheme.onSurfaceVariant)),
-              ]))))),
+              child:_toolFace(Icons.highlight_alt,S.t('draw.select'),c.selectMode,scheme))))),
           const SizedBox(height:40,child:VerticalDivider(width:12)),
           IconButton(tooltip:S.t('draw.undo'),onPressed:c.canUndo?c.undo:null,icon:const Icon(Icons.undo)),
           IconButton(tooltip:S.t('draw.redo'),onPressed:c.canRedo?c.redo:null,icon:const Icon(Icons.redo)),
-          IconButton(tooltip:S.t('draw.import'),onPressed:onImport,icon:const Icon(Icons.file_upload_outlined)),
-          IconButton(tooltip:S.t('draw.export'),onPressed:c.features.isEmpty?null:onExport,icon:const Icon(Icons.file_download_outlined)),
           IconButton(tooltip:S.t('draw.close'),onPressed:onClose,icon:const Icon(Icons.close)),
         ]),
       ),
@@ -69,21 +85,26 @@ class DrawingToolbar extends StatelessWidget {
   }
 }
 
+/// Icon and label of a tool button: label on one line, never cut (scaled
+/// down if needed), icons on the same line for every button.
+Widget _toolFace(IconData icon,String label,bool active,ColorScheme scheme)=>Column(mainAxisSize:MainAxisSize.min,children:[
+  Icon(icon,color:active?scheme.onPrimaryContainer:scheme.onSurface),
+  const SizedBox(height:2),
+  SizedBox(height:15,child:FittedBox(fit:BoxFit.scaleDown,child:Text(label,maxLines:1,softWrap:false,
+    style:TextStyle(fontSize:11,fontWeight:active?FontWeight.bold:FontWeight.normal,color:active?scheme.onPrimaryContainer:scheme.onSurfaceVariant)))),
+]);
+
 class _ToolButton extends StatelessWidget {
-  final FeatureKind kind; final bool active; final VoidCallback onTap;
-  const _ToolButton({required this.kind,required this.active,required this.onTap});
+  final FeatureKind kind; final bool active; final double width; final VoidCallback onTap;
+  const _ToolButton({super.key,required this.kind,required this.active,required this.width,required this.onTap});
   @override Widget build(BuildContext context){
     final scheme=Theme.of(context).colorScheme;
     return Tooltip(message:kind.label,child:InkWell(
       borderRadius:BorderRadius.circular(10),onTap:onTap,
       child:Container(
-        width:54,padding:const EdgeInsets.symmetric(vertical:4),
+        width:width,padding:const EdgeInsets.symmetric(vertical:4),
         decoration:BoxDecoration(color:active?scheme.primaryContainer:null,borderRadius:BorderRadius.circular(10)),
-        child:Column(mainAxisSize:MainAxisSize.min,children:[
-          Icon(toolIcon(kind),color:active?scheme.onPrimaryContainer:scheme.onSurface),
-          const SizedBox(height:2),
-          Text(kind.label,style:TextStyle(fontSize:11,fontWeight:active?FontWeight.bold:FontWeight.normal,color:active?scheme.onPrimaryContainer:scheme.onSurfaceVariant)),
-        ]),
+        child:_toolFace(toolIcon(kind),kind.label,active,scheme),
       ),
     ));
   }
@@ -149,11 +170,7 @@ class SelectionBar extends StatelessWidget {
             maxLines:1,overflow:TextOverflow.ellipsis,style:Theme.of(context).textTheme.labelLarge,
           )),
           SingleChildScrollView(scrollDirection:Axis.horizontal,child:Row(mainAxisSize:MainAxisSize.min,children:[
-            PopupMenuButton<int>(
-              tooltip:S.t('groups.color'),onSelected:c.setColor,
-              itemBuilder:(_)=>[for(final col in drawingPalette)PopupMenuItem(value:col,child:Row(children:[Container(width:22,height:22,decoration:BoxDecoration(color:Color(col),shape:BoxShape.circle,border:Border.all(color:Colors.black26))),if(col==f.color)const Padding(padding:EdgeInsets.only(left:8),child:Icon(Icons.check,size:18))]))],
-              child:Padding(padding:const EdgeInsets.all(10),child:Icon(Icons.circle,color:Color(f.color),size:26)),
-            ),
+            ColorPaletteButton(color:f.color,colors:paletteWith(f.color),onSelected:c.setColor),
             if(f.kind!=FeatureKind.point&&f.kind!=FeatureKind.text)PopupMenuButton<double>(
               tooltip:S.t('draw.width'),onSelected:c.setStrokeWidth,
               itemBuilder:(_)=>[for(final w in drawingWidths)PopupMenuItem(value:w,child:Row(children:[SizedBox(width:48,child:Divider(thickness:w,color:Colors.black87)),const SizedBox(width:10),Text(w==drawingWidths.first?'Fin':w==drawingWidths.last?'Épais':'Moyen')]))],

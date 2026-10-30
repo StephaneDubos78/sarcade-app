@@ -19,6 +19,8 @@ import '../../services/notification_service.dart';
 import '../../services/sarcade_api.dart';
 import 'photo_attachment.dart';
 import 'message_deletion.dart';
+import 'messages_nav.dart';
+import '../../services/notification_keys.dart';
 import '../settings/quick_messages_editor.dart' show defaultQuickMessages;
 import '../dictation/dictation_button.dart';
 import '../../ui/action_buttons.dart';
@@ -32,7 +34,11 @@ class MessagesPage extends StatefulWidget {
  /// False while the screen is kept behind another tab (phone): nothing is
  /// marked seen or read until the operator comes back to it.
  final bool active;
- const MessagesPage({super.key,required this.api,required this.eventId,required this.actorId,required this.sync,required this.store,this.initialText,this.initialPeer,this.active=true});
+ /// A new press on Messages comes back to the list (lot 10C).
+ final MessagesNavigator? navigator;
+ /// Side panel (chat opened from an operator's sheet): ✕ closes it.
+ final VoidCallback? onClose;
+ const MessagesPage({super.key,required this.api,required this.eventId,required this.actorId,required this.sync,required this.store,this.initialText,this.initialPeer,this.active=true,this.navigator,this.onClose});
  @override State<MessagesPage> createState()=>_MessagesPageState();
 }
 class _MessagesPageState extends State<MessagesPage>{
@@ -57,6 +63,7 @@ class _MessagesPageState extends State<MessagesPage>{
    super.initState();
    if(widget.initialText!=null)_text.text=widget.initialText!;
    _text.addListener(_onTextChanged);
+   widget.navigator?.attach(_backFn);
    _refreshGroups();
    _unreadAtOpen=unreadMessages(messages:_eventMessages,seen:widget.store.seenMessages(widget.eventId)??{},
      deviceId:widget.actorId,groups:{for(final g in _groups)g.id:g}).map((m)=>m.id).toSet();
@@ -248,7 +255,7 @@ class _MessagesPageState extends State<MessagesPage>{
    await widget.store.cacheAck(a.toJson());
    await widget.sync.queue(objectId:a.id,objectType:'ack',payload:a.toJson());
    // An answer stops the reminders of an immediate message.
-   await NotificationService().answered(m.id,status);
+   await NotificationService().answered(m.id,status,key:messageNotificationKey(m));
    if(mounted)setState((){});
  }
 
@@ -273,7 +280,17 @@ class _MessagesPageState extends State<MessagesPage>{
  bool _wasEmpty=true;
  void _onTextChanged(){final e=_text.text.trim().isEmpty;if(e!=_wasEmpty&&mounted)setState(()=>_wasEmpty=e);}
 
- @override void dispose(){for(final w in _watch){w.cancel();}_text.removeListener(_onTextChanged);_text.dispose();_scroll.dispose();super.dispose();}
+ late final bool Function() _backFn=_backToList;
+ bool _wide=false;
+ /// Conversation open (phone, narrow screen): back to the list, the draft
+ /// stays in this conversation. List shown, or computer (list always
+ /// visible): false, Messages closes.
+ bool _backToList(){
+   if(_wide||!_chatOpen||!mounted)return false;
+   setState(()=>_chatOpen=false);
+   return true;
+ }
+ @override void dispose(){widget.navigator?.detach(_backFn);for(final w in _watch){w.cancel();}_text.removeListener(_onTextChanged);_text.dispose();_scroll.dispose();super.dispose();}
 
  Future<void> _addTemplate() async {
    try{
@@ -288,11 +305,13 @@ class _MessagesPageState extends State<MessagesPage>{
  /// Phone (29 Oct 2026, like WhatsApp): the list of the conversations first,
  /// a touch opens one full screen; the arrow comes back to the list. Opened
  /// for a purpose (a chat with an operator, a text to send): the chat at once.
+ final _drafts=ConversationDrafts();
  late bool _chatOpen=widget.initialPeer!=null||widget.initialText!=null;
 
  void _open(String key){
    if(!_chatOpen)setState(()=>_chatOpen=true);
    if(key==_conv)return;
+   _drafts.keep(_conv,_text.text); _text.text=_drafts.take(key);
    setState((){_conv=key;_maxBuilt=-1;});
    WidgetsBinding.instance.addPostFrameCallback((_)=>_toBottom());
  }
@@ -323,7 +342,7 @@ class _MessagesPageState extends State<MessagesPage>{
  Color get _otherBg=>_night?const Color(0xFF202C33):Colors.white;
 
  /// Conversation list filters and search (computer).
- String _filter='all'; String _search='';
+ String _filter='all'; String _search=''; String? _hovered;
  Set<String> get _favConvs=>(widget.store.preference('msg_fav:${widget.eventId}')??'').split('|').where((s)=>s.isNotEmpty).toSet();
  Future<void> _toggleFavConv(String k) async {
    final f=_favConvs; if(!f.remove(k))f.add(k);
@@ -351,6 +370,8 @@ class _MessagesPageState extends State<MessagesPage>{
    final lastBy=<String,SarcadeMessage>{};
    for(final m in _eventMessages){final k=conversationOf(m,widget.actorId,by);final l=lastBy[k];if(l==null||m.createdAt.isAfter(l.createdAt))lastBy[k]=m;}
    final fav=_favConvs; final q=_search.trim().toLowerCase();
+   Widget star(String k)=>InkWell(onTap:()=>_toggleFavConv(k),customBorder:const CircleBorder(),child:Tooltip(message:S.t(fav.contains(k)?'messages.unfav':'messages.fav'),
+     child:Icon(fav.contains(k)?Icons.star:Icons.star_border,size:18,color:fav.contains(k)?Colors.amber:s.onSurfaceVariant)));
    final keys=_conversations(by).where((k){
      if(_filter=='unread'&&_unreadIn(k,by,acks)==0)return false;
      if(_filter=='fav'&&!fav.contains(k))return false;
@@ -365,7 +386,7 @@ class _MessagesPageState extends State<MessagesPage>{
        chip('all',S.t('messages.filterAll')),chip('unread',S.t('messages.filterUnread')),chip('fav',S.t('messages.filterFav'))])),
      Expanded(child:ListView(children:[for(final k in keys)Builder(builder:(_){
        final last=lastBy[k]; final n=_unreadIn(k,by,acks);
-       return ListTile(selected:k==_conv,selectedTileColor:s.primaryContainer.withValues(alpha:0.45),
+       return MouseRegion(onEnter:(_)=>setState(()=>_hovered=k),onExit:(_){if(_hovered==k)setState(()=>_hovered=null);},child:ListTile(selected:k==_conv,selectedTileColor:s.primaryContainer.withValues(alpha:0.45),
          leading:_convIcon(k,by,r:22),
          title:Text(_convName(k,by),maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(fontWeight:FontWeight.w600)),
          subtitle:last==null?null:Text('${last.senderId==widget.actorId?S.t('messages.you'):last.senderId} : ${last.deleted?S.t(last.deletedByPco?'messages.deletedByPco':'messages.deleted'):last.body}',maxLines:1,overflow:TextOverflow.ellipsis),
@@ -375,14 +396,15 @@ class _MessagesPageState extends State<MessagesPage>{
            if(last!=null)Text(_hm(last.createdAt),style:TextStyle(fontSize:12,color:n>0?s.primary:s.onSurfaceVariant)),
            const SizedBox(height:4),
            Row(mainAxisSize:MainAxisSize.min,children:[
-             if(fav.contains(k))const Icon(Icons.star,size:16,color:Colors.amber),
+             // Star on hover (lot 10C): one click adds or removes.
+             if(fav.contains(k)||_hovered==k)star(k),
              if(n>0)Container(margin:const EdgeInsets.only(left:4),padding:const EdgeInsets.symmetric(horizontal:7,vertical:2),
                decoration:BoxDecoration(color:s.primary,borderRadius:BorderRadius.circular(12)),
                child:Text('$n',style:TextStyle(color:s.onPrimary,fontSize:11,fontWeight:FontWeight.w700))),
            ]),
          ]),
          onLongPress:()=>_toggleFavConv(k),
-         onTap:()=>_open(k));
+         onTap:()=>_open(k)));
      })])),
    ]);
  }
@@ -663,7 +685,12 @@ class _MessagesPageState extends State<MessagesPage>{
    final by=_byId, acks=_acks;
    final group=_group;
    return LayoutBuilder(builder:(context,c){
-     final wide=c.maxWidth>=900;
+     final wide=c.maxWidth>=900; _wide=wide;
+     // Star in the header of the conversation, left of ⋮, one click (lot 10C).
+     final isFav=_favConvs.contains(_conv);
+     final favButton=IconButton(tooltip:S.t(isFav?'messages.unfav':'messages.fav'),onPressed:()=>_toggleFavConv(_conv),
+       icon:Icon(isFav?Icons.star:Icons.star_border,color:isFav?Colors.amber:null));
+     final close=widget.onClose==null?null:IconButton(tooltip:S.t('common.close'),onPressed:widget.onClose,icon:const Icon(Icons.close));
      final listOnly=!wide&&!_chatOpen;
      final newGroup=RoundIconButton(tooltip:S.t('groups.new'),onPressed:()=>_editGroup(null),icon:Icons.group_add_outlined);
      // PCO: channels of the ADRASEC model added in one touch (28 Oct 2026).
@@ -674,7 +701,7 @@ class _MessagesPageState extends State<MessagesPage>{
      final pending=_pendingPill();
      if(listOnly){
        return Scaffold(
-         appBar:AppBar(title:Row(children:[Text(S.t('tabs.messages')),?pending]),actions:[newGroup,?adrasec]),
+         appBar:AppBar(title:Row(children:[Text(S.t('tabs.messages')),?pending]),actions:[newGroup,?adrasec,?close]),
          body:_convList(by,acks));
      }
      // Computer, like WhatsApp Web (30 Oct 2026, 1 h 31): no title bar, one
@@ -694,7 +721,7 @@ class _MessagesPageState extends State<MessagesPage>{
            Flexible(child:Text(_convName(_conv,by),overflow:TextOverflow.ellipsis,style:Theme.of(context).textTheme.titleMedium)),
            ?pending,
            const Spacer(),
-           ?editGroup,more,const SizedBox(width:4),
+           ?editGroup,favButton,more,?close,const SizedBox(width:4),
          ])),
          const Divider(height:1),
          Expanded(child:Row(children:[
@@ -714,7 +741,7 @@ class _MessagesPageState extends State<MessagesPage>{
            Flexible(child:Text(_convName(_conv,by),overflow:TextOverflow.ellipsis)),
            ?pending,
          ]),
-         actions:[?editGroup]),
+         actions:[?editGroup,favButton,?close]),
        body:_chat(by,acks),
      );
    });

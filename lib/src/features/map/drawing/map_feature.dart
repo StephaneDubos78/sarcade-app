@@ -20,7 +20,9 @@ extension FeatureKindInfo on FeatureKind {
   };
 
   /// Kinds drawn by tapping several vertices, then finishing explicitly.
-  bool get isMultiVertex=>this==FeatureKind.line||this==FeatureKind.arrow||this==FeatureKind.zone||this==FeatureKind.measure;
+  /// An arrow has 2 points only (departure and tip), committed on the
+  /// second tap (card « Dessin, curseurs et flèches », 30 Oct 2026).
+  bool get isMultiVertex=>this==FeatureKind.line||this==FeatureKind.zone||this==FeatureKind.measure;
 
   /// Kinds rendered as an open line.
   bool get isLinear=>this==FeatureKind.line||this==FeatureKind.arrow||this==FeatureKind.freehand||this==FeatureKind.measure;

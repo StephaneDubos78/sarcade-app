@@ -5,6 +5,8 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
+import 'notification_actions.dart' show notificationIdFor;
+
 /// Wake-up of Android when SARCADE is closed (note « Réveil des appareils »).
 /// The Firebase project is given at build time by the CI (secret
 /// GOOGLE_SERVICES_JSON); without it nothing is initialised.
@@ -52,12 +54,21 @@ String wakeTitle(Map<String,dynamic> data){
 String wakeChannel(Map<String,dynamic> data)=>switch('${data['priority']??'routine'}'){
   'immediate'=>'sarcade_immediate','urgent'=>'sarcade_urgent',_=>'sarcade_routine'};
 
+/// Same identifier as the notification of the message shown later by the
+/// application (« tag » of the server: the message, or the distress of its
+/// sender): one notification, whatever the path (30 Oct 2026, 12 h 45).
+/// An older server without the tag: one per event, as before.
+int wakeNotificationId(Map<String,dynamic> data){
+  final tag='${data['tag']??''}';
+  return tag.isNotEmpty?notificationIdFor(tag):90000+('${data['event_id']}'.hashCode&0x3ff);
+}
+
 Future<void> showWakeNotification(Map<String,dynamic> data) async {
   if(data['type']!='wake')return;
   final urgent=wakeChannel(data)!='sarcade_routine';
   final plugin=FlutterLocalNotificationsPlugin();
   await plugin.initialize(const InitializationSettings(android:AndroidInitializationSettings('@mipmap/ic_launcher')));
-  await plugin.show(90000+('${data['event_id']}'.hashCode&0x3ff),wakeTitle(data),'Ouvrez SARCADE pour le lire.',
+  await plugin.show(wakeNotificationId(data),wakeTitle(data),'Ouvrez SARCADE pour le lire.',
     NotificationDetails(android:AndroidNotificationDetails(wakeChannel(data),wakeChannel(data),
       importance:urgent?Importance.max:Importance.defaultImportance,priority:urgent?Priority.max:Priority.defaultPriority,
       category:AndroidNotificationCategory.message)));

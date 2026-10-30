@@ -12,6 +12,7 @@ import '../../../l10n/strings.dart';
 import 'drawing_controller.dart';
 import 'hit_test.dart';
 import 'map_feature.dart';
+import '../../../ui/color_palette.dart';
 
 /// Proposal 6: one's own objects, or every one for the PCO.
 bool canMultiSelect(MapFeature f,String actorId,{required bool pco})=>pco||f.createdBy==null||f.createdBy==actorId;
@@ -72,11 +73,7 @@ class MultiSelectionBar extends StatelessWidget {
     return Material(key:const ValueKey('multi-selection-bar'),elevation:4,borderRadius:BorderRadius.circular(14),color:Theme.of(context).colorScheme.surface,
       child:SingleChildScrollView(scrollDirection:Axis.horizontal,padding:const EdgeInsets.symmetric(horizontal:6,vertical:2),child:Row(mainAxisSize:MainAxisSize.min,children:[
         Padding(padding:const EdgeInsets.symmetric(horizontal:8),child:Text(S.t('draw.selectedN',{'n':all.length}),style:Theme.of(context).textTheme.labelLarge)),
-        PopupMenuButton<int>(
-          tooltip:S.t('groups.color'),onSelected:c.setColor,
-          itemBuilder:(_)=>[for(final col in drawingPalette)PopupMenuItem(value:col,child:Container(width:22,height:22,decoration:BoxDecoration(color:Color(col),shape:BoxShape.circle,border:Border.all(color:Colors.black26))))],
-          child:Padding(padding:const EdgeInsets.all(10),child:Icon(Icons.circle,color:Color(first.color),size:26)),
-        ),
+        ColorPaletteButton(color:first.color,onSelected:c.setColor),
         PopupMenuButton<double>(
           tooltip:S.t('draw.width'),onSelected:c.setStrokeWidth,
           itemBuilder:(_)=>[for(final w in drawingWidths)PopupMenuItem(value:w,child:SizedBox(width:48,child:Divider(thickness:w,color:Colors.black87)))],

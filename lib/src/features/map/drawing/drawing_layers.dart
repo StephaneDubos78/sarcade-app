@@ -116,9 +116,11 @@ Widget _vertexDot(Color color)=>Center(child:Container(width:vertexHandlePx,heig
     boxShadow:const [BoxShadow(blurRadius:2,color:Colors.black38)])));
 
 /// Middle of each side of [f] where a vertex can be added: (index of the
-/// new vertex, point). Lines, arrows, measures and zones only.
+/// new vertex, point). Lines and zones only (card « Dessin, curseurs et
+/// flèches », validated 30 Oct 2026, 12 h 35): an arrow and a measure keep
+/// their 2 points.
 List<(int,LatLng)> sideMiddles(MapFeature f){
-  final kinds={FeatureKind.line,FeatureKind.arrow,FeatureKind.zone,FeatureKind.measure};
+  final kinds={FeatureKind.line,FeatureKind.zone};
   if(!kinds.contains(f.kind)||f.points.length<2||f.points.length>60)return const [];
   final p=f.points, n=f.kind==FeatureKind.zone?p.length:p.length-1;
   return [for(var i=0;i<n;i++)(i+1,LatLng((p[i].latitude+p[(i+1)%p.length].latitude)/2,(p[i].longitude+p[(i+1)%p.length].longitude)/2))];
@@ -133,18 +135,19 @@ Widget buildHandleLayer(DrawingController c,LatLng Function(Offset global) toLat
   if(all.isEmpty)return const SizedBox.shrink();
   final f=all.first;
   final markers=<Marker>[];
-  Marker handle(LatLng p,Widget look,{required void Function(LatLng from,LatLng to) onDrag,VoidCallback? onStart,String? key})=>Marker(
+  Marker handle(LatLng p,Widget look,{required void Function(LatLng from,LatLng to) onDrag,VoidCallback? onStart,String? key,MouseCursor cursor=SystemMouseCursors.move})=>Marker(
     point:p,width:handleTouchPx,height:handleTouchPx,
-    child:_Handle(key:key==null?null:ValueKey(key),look:look,toLatLng:toLatLng,onStart:onStart??c.beginEdit,onDrag:onDrag,onEnd:c.endEdit),
+    child:_Handle(key:key==null?null:ValueKey(key),look:look,cursor:cursor,toLatLng:toLatLng,onStart:onStart??c.beginEdit,onDrag:onDrag,onEnd:c.endEdit),
   );
+  final anchor=f.anchor;
   final colour=_c(f.color);
   if(all.length==1){
     switch(f.kind){
       case FeatureKind.circle:
         final center=f.points[0];
-        markers.add(handle(destination(center,f.radiusM??1,90),_vertexDot(colour),onDrag:(_,to)=>c.setRadius(distanceM(center,to))));
+        markers.add(handle(destination(center,f.radiusM??1,90),_vertexDot(colour),cursor:SystemMouseCursors.resizeLeftRight,onDrag:(_,to)=>c.setRadius(distanceM(center,to))));
       case FeatureKind.rectangle:
-        for(var i=0;i<2;i++){markers.add(handle(f.points[i],_vertexDot(colour),onDrag:(_,to)=>c.moveVertex(i,to)));}
+        for(var i=0;i<2;i++){markers.add(handle(f.points[i],_vertexDot(colour),cursor:cornerCursor(f.points[i],anchor),onDrag:(_,to)=>c.moveVertex(i,to)));}
       case FeatureKind.line:
       case FeatureKind.arrow:
       case FeatureKind.zone:
@@ -153,9 +156,9 @@ Widget buildHandleLayer(DrawingController c,LatLng Function(Offset global) toLat
           for(final (i,m) in sideMiddles(f)){
             markers.add(handle(m,Center(child:Container(width:midHandlePx,height:midHandlePx,
                 decoration:BoxDecoration(color:Colors.white.withValues(alpha:0.85),shape:BoxShape.circle,border:Border.all(color:colour.withValues(alpha:0.7))))),
-              onStart:(){c.beginEdit();c.insertVertex(i,m);},onDrag:(_,to)=>c.moveVertex(i,to)));
+              cursor:addVertexCursor,onStart:(){c.beginEdit();c.insertVertex(i,m);},onDrag:(_,to)=>c.moveVertex(i,to)));
           }
-          for(var i=0;i<f.points.length;i++){markers.add(handle(f.points[i],_vertexDot(colour),onDrag:(_,to)=>c.moveVertex(i,to)));}
+          for(var i=0;i<f.points.length;i++){markers.add(handle(f.points[i],_vertexDot(colour),cursor:cornerCursor(f.points[i],anchor),onDrag:(_,to)=>c.moveVertex(i,to)));}
         }
       default:
         break;
@@ -169,18 +172,25 @@ Widget buildHandleLayer(DrawingController c,LatLng Function(Offset global) toLat
   return MarkerLayer(markers:markers);
 }
 
+/// Mouse cursors of the handles (card « Dessin, curseurs et flèches »,
+/// 12 h 34): a corner resizes (diagonal double arrow), the middle of a side
+/// adds a point, the central cross moves.
+const addVertexCursor=SystemMouseCursors.copy;
+MouseCursor cornerCursor(LatLng corner,LatLng centre)=>
+  (corner.latitude>=centre.latitude)==(corner.longitude>=centre.longitude)?SystemMouseCursors.resizeUpRightDownLeft:SystemMouseCursors.resizeUpLeftDownRight;
+
 class _Handle extends StatefulWidget {
-  final Widget look;
+  final Widget look; final MouseCursor cursor;
   final LatLng Function(Offset) toLatLng;
   final VoidCallback onStart, onEnd;
   final void Function(LatLng from,LatLng to) onDrag;
-  const _Handle({super.key,required this.look,required this.toLatLng,required this.onStart,required this.onDrag,required this.onEnd});
+  const _Handle({super.key,required this.look,required this.cursor,required this.toLatLng,required this.onStart,required this.onDrag,required this.onEnd});
   @override State<_Handle> createState()=>_HandleState();
 }
 
 class _HandleState extends State<_Handle> {
   LatLng? _last;
-  @override Widget build(BuildContext context)=>MouseRegion(cursor:SystemMouseCursors.move,child:GestureDetector(
+  @override Widget build(BuildContext context)=>MouseRegion(cursor:widget.cursor,child:GestureDetector(
     behavior:HitTestBehavior.opaque,
     onPanStart:(d){_last=widget.toLatLng(d.globalPosition);widget.onStart();},
     onPanUpdate:(d){final to=widget.toLatLng(d.globalPosition);final from=_last??to;_last=to;widget.onDrag(from,to);},

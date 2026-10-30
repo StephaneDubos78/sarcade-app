@@ -11,7 +11,8 @@ import '../../config/version.dart';
 import 'about_page.dart';
 import 'notifications_panel.dart';
 import '../../ui/theme.dart' show themeMode;
-import '../map/drawing/drawing_controller.dart' show drawingPalette, defaultDrawColor;
+import '../map/drawing/drawing_controller.dart' show defaultDrawColor;
+import '../../ui/color_palette.dart';
 import '../../l10n/strings.dart';
 import '../../offline/outbox_policy.dart' show normalServer;
 import '../../operations/event_settings.dart';
@@ -407,14 +408,8 @@ class _SettingsPageState extends State<SettingsPage> {
       autocorrect:false,textCapitalization:TextCapitalization.characters,validator:_callsignCheck))),
     // Colour of every new drawing (existing objects keep theirs).
     _row(S.t('settings.drawColor'),help:S.t('settings.drawColorHelp'),child:Wrap(spacing:8,runSpacing:8,crossAxisAlignment:WrapCrossAlignment.center,children:[
-      for(final c in [...drawingPalette,if(!drawingPalette.contains(_drawColor))_drawColor])Semantics(
-      label:S.t('color.$c'),selected:c==_drawColor,button:true,
-      child:InkWell(customBorder:const CircleBorder(),onTap:()=>setState((){_drawColor=c;_dirty=true;}),child:Container(
-        width:34,height:34,
-        decoration:BoxDecoration(color:Color(c),shape:BoxShape.circle,border:Border.all(color:c==_drawColor?Theme.of(context).colorScheme.primary:Colors.black26,width:c==_drawColor?3:1)),
-        child:c==_drawColor?Icon(Icons.check,size:18,color:Color(c).computeLuminance()>0.5?Colors.black:Colors.white):null,
-      )),
-    ),
+      // Same 4 × 4 palette as the drawings and the groups (30 Oct 2026, 13 h 25).
+      ColorGrid(colors:paletteWith(_drawColor),selected:_drawColor,onPick:(c)=>setState((){_drawColor=c;_dirty=true;})),
       ActionChip(avatar:const Icon(Icons.palette_outlined,size:18),label:Text(S.t('settings.otherColor')),onPressed:_pickOtherColor),
     ])),
     // Under « Couleur de dessin » (29 Oct 2026).
