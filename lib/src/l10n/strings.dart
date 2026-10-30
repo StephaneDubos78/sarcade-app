@@ -28,6 +28,7 @@ class S {
 }
 
 const Texts _fr={
+  'bearings.title':'Relevé','bearings.noCompassHelp':'Pas de boussole : saisissez l’azimut vrai','bearings.azimuthField':'Azimut (°)','bearings.azimuthHint':'ex. 045','bearings.aimHelp':'Visez la source avec le haut du téléphone',
   'poi.createHere':'Créer un point d’intérêt ici','poi.create':'Créer','poi.defaultName':'Point {hm}','poi.iconTitle':'Icône','poi.changeIcon':'Changer l’icône','poi.created':'Point d’intérêt créé',
   'poi.icon.pin':'Épingle','poi.icon.gathering':'Rassemblement','poi.icon.command_post':'PC','poi.icon.danger':'Danger','poi.icon.parking':'Parking','poi.icon.water':'Eau',
   'poi.icon.helipad':'Hélisurface','poi.icon.vehicle':'Véhicule','poi.icon.viewpoint':'Point de vue','poi.icon.medical':'Secours','poi.icon.radio':'Radio','poi.icon.shelter':'Abri','poi.icon.flag':'Repère',
@@ -457,6 +458,7 @@ const Texts _fr={
 };
 
 const Texts _en={
+  'bearings.title':'Bearing','bearings.noCompassHelp':'No compass: type the true azimuth','bearings.azimuthField':'Azimuth (°)','bearings.azimuthHint':'e.g. 045','bearings.aimHelp':'Aim the top of the phone at the source',
   'poi.createHere':'Create a point of interest here','poi.create':'Create','poi.defaultName':'Point {hm}','poi.iconTitle':'Icon','poi.changeIcon':'Change the icon','poi.created':'Point of interest created',
   'poi.icon.pin':'Pin','poi.icon.gathering':'Gathering','poi.icon.command_post':'Command post','poi.icon.danger':'Danger','poi.icon.parking':'Parking','poi.icon.water':'Water',
   'poi.icon.helipad':'Helipad','poi.icon.vehicle':'Vehicle','poi.icon.viewpoint':'Viewpoint','poi.icon.medical':'Medical','poi.icon.radio':'Radio','poi.icon.shelter':'Shelter','poi.icon.flag':'Marker',
