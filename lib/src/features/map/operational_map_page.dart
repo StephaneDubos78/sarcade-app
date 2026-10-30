@@ -79,6 +79,7 @@ import '../routes/routes_controller.dart';
 import '../routes/routes_layers.dart';
 import '../routes/routes_panel.dart';
 import '../tv/tv_view.dart';
+import '../tv/tv_nearby.dart';
 import '../orders/move_orders.dart';
 import '../bearings/signals.dart';
 import '../tools/tools_page.dart';
@@ -187,7 +188,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       _deskId=id;_deskPage=build();_showPanel=false; // one icon in blue (30 Oct 2026, 1 h 21)
     });
   }
-  @override void initState(){super.initState();_initNotificationActions();unawaited(requestPersistentStorage());_sync=OfflineSyncService(api:widget.api,store:widget.store,eventId:widget.eventId,onRemoteChange:_onRemoteChange);_initDrawing();_initBearings();_loadLocal();_initRoutes();_initMeasure();_sync.start();_initOperations();_loadBasemaps();_initWebUpdate();unawaited(_loadMyPreferences());_syncUiTimer=Timer.periodic(const Duration(seconds:2),(t){if(t.tick%8==0)_checkOrderArrival();if(t.tick%30==1)unawaited(_loadDevices());if(t.tick%3==0)_drainAnswers();if(mounted)setState((){});});AccessManager.instance.addListener(_onAccessChanged);_start();unawaited(_loadRoles());}
+  @override void initState(){super.initState();_initNotificationActions();unawaited(requestPersistentStorage());_sync=OfflineSyncService(api:widget.api,store:widget.store,eventId:widget.eventId,onRemoteChange:_onRemoteChange);_initDrawing();_initBearings();_loadLocal();_initRoutes();_initMeasure();_sync.start();_initOperations();_loadBasemaps();_initWebUpdate();unawaited(_loadMyPreferences());_syncUiTimer=Timer.periodic(const Duration(seconds:2),(t){if(t.tick%8==0)_checkOrderArrival();if(t.tick%30==1)unawaited(_loadDevices());if(t.tick%3==0)_drainAnswers();if(t.tick%10==5&&isPco(widget.deviceId))unawaited(_tvNearby.check(context,widget.eventId));if(mounted)setState((){});});AccessManager.instance.addListener(_onAccessChanged);_start();unawaited(_loadRoles());}
 
   /// Rights given by the server for the checked email (PCO, administrator).
   Future<void> _loadRoles() async {
@@ -2150,9 +2151,10 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
 
   @override void dispose(){if(currentMapView==_tvView)currentMapView=null;if(currentMapOptions==_tvOptions)currentMapOptions=null;_stopCompass();_webUpdateTimer?.cancel();_saveViewTimer?.cancel();_bearings.dispose();_positionsTimer?.cancel();_meSub?.cancel();_mapEvents?.cancel();AccessManager.instance.removeListener(_onAccessChanged);_fcmRefresh?.cancel();_fcmForeground?.cancel();if(registerWakeupHook==_wakeupNoted)registerWakeupHook=null;_opensSub?.cancel();_answersSub?.cancel();_rtSub?.cancel();_tracking.removeListener(_onOperationsChanged);_ops.removeListener(_onOperationsChanged);_tracking.dispose();_ops.dispose();_routes.removeListener(_onRoutesChanged);_nav.removeListener(_onNavigationChanged);_variantHits.dispose();_bearingHits.dispose();_routeHits.dispose();_routes.dispose();_nav.dispose();_graphs.removeListener(_onRoutesChanged);_graphs.dispose();_measure.removeListener(_onRoutesChanged);_measure.dispose();_syncUiTimer?.cancel();_sync.dispose();_realtime.dispose();_drawing.dispose();_resectionCtl.dispose();widget.api.close();super.dispose();}
 
+  late final _tvNearby=TvNearbyWatcher(widget.api);
   /// Current view, for « Envoyer ma vue » on a TV (Paramètres › Affichage › Écrans).
   TvView? _tvView(){
-    try{final c=_map.camera;return (center:c.center,zoom:c.zoom,basemapId:_basemap.id,tileUrl:_basemap.url,attribution:_basemap.attribution);}
+    try{final c=_map.camera;return (center:c.center,zoom:c.zoom,basemapId:_basemap.id,tileUrl:_basemap.url,attribution:_basemap.attribution,basemapName:_basemap.name);}
     catch(_){return null;}
   }
 
@@ -2160,8 +2162,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   TvOptions _tvOptions()=>(
     layers:{'operators':_showOperators,'aprs':_showAprs,'offline':true,'drawings':_showDrawings,'bearings':_showBearings,
       'highpoints':_showHighPoints,'relays':_showRelays},
-    // Keys read by the TV page today (server): ref = high points.
-    opacity:{'ops':_layerOpacity('ops'),'draw':_layerOpacity('draw'),'brg':_layerOpacity('brg'),'ref':_layerOpacity('high')},
+    // One opacity per layer, as in the Affichage tab (lot 4, 30 Oct 2026).
+    opacity:{for(final k in tvOpacityKeys)k:_layerOpacity(k)},
     messages:true,
   );
 

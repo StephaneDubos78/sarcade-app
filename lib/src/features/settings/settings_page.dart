@@ -17,7 +17,6 @@ import '../../services/notification_service.dart';
 import '../../models/comm_group.dart' show isPco, myRoles;
 import '../../services/sarcade_api.dart' show SarcadeApi, SarcadeHttpException;
 import 'event_settings_section.dart';
-import '../tv/tv_screens_page.dart';
 import '../bearings/signal_defaults_page.dart';
 import '../../offline/local_store.dart';
 import '../../ui/save_bar.dart';
@@ -456,9 +455,8 @@ class _SettingsPageState extends State<SettingsPage> {
       ],
       onChanged:(v)=>setState((){_language=v??'system';_dirty=true;}),
     ))),
-    // Smart TV screens (any operator, decision of 29 Oct 2026): the content
-    // of the former « Gérer les écrans » directly here (29 Oct 2026, 17 h 02).
-    if(widget.api!=null)_row(S.t('tv.title'),help:S.t('tv.help'),child:TvScreensPanel(api:widget.api!,eventId:widget.initial.eventId)),
+    // Smart TV screens: managed in Outils › Afficher sur une TV only
+    // (« Écrans Smart TV en double », 30 Oct 2026).
   ]);
 
   Widget _notificationsTab()=>Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
