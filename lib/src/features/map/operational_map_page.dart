@@ -1932,29 +1932,22 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   Widget _bearingHud(){
     final s=Theme.of(context).colorScheme; final b=_bearings; final az=b.trueDeg; final p=b.position;
     final mouse=_aim!=null, decl=b.declinationDeg, mag=mouse?(az==null||decl==null?null:normDeg(az-decl)):b.magneticDeg;
-    final t=DateTime.now(); String two(int v)=>v.toString().padLeft(2,'0');
+    final t=DateTime.now();
     if(mouse){return MouseBearingHud(trueDeg:az,magneticDeg:mag,position:p,accuracyM:b.accuracyM,time:t,onClose:_cancelAim,
       decoration:glass(context,border:s.primary.withValues(alpha:0.6)));}
-    return Container(padding:const EdgeInsets.fromLTRB(14,10,8,10),decoration:glass(context,border:s.primary.withValues(alpha:0.6)),
-      child:Column(crossAxisAlignment:CrossAxisAlignment.start,mainAxisSize:MainAxisSize.min,children:[
-        Row(children:[
-          Expanded(child:Text(S.t(b.hasCompass||b.manualDeg!=null?'bearings.aim':'bearings.noCompass'),style:TextStyle(fontSize:12,fontWeight:FontWeight.w700,letterSpacing:0.8,color:s.primary))),
-          IconButton(tooltip:S.t('common.cancel'),onPressed:_cancelAim,icon:const Icon(Icons.close)),
-        ]),
-        Row(crossAxisAlignment:CrossAxisAlignment.end,children:[
-          Text(az==null?'—':'${az.toStringAsFixed(0).padLeft(3,'0')}°',style:const TextStyle(fontSize:60,fontWeight:FontWeight.w500,height:1,fontFeatures:[FontFeature.tabularFigures()])),
-          const SizedBox(width:10),
-          Padding(padding:const EdgeInsets.only(bottom:6),child:Text([S.t(b.manualDeg!=null&&!mouse?'bearings.typed':'bearings.true'),
-            if(mag!=null&&(mouse||b.manualDeg==null))'(${S.t('bearings.magnetic',{'v':mag.toStringAsFixed(0).padLeft(3,'0')})})'].join('\n'),
-            style:TextStyle(fontSize:12,color:s.onSurfaceVariant))),
-        ]),
-        if(!mouse&&b.manualDeg==null&&(b.hasCompass||b.needsCalibration||b.averaging))Padding(padding:const EdgeInsets.only(top:4),
-          child:CompassStatus(accuracyDeg:b.compassAccuracyDeg,calibrate:b.needsCalibration,averaging:b.averaging)),
-        const SizedBox(height:4),
-        Text([p==null?S.t('bearings.noPosition'):'${p.latitude.toStringAsFixed(4)}° N · ${p.longitude.toStringAsFixed(4)}° E',
-          if(b.accuracyM!=null)'±${b.accuracyM!.toStringAsFixed(0)} m','${two(t.hour)}:${two(t.minute)}:${two(t.second)}'].join(' · '),
-          style:TextStyle(fontSize:12,fontFamily:'monospace',color:s.onSurfaceVariant)),
-      ]));
+    final deco=glass(context,border:s.primary.withValues(alpha:0.6));
+    // No compass: « Relevé » with a visible field.
+    // The field stays while the azimuth is typed (no compass).
+    if(!b.hasCompass){
+      return TypedBearingHud(position:p,accuracyM:b.accuracyM,time:t,onClose:_cancelAim,decoration:deco,
+        onAzimuth:(d)=>setState(()=>_bearings.setManual(d)));
+    }
+    // Compass (card « Relevé à la boussole, bandeau compact », 16 h 25):
+    // the same compact line as with the mouse, help in the ⓘ.
+    final typed=b.manualDeg!=null;
+    return MouseBearingHud(trueDeg:az,magneticDeg:typed?null:mag,position:p,accuracyM:b.accuracyM,time:t,onClose:_cancelAim,decoration:deco,
+      help:S.t('bearings.aimHelp'),trueLabel:S.t(typed?'bearings.typed':'bearings.true'),
+      below:!typed&&(b.hasCompass||b.needsCalibration||b.averaging)?CompassStatus(accuracyDeg:b.compassAccuracyDeg,calibrate:b.needsCalibration,averaging:b.averaging):null);
   }
 
   /// Bottom of the screen while taking a bearing: target, strength S1–S9,
@@ -2076,10 +2069,16 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     final l=b.takenAt.toLocal(); String two(int v)=>v.toString().padLeft(2,'0');
     final choice=await showModalBottomSheet<String>(context:context,showDragHandle:true,builder:(c)=>SafeArea(child:Padding(padding:const EdgeInsets.fromLTRB(20,0,20,12),
       child:Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.start,children:[
-        Row(children:[Text('${b.azimuthDeg.toStringAsFixed(0).padLeft(3,'0')}° ${S.t('bearings.true')}',style:const TextStyle(fontSize:32,fontWeight:FontWeight.w600)),
+        // « vrai » at the size of the lines below, on the baseline of the
+        // azimuth (card « Fiche d'un relevé, « vrai » trop grand », 17 h 38).
+        Row(crossAxisAlignment:CrossAxisAlignment.baseline,textBaseline:TextBaseline.alphabetic,children:[
+          Text('${b.azimuthDeg.toStringAsFixed(0).padLeft(3,'0')}°',style:const TextStyle(fontSize:32,fontWeight:FontWeight.w600)),
+          const SizedBox(width:6),
+          Text(S.t('bearings.true'),style:Theme.of(c).textTheme.bodyMedium),
           if(b.exercise)...[const SizedBox(width:10),const ExerciseBadge()]]),
+        // Never cut: on two lines when needed.
         Text([if(b.search.isNotEmpty)b.search,b.createdBy,'${two(l.day)}/${two(l.month)} ${two(l.hour)}:${two(l.minute)}',if(b.strength>0)'S${b.strength}',
-          S.t('bearings.method.${b.method}')].join(' · ')),
+          S.t('bearings.method.${b.method}')].join(' · '),softWrap:true,maxLines:3),
         if(b.comment.isNotEmpty)Padding(padding:const EdgeInsets.only(top:6),child:Text(b.comment)),
         Text(S.t('bearings.lineCone',{'l':geo.formatDistance(b.lengthM),'c':b.coneDeg.toStringAsFixed(0)}),style:TextStyle(fontSize:12,color:Theme.of(c).colorScheme.onSurfaceVariant)),
         PlaceLine(describer:_places,point:b.origin),

@@ -28,6 +28,7 @@ class S {
 }
 
 const Texts _fr={
+  'bearings.title':'Relevé','bearings.noCompassHelp':'Pas de boussole : saisissez l’azimut vrai','bearings.azimuthField':'Azimut (°)','bearings.azimuthHint':'ex. 045','bearings.aimHelp':'Visez la source avec le haut du téléphone',
   'point.selectArea':'Sélectionner une zone','draw.selectHint':'Touchez des objets ou tracez un rectangle',
   'routes.entrySummary':'{d} · {n} points','routes.undoPoint':'Annuler le dernier point','routes.done':'Terminer',
   'tvb.title':'Écrans','tvb.sent':'Vue envoyée à {name}','tvb.sentAll':'Vue envoyée à {n} écrans','tvb.all':'Tous les écrans','tvb.follow':'Suivre ma vue','tvb.followStop':'Arrêter','tvb.following':'suit votre vue','tvb.connected':'Connecté','tvb.notConnected':'Non connecté','tvb.manage':'Appairer et gérer les écrans','tvb.settings':'Réglages de l’écran','tvb.disconnect':'Déconnecter','tvb.disconnected':'Écran déconnecté',
@@ -460,6 +461,7 @@ const Texts _fr={
 };
 
 const Texts _en={
+  'bearings.title':'Bearing','bearings.noCompassHelp':'No compass: type the true azimuth','bearings.azimuthField':'Azimuth (°)','bearings.azimuthHint':'e.g. 045','bearings.aimHelp':'Aim the top of the phone at the source',
   'point.selectArea':'Select an area','draw.selectHint':'Tap objects or draw a rectangle',
   'routes.entrySummary':'{d} · {n} points','routes.undoPoint':'Undo last point','routes.done':'Done',
   'tvb.title':'Screens','tvb.sent':'View sent to {name}','tvb.sentAll':'View sent to {n} screens','tvb.all':'All screens','tvb.follow':'Follow my view','tvb.followStop':'Stop','tvb.following':'follows your view','tvb.connected':'Connected','tvb.notConnected':'Not connected','tvb.manage':'Pair and manage the screens','tvb.settings':'Screen settings','tvb.disconnect':'Disconnect','tvb.disconnected':'Screen disconnected',
