@@ -214,6 +214,17 @@ class DrawingController extends ChangeNotifier {
   }
 
   void setSelectMode(bool on){selectMode=on;if(on){_tool=null;_draft.clear();}notifyListeners();}
+  /// Selection out of the drawing bar (card « Sélection sortie de la barre de
+  /// dessin », 30 Oct 2026, 17 h 36): a long press on an object starts it
+  /// with that object, « Sélectionner une zone » without any.
+  void startSelection([String? id]){
+    selectMode=true;_tool=null;_draft.clear();
+    if(id!=null&&_features.containsKey(id)&&!_selection.contains(id))_selection.add(id);
+    notifyListeners();
+  }
+  /// ✕, Échap, a touch on the empty map, closing the drawing bar or opening
+  /// another panel: nothing selected, no tool, the map moves again.
+  void endSelection(){selectMode=false;_selection.clear();if(_tool!=null){_tool=null;_draft.clear();}notifyListeners();}
 
   void _grouped(String action,int n,void Function() run){
     _group=n>1?(id:_uuid.v4(),n:n,action:action):null;

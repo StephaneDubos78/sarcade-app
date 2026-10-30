@@ -27,9 +27,12 @@ class LayerRow extends StatelessWidget {
   const LayerRow({super.key,required this.label,required this.on,required this.onShown,this.opacity,this.onOpacity,this.trailing});
   @override Widget build(BuildContext context){
     final t=Theme.of(context); final o=opacity;
-    return Padding(padding:const EdgeInsets.only(left:16,right:8),child:SizedBox(height:48,child:Row(children:[
+    // Narrow (revue d'ergonomie n° 28): the action (« Voir la liste ») goes
+    // on a second line under the name, so the name is never squeezed out.
+    final narrow=trailing!=null&&layerRowStacksAction(MediaQuery.sizeOf(context).width);
+    final main=Padding(padding:const EdgeInsets.only(left:16,right:8),child:SizedBox(height:48,child:Row(children:[
       Expanded(child:Text(label,overflow:TextOverflow.ellipsis,style:t.textTheme.bodyLarge)),
-      ?trailing,
+      if(!narrow)?trailing,
       if(on&&o!=null&&onOpacity!=null)...[
         Tooltip(message:S.t('layers.opacity'),child:Icon(Icons.opacity,size:16,color:t.colorScheme.onSurfaceVariant)),
         SizedBox(width:110,child:Slider(value:o,min:0.1,max:1,divisions:9,label:'${(o*100).round()} %',onChanged:onOpacity)),
@@ -38,8 +41,16 @@ class LayerRow extends StatelessWidget {
       ],
       Switch(value:on,onChanged:onShown),
     ])));
+    if(!narrow)return main;
+    return Column(crossAxisAlignment:CrossAxisAlignment.stretch,mainAxisSize:MainAxisSize.min,children:[
+      main,
+      Padding(padding:const EdgeInsets.only(left:16,bottom:4),child:Align(alignment:Alignment.centerLeft,child:trailing)),
+    ]);
   }
 }
+
+/// Phone width: the action of a layer row goes under its name.
+bool layerRowStacksAction(double screenWidth)=>screenWidth<600;
 
 /// Title of a section, same style as the tab titles (card « Panneau Fond de
 /// carte, titres de sections », 1 h 34), with a clear separator above.
