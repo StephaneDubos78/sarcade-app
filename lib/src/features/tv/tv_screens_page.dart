@@ -5,6 +5,7 @@ import '../../models/comm_group.dart';
 import '../../services/sarcade_api.dart';
 import '../../ui/theme.dart' show themeMode;
 import 'tv_code.dart';
+import 'tv_nearby.dart';
 import 'tv_qr_scan_page.dart';
 import 'tv_view.dart';
 
@@ -56,6 +57,7 @@ class _TvScreensPanelState extends State<TvScreensPanel> {
   }
 
   Future<void> _approve(String code,{String? name}) async {
+    TvNearbyGate.handled(code);
     setState(()=>_busy=true);
     try{
       await widget.api.approveDisplay(code,widget.eventId,name:name);
@@ -70,13 +72,16 @@ class _TvScreensPanelState extends State<TvScreensPanel> {
     }
   }
 
-  Future<void> _scan() async {
+  // Lot 11: the whole pairing (camera, name) suspends « Écran à proximité »;
+  // a scanned code is never offered again by that dialog.
+  Future<void> _scan()=>TvNearbyGate.during(() async {
     final code=await Navigator.push<String>(context,MaterialPageRoute(builder:(_)=>const TvQrScanPage()));
     if(code==null||!mounted)return;
+    TvNearbyGate.handled(code);
     // Name chosen at pairing, the default name of the TV proposed.
     final name=await _askName(S.t('tv.nameTitle'),await widget.api.tvCodeName(code)??'');
     if(name!=null&&mounted)await _approve(code,name:name);
-  }
+  });
 
   /// Name of a screen (after the scan, « Renommer »); null when cancelled.
   Future<String?> _askName(String title,String initial) async {
@@ -91,7 +96,8 @@ class _TvScreensPanelState extends State<TvScreensPanel> {
     return v;
   }
 
-  Future<void> _type() async {
+  Future<void> _type()=>TvNearbyGate.during(_typeCode);
+  Future<void> _typeCode() async {
     final ctrl=TextEditingController(), name=TextEditingController();
     var edited=false, closed=false; var asked='';
     final raw=await showDialog<String>(context:context,builder:(c)=>StatefulBuilder(builder:(c,set)=>AlertDialog(title:Text(S.t('tv.type')),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import '../../l10n/strings.dart';
 import 'tv_code.dart';
+import 'tv_nearby.dart';
 
 /// Camera view that returns the pairing code of the first QR code of a
 /// SARCADE TV it sees (Android, iPhone).
@@ -12,6 +13,10 @@ class TvQrScanPage extends StatefulWidget {
 
 class _TvQrScanPageState extends State<TvQrScanPage> {
   bool _done=false;
+
+  // No « Écran à proximité » dialog over the camera (lot 11).
+  @override void initState(){super.initState();TvNearbyGate.hold();}
+  @override void dispose(){TvNearbyGate.release();super.dispose();}
 
   void _onDetect(BarcodeCapture capture){
     if(_done)return;
