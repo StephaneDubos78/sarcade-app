@@ -25,7 +25,9 @@ class RealtimeService {
  static const retryDelay=Duration(seconds:10);
  Stream<RealtimeEvent> get events=>_events.stream;
 
- void connect(Uri uri,{Map<String,String> Function()? headers}){disconnect();_uri=uri;_headers=headers;_closing=false;_open();}
+ /// The channel of the open map, for Paramètres › Diagnostic (lot 5).
+ static RealtimeService? active;
+ void connect(Uri uri,{Map<String,String> Function()? headers}){disconnect();active=this;_uri=uri;_headers=headers;_closing=false;_open();}
 
  void _open(){
    final uri=_uri; if(uri==null||_closing)return;

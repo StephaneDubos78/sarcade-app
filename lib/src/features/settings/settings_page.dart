@@ -16,6 +16,7 @@ import '../../operations/event_settings.dart';
 import '../../services/notification_service.dart';
 import '../../models/comm_group.dart' show isPco, myRoles;
 import '../../services/sarcade_api.dart' show SarcadeApi, SarcadeHttpException;
+import 'diagnostics_panel.dart';
 import 'event_settings_section.dart';
 import '../bearings/signal_defaults_page.dart';
 import '../../offline/local_store.dart';
@@ -490,6 +491,8 @@ class _SettingsPageState extends State<SettingsPage> {
         })]);
     })),
     if(VersionStatus.shown)const Padding(padding:EdgeInsets.only(bottom:12),child:VersionStatus()),
+    // Cet appareil, Liaisons, Serveur (PCO / admin), « Copier le rapport » (lot 5).
+    if(widget.api!=null)DiagnosticsPanel(api:widget.api!,server:widget.initial.serverUrl,eventId:widget.initial.eventId),
   ]);
 
   Widget _tabBody(String id)=>switch(id){

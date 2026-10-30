@@ -92,7 +92,7 @@ void main(){
       final text=formatCoordinates(p,f,mgrsDigits:5);
       final back=parseCoordinates(text);
       expect(back,isNotNull,reason:text);
-      final tolerance=f==CoordFormat.qth?3000.0:5.0;
+      final tolerance=f==CoordFormat.qth?3000.0:f==CoordFormat.dfci?600.0:5.0;
       expect(distanceM(back!,p),lessThan(tolerance),reason:text);
     }
   });
@@ -113,9 +113,9 @@ void main(){
 
   test('card formats: main first, base formats, the rest behind « More formats »',(){
     expect(cardFormats(CoordFormat.dd).shown,[CoordFormat.dd,CoordFormat.dm,CoordFormat.qth]);
-    expect(cardFormats(CoordFormat.dd).more,[CoordFormat.dms,CoordFormat.utm,CoordFormat.mgrs]);
+    expect(cardFormats(CoordFormat.dd).more,[CoordFormat.dms,CoordFormat.utm,CoordFormat.mgrs,CoordFormat.l93,CoordFormat.dfci]);
     expect(cardFormats(CoordFormat.mgrs).shown,[CoordFormat.mgrs,CoordFormat.dd,CoordFormat.dm,CoordFormat.qth]);
-    expect(cardFormats(CoordFormat.mgrs).more,[CoordFormat.dms,CoordFormat.utm]);
+    expect(cardFormats(CoordFormat.mgrs).more,[CoordFormat.dms,CoordFormat.utm,CoordFormat.l93,CoordFormat.dfci]);
     expect(coordFormatFrom('utm'),CoordFormat.utm);
     expect(coordFormatFrom('nope'),CoordFormat.dd);
   });

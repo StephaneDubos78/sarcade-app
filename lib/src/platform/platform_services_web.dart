@@ -185,3 +185,6 @@ Stream<CompassReading>? compassReadings(){
   },onCancel:(){sub?.cancel();});
   return out.stream;
 }
+
+/// The browser does not give the local address (Paramètres › Diagnostic).
+Future<List<String>> localAddresses() async=>const [];

@@ -255,6 +255,20 @@ class SarcadeApi {
     return r.statusCode==200;
   }
 
+  /// Paramètres › Diagnostic (lot 5): what the server sees of this device
+  /// (public address, Cloudflare, email); null on an older server.
+  Future<Map<String,dynamic>?> clientDiagnostics() async {
+    final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/diagnostics/client'));
+    if(r.statusCode!=200)return null;
+    return Map<String,dynamic>.from(jsonDecode(r.body) as Map);
+  }
+  /// Server block (PCO, administrators); 403 for the others.
+  Future<Map<String,dynamic>> serverDiagnostics() async {
+    final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/diagnostics/server'));
+    if(r.statusCode!=200) throw SarcadeHttpException('diagnostics',r.statusCode,r.body);
+    return Map<String,dynamic>.from(jsonDecode(r.body) as Map);
+  }
+
   /// Wake-up of the devices (note « Réveil des appareils »).
   Future<Map<String,dynamic>> wakeupConfig() async {
     final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/wakeup/config'));

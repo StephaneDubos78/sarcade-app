@@ -6,15 +6,18 @@
 library;
 
 import 'package:latlong2/latlong.dart';
+import 'lambert.dart';
 import 'utm.dart';
 
+export 'lambert.dart' show formatLambert93, parseLambert93, formatDfci, parseDfci, toLambert93;
 export 'utm.dart' show formatUtm, formatMgrs, parseUtm, parseMgrs, toUtm, fromUtm;
 
-enum CoordFormat{dd,dm,qth,dms,utm,mgrs}
+/// Lambert 93 and DFCI added by the lot 5 (30 Oct 2026).
+enum CoordFormat{dd,dm,qth,dms,utm,mgrs,l93,dfci}
 
 /// The three formats always shown on the card; the others behind « More formats ».
 const baseFormats=[CoordFormat.dd,CoordFormat.dm,CoordFormat.qth];
-const extraFormats=[CoordFormat.dms,CoordFormat.utm,CoordFormat.mgrs];
+const extraFormats=[CoordFormat.dms,CoordFormat.utm,CoordFormat.mgrs,CoordFormat.l93,CoordFormat.dfci];
 
 CoordFormat coordFormatFrom(String? v)=>CoordFormat.values.firstWhere((f)=>f.name==v,orElse:()=>CoordFormat.dd);
 
@@ -95,7 +98,7 @@ LatLng? parseQth(String text){
 LatLng? parseCoordinates(String text){
   final qth=parseQth(text);
   if(qth!=null)return qth;
-  final grid=parseMgrs(text)??parseUtm(text);
+  final grid=parseMgrs(text)??parseUtm(text)??parseDfci(text)??parseLambert93(text);
   if(grid!=null)return grid;
   final t=text.trim().toUpperCase().replaceAll('′',"'").replaceAll('″','"').replaceAll("''",'"');
   // Degrees, minutes and seconds.
@@ -126,6 +129,23 @@ LatLng? parseCoordinates(String text){
   return null;
 }
 
+/// Format recognised in a typed text (« MGRS reconnu »), null when none.
+CoordFormat? detectFormat(String text){
+  final t=text.trim();
+  if(t.isEmpty)return null;
+  if(parseQth(t)!=null)return CoordFormat.qth;
+  if(parseMgrs(t)!=null)return CoordFormat.mgrs;
+  if(parseUtm(t)!=null)return CoordFormat.utm;
+  if(parseDfci(t)!=null)return CoordFormat.dfci;
+  if(parseLambert93(t)!=null)return CoordFormat.l93;
+  if(parseCoordinates(t)==null)return null;
+  final u=t.toUpperCase();
+  final seconds=u.contains('″')||u.contains('"')||RegExp(r'''\d+\s*[°D ]\s*\d+\s*['′M ]\s*\d+(?:[.,]\d+)?\s*(?:″|"|'')?\s*[NS]''').hasMatch(u);
+  if(seconds)return CoordFormat.dms;
+  if(u.contains("'")||u.contains('′')||RegExp(r'\d+\s*[°D ]\s*\d+[.,]\d+\s*[NS]').hasMatch(u))return CoordFormat.dm;
+  return CoordFormat.dd;
+}
+
 LatLng? _valid(double lat,double lon)=>(lat.abs()<=90&&lon.abs()<=180)?LatLng(lat,lon):null;
 
 /// [mgrsDigits]: 4 (10 m, default) or 5 (1 m). UTM and MGRS give « — »
@@ -137,6 +157,8 @@ String formatCoordinates(LatLng p,CoordFormat f,{int mgrsDigits=4})=>switch(f){
   CoordFormat.dms=>formatDms(p),
   CoordFormat.utm=>formatUtm(p)??'—',
   CoordFormat.mgrs=>formatMgrs(p,digits:mgrsDigits)??'—',
+  CoordFormat.l93=>formatLambert93(p)??'—',
+  CoordFormat.dfci=>formatDfci(p)??'—',
 };
 
 /// Formats shown on the card: the main format first, then the base ones;

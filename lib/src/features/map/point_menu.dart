@@ -13,7 +13,8 @@ import 'package:latlong2/latlong.dart';
 import '../../l10n/strings.dart';
 import '../places/readable_place.dart';
 
-enum PointAction { bearing, poi, order, measure, navigate, route, external, weather }
+/// [info]: the location line touched, fiche « Infos du point » (lot 5).
+enum PointAction { bearing, poi, order, measure, navigate, route, external, weather, info }
 
 /// Entries of the grid, in the validated order.
 List<PointAction> pointMenuEntries({required bool pco})=>[
@@ -28,7 +29,7 @@ Future<PointAction?> showPointMenu(BuildContext context,{required LatLng point,r
   final choice=await showModalBottomSheet<PointAction>(context:context,showDragHandle:true,builder:(c)=>SafeArea(child:Padding(
     padding:const EdgeInsets.fromLTRB(16,0,16,12),
     child:Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.stretch,children:[
-      _LocationLine(point:point,places:places,coordinates:coordinates),
+      _LocationLine(point:point,places:places,coordinates:coordinates,onOpen:()=>Navigator.pop(c,PointAction.info)),
       const SizedBox(height:12),
       _Grid(entries:pointMenuEntries(pco:pco),onPick:(a)=>Navigator.pop(c,a)),
     ]))));
@@ -43,12 +44,12 @@ Future<PointAction?> showPointMenu(BuildContext context,{required LatLng point,r
 IconData _icon(PointAction a)=>switch(a){
   PointAction.bearing=>Icons.track_changes,PointAction.poi=>Icons.add_location_alt_outlined,PointAction.order=>Icons.flag_outlined,
   PointAction.measure=>Icons.straighten,PointAction.navigate=>Icons.directions,PointAction.weather=>Icons.cloud_outlined,
-  PointAction.route=>Icons.add_road,PointAction.external=>Icons.open_in_new};
+  PointAction.route=>Icons.add_road,PointAction.external=>Icons.open_in_new,PointAction.info=>Icons.info_outline};
 
 String _label(PointAction a)=>S.t(switch(a){
   PointAction.bearing=>'point.bearing',PointAction.poi=>'point.poi',PointAction.order=>'point.order',
   PointAction.measure=>'point.measure',PointAction.navigate=>'point.go',PointAction.weather=>'point.weather',
-  PointAction.route=>'point.route',PointAction.external=>'point.otherApp'});
+  PointAction.route=>'point.route',PointAction.external=>'point.otherApp',PointAction.info=>'info.title'});
 
 class _Grid extends StatelessWidget {
   final List<PointAction> entries; final ValueChanged<PointAction> onPick;
@@ -73,8 +74,8 @@ class _Grid extends StatelessWidget {
 /// Coordinates and place name, « Copier » on the right; laid out in a row
 /// of its own so that no round icon covers it.
 class _LocationLine extends StatefulWidget {
-  final LatLng point; final PlaceDescriber places; final String coordinates;
-  const _LocationLine({required this.point,required this.places,required this.coordinates});
+  final LatLng point; final PlaceDescriber places; final String coordinates; final VoidCallback onOpen;
+  const _LocationLine({required this.point,required this.places,required this.coordinates,required this.onOpen});
   @override State<_LocationLine> createState()=>_LocationLineState();
 }
 
@@ -83,19 +84,21 @@ class _LocationLineState extends State<_LocationLine> {
   @override Widget build(BuildContext context){
     final coordinates=widget.coordinates;
     final s=Theme.of(context).colorScheme;
-    return Container(padding:const EdgeInsets.fromLTRB(12,6,4,6),
-      decoration:BoxDecoration(color:s.surfaceContainerHigh,borderRadius:BorderRadius.circular(12)),
+    // Touching the line opens the fiche « Infos du point » (lot 5).
+    return Material(color:s.surfaceContainerHigh,borderRadius:BorderRadius.circular(12),clipBehavior:Clip.antiAlias,child:InkWell(
+      key:const ValueKey('point-info'),onTap:widget.onOpen,child:Padding(padding:const EdgeInsets.fromLTRB(12,6,4,6),
       child:Row(children:[
         Icon(Icons.place_outlined,size:20,color:s.onSurfaceVariant),const SizedBox(width:10),
         Expanded(child:Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.start,children:[
-          SelectableText(coordinates,style:const TextStyle(fontSize:15,fontWeight:FontWeight.w600,fontFeatures:[FontFeature.tabularFigures()])),
+          Text(coordinates,style:const TextStyle(fontSize:15,fontWeight:FontWeight.w600,fontFeatures:[FontFeature.tabularFigures()])),
           FutureBuilder<Map<String,dynamic>?>(future:_place,builder:(c,f){final t=placeText(f.data);
             return t==null?const SizedBox.shrink():Text(t,maxLines:2,overflow:TextOverflow.ellipsis,style:TextStyle(fontSize:13,color:s.onSurfaceVariant));}),
         ])),
+        Icon(Icons.chevron_right,color:s.onSurfaceVariant),
         IconButton(tooltip:S.t('common.copy'),icon:const Icon(Icons.copy_outlined),onPressed:(){
           Clipboard.setData(ClipboardData(text:coordinates));
           ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content:Text(S.t('common.copied'))));
         }),
-      ]));
+      ]))));
   }
 }
