@@ -99,7 +99,7 @@ Future<void> notificationBackgroundHandler(NotificationResponse response) async 
     deviceId:payload.deviceId,status:status,time:DateTime.now().toUtc()));
   final plugin=FlutterLocalNotificationsPlugin();
   for(var k=1;k<=reminderCount;k++){
-    try{await plugin.cancel(notificationIdFor(payload.messageId,k));}catch(_){/* already shown or gone */}
+    try{await plugin.cancel(notificationIdFor(payload.key,k));}catch(_){/* already shown or gone */}
   }
 }
 
@@ -254,7 +254,7 @@ class NotificationService {
     return _urgentChannel;
   }
 
-  Future<NotificationDetails> _details(String priority,NotificationPayload? payload,{bool sos=false}) async {
+  Future<NotificationDetails> _details(String priority,NotificationPayload? payload,{bool sos=false,int? timeoutAfter}) async {
     final urgent=isUrgentPriority(priority), immediate=priority=='immediate';
     final sound=soundFor(priority,sounds,sos:sos);
     final quiet=sound==soundSilent||sound==soundDiscreet;
@@ -266,6 +266,9 @@ class NotificationService {
         category:urgent?AndroidNotificationCategory.message:null,
         sound:channel.sound,vibrationPattern:channel.vibrationPattern,playSound:channel.playSound,enableVibration:channel.enableVibration,
         audioAttributesUsage:channel.audioAttributesUsage,
+        // Immediate message: each reminder takes the place of the previous
+        // one (one notification per message, 30 Oct 2026, 12 h 45).
+        timeoutAfter:timeoutAfter,
         actions:[for(final a in actions)AndroidNotificationAction(a,S.t('notif.action.$a'),showsUserInterface:a==actionOpen)]),
       iOS:DarwinNotificationDetails(interruptionLevel:urgent?InterruptionLevel.timeSensitive:(quiet?InterruptionLevel.passive:InterruptionLevel.active),
         presentSound:!quiet,
@@ -286,20 +289,36 @@ class NotificationService {
   Future<void> message({required String title,required String body,required String priority,NotificationPayload? payload}) async {
     if(!_ready){debugPrint('SARCADE notification [$priority] $title: $body');return;}
     try{
-      final id=payload==null?(_id++ & 0x0fffffff)|0x40000000:notificationIdFor(payload.messageId);
-      await _plugin.show(id,title,body,await _details(priority,payload,sos:isSosBody(body)),payload:payload?.encode());
-      if(priority=='immediate'&&payload!=null)await _scheduleReminders(title,body,payload);
+      final id=payload==null?(_id++ & 0x0fffffff)|0x40000000:notificationIdFor(payload.key);
+      final reminded=priority=='immediate'&&payload!=null;
+      // Same key (a new distress, its « Fin de détresse »): the reminders
+      // of the previous notification stop, the new one takes its place.
+      if(payload!=null)await _stop(payload.key);
+      await _plugin.show(id,title,body,await _details(priority,payload,sos:isSosBody(body),timeoutAfter:reminded&&_schedules?_replacedAfter:null),payload:payload?.encode());
+      if(reminded)await _scheduleReminders(title,body,payload);
     }catch(e){
       debugPrint('SARCADE notification failed: $e');
     }
   }
 
+  /// A reminder shown by the system goes away when the next one comes: a
+  /// little more than the interval, so that one is always on screen.
+  static final _replacedAfter=(reminderInterval+const Duration(seconds:5)).inMilliseconds;
+
+  Future<void> _stop(String key) async {
+    for(final t in _timers.remove(key)??const <Timer>[]){t.cancel();}
+    if(!_ready)return;
+    for(var k=1;k<=reminderCount;k++){
+      try{await _plugin.cancel(notificationIdFor(key,k));}catch(_){/* nothing to cancel */}
+    }
+  }
+
   Future<void> _scheduleReminders(String title,String body,NotificationPayload payload) async {
-    final details=await _details(payload.priority,payload,sos:isSosBody(body));
     final times=reminderTimes(DateTime.now().toUtc());
     for(var k=1;k<=times.length;k++){
       final reminderTitle=S.t('notif.reminder',{'n':k,'total':times.length,'title':title});
-      final id=notificationIdFor(payload.messageId,k);
+      final details=await _details(payload.priority,payload,sos:isSosBody(body),timeoutAfter:k<times.length?_replacedAfter:null);
+      final id=notificationIdFor(payload.key,k);
       if(_schedules){
         try{
           await _plugin.zonedSchedule(id,reminderTitle,body,tz.TZDateTime.from(times[k-1],tz.UTC),details,
@@ -309,21 +328,24 @@ class NotificationService {
           debugPrint('SARCADE reminder not scheduled ($e): kept in the application');
         }
       }
-      // Linux and fallback: reminders while the application runs.
-      _timers.putIfAbsent(payload.messageId,()=>[]).add(Timer(times[k-1].difference(DateTime.now().toUtc()),(){
-        _plugin.show(id,reminderTitle,body,details,payload:payload.encode());
+      // Linux and fallback: reminders while the application runs, shown in
+      // place of the notification itself (same identifier, new sound).
+      _timers.putIfAbsent(payload.key,()=>[]).add(Timer(times[k-1].difference(DateTime.now().toUtc()),(){
+        _plugin.show(notificationIdFor(payload.key),reminderTitle,body,details,payload:payload.encode());
       }));
     }
   }
 
   /// The operator answered (notification action or messages screen): the
   /// reminders stop and the notification goes away.
-  Future<void> answered(String messageId,String status) async {
+  Future<void> answered(String messageId,String status,{String? key}) async {
     if(!stopsReminders(status))return;
-    for(final t in _timers.remove(messageId)??const <Timer>[]){t.cancel();}
-    if(!_ready)return;
-    for(var k=0;k<=reminderCount;k++){
-      try{await _plugin.cancel(notificationIdFor(messageId,k));}catch(_){/* nothing to cancel */}
+    for(final id in {messageId,?key}){
+      for(final t in _timers.remove(id)??const <Timer>[]){t.cancel();}
+      if(!_ready)continue;
+      for(var k=0;k<=reminderCount;k++){
+        try{await _plugin.cancel(notificationIdFor(id,k));}catch(_){/* nothing to cancel */}
+      }
     }
   }
 }

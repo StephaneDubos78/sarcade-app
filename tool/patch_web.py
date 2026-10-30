@@ -81,7 +81,9 @@ self.addEventListener('push', (event) => {
     const title = data.kind === 'test' ? 'SARCADE : réveil reçu'
       : (urgent ? 'SARCADE : message prioritaire' : 'SARCADE : nouveau message');
     await self.registration.showNotification(title, {
-      body: 'Ouvrez SARCADE pour le lire.', tag: 'sarcade-' + (data.event_id || ''),
+      // Same tag as the notification of the message shown by the page (the
+      // message, or the distress of its sender): one notification (30 Oct 2026).
+      body: 'Ouvrez SARCADE pour le lire.', tag: 'sarcade-' + (data.tag || data.event_id || ''),
       renotify: urgent, requireInteraction: urgent, icon: 'icons/Icon-192.png', data });
   })());
 });
