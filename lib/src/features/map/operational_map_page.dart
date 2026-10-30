@@ -1422,7 +1422,9 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
 
   /// Last view of this event, taken back at the next opening (Plex).
   late final ({double lat,double lon,double zoom})? _savedView=decodeView(widget.store.preference('view:${widget.eventId}'));
-  Timer? _saveViewTimer; double _camZoom=11, _camLat=48.85;
+  // Revue d'ergonomie n° 1 (bloquant): the scale starts from the saved view,
+  // not from zoom 11, then reads the camera once the map is ready.
+  Timer? _saveViewTimer; late double _camZoom=_savedView?.zoom??11, _camLat=_savedView?.lat??48.8566;
   void _onCameraChanged(MapCamera camera){
     final zoomChanged=(camera.zoom-_camZoom).abs()>0.01||(camera.center.latitude-_camLat).abs()>0.05;
     _camZoom=camera.zoom; _camLat=camera.center.latitude;
@@ -1567,7 +1569,9 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     return LinkWeatherPill(dot:colour,linkTooltip:'${S.t('links.serverLink')} : $label',
       linkWord:state==ServerLink.slowed||state==ServerLink.cut?label:null,
       weatherIcon:h==null?null:weatherIcon(weatherKey(h.weatherCode)),
-      weatherText:h==null?null:[if(h.temperatureC!=null)'${h.temperatureC!.round()}°',if(h.windKmh!=null)'${windDirection(h.windDirectionDeg)} ${h.windKmh!.round()} km/h'].join(' · '),
+      weatherText:h==null?null:pillWeatherText(temperatureC:h.temperatureC,compact:_isCompact,
+        wind:h.windKmh==null?null:'${windDirection(h.windDirectionDeg)} ${h.windKmh!.round()} km/h'),
+      compact:_isCompact,
       alert:alert?vigilanceColor(r!.vigilance!.colorId):null,
       onLinks:_openDiagnostics,onWeather:()=>_openWeather());
   }
@@ -2340,12 +2344,13 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           ]));}))),
         // Computer: « Équipes » panel next to the map (list and nearby).
         if(_showPanel&&!compact)SizedBox(width:panelWidth(320),child:Material(elevation:3,child:_teams(sorted,screen:false))),
-        Expanded(child:Stack(key:_mapKey,children:[MouseRegion(onHover:_aimHover,opaque:false,child:FlutterMap(mapController:_map,options:MapOptions(
+        Expanded(child:Stack(key:_mapKey,children:[mapBottomMargin(context,fullBleed:fullBleed,child:MouseRegion(onHover:_aimHover,opaque:false,child:FlutterMap(mapController:_map,options:MapOptions(
           initialCenter:_savedView==null?const LatLng(48.8566,2.3522):LatLng(_savedView.lat,_savedView.lon),initialZoom:_savedView?.zoom??11,maxZoom:20,onTap:_onMapTap,
           onPositionChanged:(camera,_)=>_onCameraChanged(camera),
           onLongPress:(_,point)=>_onLongPress(point,gesture:true),
           onSecondaryTap:(_,point){if(_aim!=null){_cancelAim();}else{_onLongPress(point,gesture:true);}},
           onMapEvent:_onMapEvent,
+          onMapReady:(){if(mounted){_onCameraChanged(_map.camera);setState((){});}},
           // Rotation off: drawn arrows and handles assume north up.
           // Drag off while editing so handle and freehand gestures reach the shapes.
           interactionOptions:InteractionOptions(flags:InteractiveFlag.all&~InteractiveFlag.rotate&(_drawing.locksMapDrag?~InteractiveFlag.drag:~0)),
@@ -2381,9 +2386,12 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           if(_searchPin!=null)MarkerLayer(markers:[Marker(point:_searchPin!,width:44,height:44,alignment:Alignment.topCenter,
             child:GestureDetector(onTap:()=>_onLongPress(_searchPin!),child:const Icon(Icons.location_on,color:Colors.red,size:44)))]),
           buildHandleLayer(_drawing,_globalToLatLng),
-          // ⓘ with the licence notice of the base map, above the tab bar.
-          SafeArea(child:RichAttributionWidget(attributions:[TextSourceAttribution(_basemap.attribution.isEmpty?widget.tileAttribution:_basemap.attribution)])),
-        ])),
+          // ⓘ with the licence notice of the base map: on the left, under the
+          // scale, never under SOS (revue d'ergonomie n° 3).
+          SafeArea(child:Padding(padding:EdgeInsets.only(bottom:compact?mapAttributionLift:0),
+            child:RichAttributionWidget(alignment:AttributionAlignment.bottomLeft,
+              attributions:[TextSourceAttribution(_basemap.attribution.isEmpty?widget.tileAttribution:_basemap.attribution)]))),
+        ]))),
         if(_drawing.tool==FeatureKind.freehand)Positioned.fill(child:GestureDetector(
           behavior:HitTestBehavior.opaque,
           onPanStart:_onFreehandStart,onPanUpdate:_onFreehandUpdate,onPanEnd:_onFreehandEnd,
@@ -2395,6 +2403,9 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         // under the status bar and the floating tab bar; buttons stay in
         // the safe area.
         Positioned.fill(child:SafeArea(left:false,right:false,child:Stack(children:[
+        // Scale first: behind every panel, never over a button (decision of
+        // 30 Oct 2026, 16 h 25; revue n° 14, 18, 31); above the ⓘ.
+        Positioned(left:16,bottom:mapScaleBottom(compact:compact),child:IgnorePointer(child:_scaleBar())),
         if(_inDistress)Positioned(top:8,left:8,right:8,child:Align(alignment:Alignment.topCenter,child:Material(color:Theme.of(context).colorScheme.error,
           borderRadius:BorderRadius.circular(16),child:InkWell(borderRadius:BorderRadius.circular(16),onTap:_distress,child:Padding(padding:const EdgeInsets.symmetric(horizontal:14,vertical:10),
             child:Row(mainAxisSize:MainAxisSize.min,children:[Icon(Icons.sos,color:Theme.of(context).colorScheme.onError),const SizedBox(width:8),
@@ -2414,7 +2425,9 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           // follow mode (navigation variants), like the toolbar before.
           // One line, everything centred (card « Carte web, barre du haut,
           // finitions », 30 Oct 2026, 1 h 02): pills 40 px, buttons 48 px.
-          if(!_follow)Row(crossAxisAlignment:CrossAxisAlignment.center,children:[
+          // Top-aligned (revue n° 9): the results of the search open below
+          // without moving the pencil and the link pill.
+          if(!_follow)Row(crossAxisAlignment:CrossAxisAlignment.start,children:[
             _fab('drawing-tools',_drawingTools?S.t('draw.close'):S.t('draw.open'),Icon(_drawingTools?Icons.draw:Icons.draw_outlined),_toggleDrawingTools,
               background:_drawingTools?Theme.of(context).colorScheme.primary:null,
               foreground:_drawingTools?Theme.of(context).colorScheme.onPrimary:null),
@@ -2450,14 +2463,15 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           ])))),
         ])),
         // Right column with SOS at its bottom (30 Oct 2026, 3 h 05).
-        mapColumnPlacement(compact:compact,taking:_bearings.taking,card:selected!=null,bottom:compact?60:24,child:_mapButtons()),
+        mapColumnPlacement(compact:compact,taking:_bearings.taking,card:selected!=null,bottom:compact?60:24,
+          panel:_measure.target!=null||_nav.state!=NavState.idle||_nav.notice!=null,
+          rightSheet:!compact&&_bearings.taking&&_aim!=null?bearingSheetWidth:0,child:_mapButtons()),
         // Phone: « Suivi actif » just above the tab bar.
         if(compact&&!_bearings.taking&&selected==null)Positioned(left:12,bottom:12,child:_trackingBadge()),
-        if(_bearings.taking&&_aim!=null)Positioned(right:12,bottom:16,width:380,child:_bearingTakeSheet())
+        if(_bearings.taking&&_aim!=null)Positioned(right:12,bottom:16,width:bearingSheetWidth,child:_bearingTakeSheet())
         else if(_bearings.taking)Positioned(left:0,right:0,bottom:16,child:Center(child:ConstrainedBox(constraints:const BoxConstraints(maxWidth:520),child:Padding(padding:const EdgeInsets.symmetric(horizontal:12),child:_bearingTakeSheet()))))
         else if(selected!=null)Positioned(left:12,right:compact?12:null,bottom:compact?12:24,
           child:ConstrainedBox(constraints:const BoxConstraints(maxWidth:420),child:_stationSheet(selected))),
-        Positioned(left:16,bottom:compact?56:24,child:IgnorePointer(child:_scaleBar())),
         Positioned(left:0,right:0,bottom:compact?60:72,child:Center(child:ConstrainedBox(constraints:const BoxConstraints(maxWidth:520),child:Column(mainAxisSize:MainAxisSize.min,children:[
           MeasureCard(m:_measure,format:_coordFormat,onSavePoi:_savePoi,onSendMessage:_sendMeasure,
             onFit:(){final o=_measure.origin,t=_measure.target;if(t!=null)_fitPoints([?o?.point,t]);},
