@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart' show ThemeMode;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:sarcade_app/src/features/tv/tv_nearby.dart';
@@ -37,5 +38,16 @@ void main() {
     expect([for(final d in tvVisibleScreens(list,showOld:false))d['id']],['a']);
     expect(tvVisibleScreens(list,showOld:true).length,2);
     expect(tvCodesToOffer(['AB','CD'],{'AB'}),['CD']);
+  });
+
+  test('lot 7: day / night mode sent with the view, screen title', () {
+    final v=(center:const LatLng(48.8,2.1),zoom:12.0,basemapId:'osm',tileUrl:null,attribution:'',basemapName:'OpenStreetMap');
+    expect(tvViewJson(v,theme:ThemeMode.light)['theme'],'day');
+    expect(tvViewJson(v,theme:ThemeMode.dark)['theme'],'night');
+    expect(tvViewJson(v,theme:ThemeMode.system)['theme'],'auto');
+    expect(tvViewJson(v).containsKey('theme'),isFalse);
+    expect(tvScreenTitle({'name':' Salle PCO ','code':'ABC123'},'Code'),'Salle PCO');
+    expect(tvScreenTitle({'name':'','code':'ABC123'},'Code'),'Code ABC123');
+    expect(tvScreenTitle({'code':'ABC123'},'Code'),'Code ABC123');
   });
 }
