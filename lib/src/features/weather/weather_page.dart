@@ -180,7 +180,8 @@ class _WeatherPageState extends State<WeatherPage> {
     final t=Theme.of(context); final s=t.colorScheme;
     return Scaffold(
       appBar:AppBar(title:Text(title),actions:[
-        if(widget.point==null&&isPco(widget.actorId))IconButton(tooltip:S.t('weather.bulletin'),onPressed:_bulletin,icon:const Icon(Icons.campaign_outlined)),
+        // « Diffuser » written (revue n° 51).
+        if(widget.point==null&&isPco(widget.actorId))TextButton.icon(onPressed:_bulletin,icon:const Icon(Icons.campaign_outlined),label:Text(S.t('weather.broadcast'))),
         IconButton(tooltip:S.t('weather.refresh'),onPressed:widget.point==null?_refresh:_load,icon:const Icon(Icons.refresh)),
       ]),
       body:RefreshIndicator(onRefresh:_load,child:ListView(padding:const EdgeInsets.only(bottom:24),children:[

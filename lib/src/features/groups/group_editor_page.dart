@@ -3,6 +3,7 @@ import 'package:uuid/uuid.dart';
 import '../../l10n/strings.dart';
 import '../../ui/color_palette.dart';
 import '../../models/comm_group.dart';
+import '../map/drawing/drawing_controller.dart' show drawingPalette;
 
 /// Result of the editor: the group to save, or a deletion.
 class GroupEdit {
@@ -29,7 +30,9 @@ class _GroupEditorPageState extends State<GroupEditorPage> {
   late final _radio=TextEditingController(text:widget.initial?.radioChannel??'');
   late bool _listenOnly=widget.initial?.listenOnly??false;
   late bool _archived=widget.initial?.archived??false;
-  late int _color=widget.initial?.color??groupColors.first;
+  // A new group starts on a colour of the grid (revue n° 41: the slate grey
+  // of before sat alone on a last line).
+  late int _color=widget.initial?.color??drawingPalette.first;
 
   @override void dispose(){for(final c in [_name,_description,_members,_senders,_radio]){c.dispose();}super.dispose();}
 

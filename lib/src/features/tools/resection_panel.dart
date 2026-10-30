@@ -57,21 +57,20 @@ class _ResectionPanelState extends State<ResectionPanel> {
 
   Widget _sight(int i){
     final t=Theme.of(context); final s=c.sights[i]; final k=s.known;
-    // Field still to fill before « Calculer »: circled in colour.
-    final miss=c.missing, mark=t.colorScheme.tertiary;
-    final needPoint=miss.points.contains(i), needAz=miss.azimuths.contains(i);
     return Card(elevation:0,color:t.colorScheme.surfaceContainerLow,margin:const EdgeInsets.only(bottom:10),child:Padding(padding:const EdgeInsets.all(12),
       child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
         Row(children:[
           CircleAvatar(radius:12,backgroundColor:t.colorScheme.primary,child:Text('${i+1}',style:TextStyle(fontSize:12,color:t.colorScheme.onPrimary,fontWeight:FontWeight.w700))),
           const SizedBox(width:8),
-          Expanded(child:Text(S.t(i<2?'resection.sight':'resection.sightOptional',{'n':'${i+1}'}),style:t.textTheme.titleSmall)),
+          // Same outlines for every sight, the required ones marked « * »
+          // (revue d'ergonomie n° 56).
+          Expanded(child:Text('${S.t(i<2?'resection.sight':'resection.sightOptional',{'n':'${i+1}'})}${i<2?' *':''}',style:t.textTheme.titleSmall)),
           if(k!=null||s.azimuth!=null)IconButton(tooltip:S.t('resection.clear'),visualDensity:VisualDensity.compact,
             onPressed:(){c.setKnown(i,null);c.setAzimuth(i,null);_az[i].clear();},icon:const Icon(Icons.close,size:18)),
         ]),
         const SizedBox(height:8),
         OutlinedButton.icon(style:OutlinedButton.styleFrom(alignment:Alignment.centerLeft,minimumSize:const Size.fromHeight(44),
-            side:needPoint?BorderSide(color:mark,width:2):null,shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(10))),
+            shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(10))),
           onPressed:()=>_choosePoint(i),
           icon:Icon(k?.site==null?(k==null?Icons.search:Icons.place_outlined):(k!.site!.isHighPoint?Icons.terrain:Icons.cell_tower)),
           label:Text(k?.label??S.t('resection.choosePoint'),overflow:TextOverflow.ellipsis)),
@@ -79,7 +78,7 @@ class _ResectionPanelState extends State<ResectionPanel> {
         Row(children:[
           Expanded(child:TextField(controller:_az[i],keyboardType:const TextInputType.numberWithOptions(decimal:true),
             decoration:InputDecoration(isDense:true,labelText:S.t('resection.azimuth'),suffixText:'°',border:OutlineInputBorder(borderRadius:BorderRadius.circular(10)),
-              enabledBorder:needAz?OutlineInputBorder(borderRadius:BorderRadius.circular(10),borderSide:BorderSide(color:mark,width:2)):null),
+              ),
             onChanged:(v){final d=double.tryParse(v.replaceAll(',','.').trim());c.setAzimuth(i,d==null||d<0||d>360?null:d);})),
           if(widget.canCompass)...[
             const SizedBox(width:6),

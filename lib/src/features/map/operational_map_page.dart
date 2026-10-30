@@ -1527,9 +1527,11 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       Padding(padding:const EdgeInsets.symmetric(horizontal:12),child:Wrap(spacing:6,children:[
         FilterChip(avatar:const Icon(Icons.star_border,size:18),label:Text(S.t('favourites.only')),selected:_favouritesOnly,
           onSelected:(v)=>setState(()=>_favouritesOnly=v)),
-        if(_positions.values.any((p)=>p.isAprs))Tooltip(message:S.t('operators.aprsHint'),
-          child:FilterChip(avatar:const Icon(Icons.settings_input_antenna,size:18),label:Text(S.t('operators.aprs')),selected:_showAprs,onSelected:(v)=>setState(()=>_showAprs=v))),
+        if(_positions.values.any((p)=>p.isAprs))FilterChip(avatar:const Icon(Icons.settings_input_antenna,size:18),label:Text(S.t('operators.aprs')),selected:_showAprs,onSelected:(v)=>setState(()=>_showAprs=v)),
       ])),
+      // Fixed help under the filters, never over the list (revue n° 46).
+      if(_showAprs&&_positions.values.any((p)=>p.isAprs))Padding(padding:const EdgeInsets.fromLTRB(14,4,14,0),
+        child:Text(S.t('operators.aprsHint'),style:Theme.of(context).textTheme.bodySmall?.copyWith(color:Theme.of(context).colorScheme.onSurfaceVariant))),
       Expanded(child:_teamsList(sorted)),
     ]);
     final tabs=DefaultTabController(length:2,child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
@@ -1579,7 +1581,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     return Material(color:Colors.transparent,child:InkWell(borderRadius:BorderRadius.circular(pillHeight/2),onTap:_openTracking,
       child:Container(height:pillHeight,padding:const EdgeInsets.symmetric(horizontal:12),
         decoration:BoxDecoration(color:on?scheme.primaryContainer:scheme.surface.withValues(alpha:0.92),borderRadius:BorderRadius.circular(pillHeight/2),
-          border:Border.all(color:on?scheme.primary.withValues(alpha:0.6):scheme.outline)),
+          // Tonal pill without outline (revue n° 11, charte « autre action »).
+          ),
         child:Row(mainAxisSize:MainAxisSize.min,children:[
           Icon(on?Icons.my_location:Icons.location_disabled_outlined,size:16,color:on?scheme.primary:scheme.onSurfaceVariant),const SizedBox(width:6),
           Text(on?S.t('tracking.on',{'interval':intervalLabel(_tracking.intervalS,S.t)}):S.t('tracking.start'),
@@ -1775,7 +1778,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           for(final h in const [1,6,24])Padding(padding:const EdgeInsets.only(right:6),child:ChoiceChip(label:Text('$h h'),selected:_traceHours==h,onSelected:(_)=>_setTraceHours(h),visualDensity:VisualDensity.compact)),
           if(_traceLoading)const SizedBox(width:16,height:16,child:CircularProgressIndicator(strokeWidth:2)),
         ]),
-        if(_trace.length>1)...[
+        // Hidden when every point has the same minute (revue n° 34).
+        if(_trace.length>1&&hm(_trace.first.time)!=hm(_trace.last.time))...[
           Slider(min:0,max:(_trace.length-1).toDouble(),divisions:_trace.length-1,
             value:(_scrub==null?_trace.length-1:_trace.indexOf(_scrub!).clamp(0,_trace.length-1)).toDouble(),
             label:hm((_scrub??_trace.last).time),

@@ -137,7 +137,9 @@ List<Widget> moveOrderList(BuildContext c,List<MoveOrder> orders,{required Value
     subtitle:Text(S.t('order.status.${o.status}')),onTap:()=>onOpen(o));
   final t=Theme.of(c).textTheme.labelLarge;
   return [
-    if(live.isEmpty)Padding(padding:const EdgeInsets.fromLTRB(16,0,16,8),child:Text(S.t('order.none'))),
+    // Subtitle of the « Ordres » line (revue n° 30).
+    if(live.isEmpty)Padding(padding:const EdgeInsets.fromLTRB(16,0,16,8),child:Builder(builder:(c)=>Text(S.t('order.none'),
+      style:Theme.of(c).textTheme.bodySmall?.copyWith(color:Theme.of(c).colorScheme.onSurfaceVariant)))),
     if(open.isNotEmpty)...[Padding(padding:const EdgeInsets.fromLTRB(16,4,16,0),child:Text('${S.t('order.inProgress')} · ${open.length}',style:t)),...open.map(tile)],
     if(done.isNotEmpty)...[Padding(padding:const EdgeInsets.fromLTRB(16,4,16,0),child:Text('${S.t('order.done')} · ${done.length}',style:t)),...done.map(tile)],
   ];

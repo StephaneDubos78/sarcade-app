@@ -133,7 +133,7 @@ class DraftBar extends StatelessWidget {
             style:TextStyle(color:Theme.of(context).colorScheme.onInverseSurface),
           )),
           if(t.isMultiVertex&&count>0)IconButton(tooltip:S.t('draw.removeLast'),onPressed:c.undoLastVertex,icon:const Icon(Icons.backspace_outlined),color:Theme.of(context).colorScheme.onInverseSurface),
-          if(t.isMultiVertex)IconButton(tooltip:S.t('closures.finish'),onPressed:c.canFinish?c.finish:null,icon:const Icon(Icons.check_circle),color:Colors.lightGreenAccent,disabledColor:Colors.white24),
+          if(t.isMultiVertex)IconButton(tooltip:S.t('closures.finish'),onPressed:c.canFinish?c.finish:null,icon:const Icon(Icons.check_circle),color:Colors.white,disabledColor:Colors.white60),
           IconButton(tooltip:S.t('draw.cancel'),onPressed:()=>c.selectTool(null),icon:const Icon(Icons.close),color:Theme.of(context).colorScheme.onInverseSurface),
         ]),
       ),

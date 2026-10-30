@@ -251,7 +251,8 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
     final all=[..._device,...links,..._server];
     return Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
       Padding(padding:const EdgeInsets.only(top:8),child:Wrap(spacing:8,runSpacing:8,crossAxisAlignment:WrapCrossAlignment.center,children:[
-        FilledButton.icon(key:const ValueKey('diag-copy'),onPressed:all.isEmpty?null:() async {
+        // A discreet pill, as « Actualiser » (revue n° 65).
+        OutlinedButton.icon(key:const ValueKey('diag-copy'),onPressed:all.isEmpty?null:() async {
           final messenger=ScaffoldMessenger.of(context);
           await Clipboard.setData(ClipboardData(text:diagnosticsReport(all)));
           messenger.showSnackBar(SnackBar(content:Text(S.t('common.copied'))));
