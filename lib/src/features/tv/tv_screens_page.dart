@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show LengthLimitingTextInputFormatter;
 import '../../l10n/strings.dart';
 import '../../models/comm_group.dart';
 import '../../services/sarcade_api.dart';
+import '../../ui/theme.dart' show themeMode;
 import 'tv_code.dart';
 import 'tv_qr_scan_page.dart';
 import 'tv_view.dart';
@@ -53,10 +55,10 @@ class _TvScreensPanelState extends State<TvScreensPanel> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(S.t(key))));
   }
 
-  Future<void> _approve(String code) async {
+  Future<void> _approve(String code,{String? name}) async {
     setState(()=>_busy=true);
     try{
-      await widget.api.approveDisplay(code,widget.eventId);
+      await widget.api.approveDisplay(code,widget.eventId,name:name);
       _say('tv.done');
       await _load();
     }on SarcadeHttpException catch(e){
@@ -70,21 +72,80 @@ class _TvScreensPanelState extends State<TvScreensPanel> {
 
   Future<void> _scan() async {
     final code=await Navigator.push<String>(context,MaterialPageRoute(builder:(_)=>const TvQrScanPage()));
-    if(code!=null&&mounted)await _approve(code);
+    if(code==null||!mounted)return;
+    // Name chosen at pairing, the default name of the TV proposed.
+    final name=await _askName(S.t('tv.nameTitle'),await widget.api.tvCodeName(code)??'');
+    if(name!=null&&mounted)await _approve(code,name:name);
+  }
+
+  /// Name of a screen (after the scan, « Renommer »); null when cancelled.
+  Future<String?> _askName(String title,String initial) async {
+    if(!mounted)return null;
+    final ctrl=TextEditingController(text:initial);
+    final v=await showDialog<String>(context:context,builder:(c)=>AlertDialog(title:Text(title),
+      content:TextField(key:const ValueKey('tv-name'),controller:ctrl,autofocus:true,inputFormatters:[LengthLimitingTextInputFormatter(60)],
+        decoration:InputDecoration(labelText:S.t('tv.name'),helperText:S.t('tv.nameHelp'))),
+      actions:[TextButton(onPressed:()=>Navigator.pop(c),child:Text(S.t('common.cancel'))),
+        FilledButton(onPressed:()=>Navigator.pop(c,ctrl.text.trim()),child:Text(S.t('common.ok')))]));
+    ctrl.dispose();
+    return v;
   }
 
   Future<void> _type() async {
-    final ctrl=TextEditingController();
-    final raw=await showDialog<String>(context:context,builder:(c)=>AlertDialog(title:Text(S.t('tv.type')),
-      content:TextField(controller:ctrl,autofocus:true,textCapitalization:TextCapitalization.characters,
-        decoration:InputDecoration(labelText:S.t('tv.code'),helperText:S.t('tv.codeHelp'))),
+    final ctrl=TextEditingController(), name=TextEditingController();
+    var edited=false, closed=false; var asked='';
+    final raw=await showDialog<String>(context:context,builder:(c)=>StatefulBuilder(builder:(c,set)=>AlertDialog(title:Text(S.t('tv.type')),
+      content:Column(mainAxisSize:MainAxisSize.min,children:[
+        TextField(controller:ctrl,autofocus:true,textCapitalization:TextCapitalization.characters,
+          decoration:InputDecoration(labelText:S.t('tv.code'),helperText:S.t('tv.codeHelp')),
+          onChanged:(t) async {
+            // Default name of the TV, proposed once the code is complete.
+            final code=tvCodeFrom(t);
+            if(code==null||code.length!=6||code==asked||edited)return;
+            asked=code;
+            final n=await widget.api.tvCodeName(code);
+            if(n!=null&&!edited&&!closed&&asked==code)set(()=>name.text=n);
+          }),
+        const SizedBox(height:8),
+        TextField(key:const ValueKey('tv-name'),controller:name,inputFormatters:[LengthLimitingTextInputFormatter(60)],onChanged:(_)=>edited=true,
+          decoration:InputDecoration(labelText:S.t('tv.name'),helperText:S.t('tv.nameHelp'))),
+      ]),
       actions:[TextButton(onPressed:()=>Navigator.pop(c),child:Text(S.t('common.cancel'))),
-        FilledButton(onPressed:()=>Navigator.pop(c,ctrl.text),child:Text(S.t('tv.show')))]));
-    ctrl.dispose();
+        FilledButton(onPressed:()=>Navigator.pop(c,ctrl.text),child:Text(S.t('tv.show')))])));
+    closed=true;
+    final chosen=name.text.trim();
+    ctrl.dispose();name.dispose();
     if(raw==null||!mounted)return;
     final code=tvCodeFrom(raw);
     if(code==null){_say('tv.unknownCode');return;}
-    await _approve(code);
+    await _approve(code,name:chosen);
+  }
+
+  /// « Renommer » (menu ⋮ of a screen).
+  Future<void> _rename(Map<String,dynamic> d) async {
+    final name=await _askName(S.t('tv.rename'),'${d['name']??''}');
+    if(name==null||name.isEmpty||!mounted)return;
+    try{
+      await widget.api.renameDisplay(widget.eventId,'${d['id']}',name);
+      _say('tv.renamed');
+      await _load();
+    }on SarcadeHttpException catch(e){
+      _say(e.statusCode==401||e.statusCode==403?'tv.signIn':'event.offline');
+    }catch(_){
+      _say('event.offline');
+    }
+  }
+
+  /// « Identifier »: the TV shows its name in very large letters for 5 s.
+  Future<void> _identify(Map<String,dynamic> d) async {
+    try{
+      await widget.api.identifyDisplay(widget.eventId,'${d['id']}');
+      _say('tv.identifySent');
+    }on SarcadeHttpException catch(e){
+      _say(e.statusCode==401||e.statusCode==403?'tv.signIn':'event.offline');
+    }catch(_){
+      _say('event.offline');
+    }
   }
 
   Future<void> _revoke(Map<String,dynamic> d) async {
@@ -157,7 +218,7 @@ class _TvScreensPanelState extends State<TvScreensPanel> {
       final o=currentMapOptions?.call();
       final m=await _confirmView(v,o,d['messages']!=false);
       if(m==null||!mounted)return;
-      json=tvViewJson(v,options:o==null?null:(layers:o.layers,opacity:o.opacity,messages:m),from:myActorId);
+      json=tvViewJson(v,options:o==null?null:(layers:o.layers,opacity:o.opacity,messages:m),from:myActorId,theme:themeMode.value);
       if(o==null)json['messages']=m;
     }
     try{
@@ -191,14 +252,21 @@ class _TvScreensPanelState extends State<TvScreensPanel> {
         else for(final d in list)ListTile(contentPadding:EdgeInsets.zero,
           leading:Icon(d['active']==true?(d['alert']==true?Icons.sos:Icons.tv):Icons.tv_off,
             color:d['active']==true?(d['alert']==true?t.colorScheme.error:Colors.green):null),
-          title:Text('${S.t('tv.code')} ${d['code']??''}'),
-          subtitle:Text([d['active']==true?S.t('tv.until',{'t':tvWhen(d['expires'],lang:S.lang)}):S.t(d['revoked']==true?'tv.revoked':'tv.expired'),
-            if(d['active']==true&&d['messages']==false)S.t('tv.messagesOff'),
-            if(d['active']==true&&'${d['view_from']??''}'.isNotEmpty)S.t('tv.viewOf',{'who':d['view_from']})].join(' · ')),
+          // Name as title, then last activity, the code in small, « vue de… ».
+          title:Text(tvScreenTitle(d,S.t('tv.code'))),
+          subtitle:Column(crossAxisAlignment:CrossAxisAlignment.start,mainAxisSize:MainAxisSize.min,children:[
+            Text([d['active']==true?(d['last_seen'] is num?S.t('tv.lastSeen',{'t':tvWhen(d['last_seen'],lang:S.lang)}):S.t('tv.until',{'t':tvWhen(d['expires'],lang:S.lang)})):S.t(d['revoked']==true?'tv.revoked':'tv.expired'),
+              if(d['active']==true&&d['messages']==false)S.t('tv.messagesOff')].join(' · ')),
+            Text([if('${d['name']??''}'.trim().isNotEmpty)'${S.t('tv.code')} ${d['code']??''}',
+              if(d['active']==true&&'${d['view_from']??''}'.isNotEmpty)S.t('tv.viewOf',{'who':d['view_from']})].join(' · '),
+              style:t.textTheme.bodySmall),
+          ]),
           trailing:d['active']==true?PopupMenuButton<String>(
-            onSelected:(a){if(a=='view')_view(d,mine:true);if(a=='auto')_view(d,mine:false);if(a=='messages')_messages(d);if(a=='revoke')_revoke(d);if(a=='sos')_clearSos(d);},
+            onSelected:(a){if(a=='view')_view(d,mine:true);if(a=='auto')_view(d,mine:false);if(a=='messages')_messages(d);if(a=='revoke')_revoke(d);if(a=='sos')_clearSos(d);if(a=='rename')_rename(d);if(a=='identify')_identify(d);},
             itemBuilder:(_)=>[
               PopupMenuItem(value:'view',child:ListTile(leading:const Icon(Icons.cast),title:Text(S.t('tv.sendView')),subtitle:Text(S.t('tv.sendViewHelp2')))),
+              PopupMenuItem(value:'identify',child:ListTile(leading:const Icon(Icons.highlight_alt),title:Text(S.t('tv.identify')))),
+              PopupMenuItem(value:'rename',child:ListTile(leading:const Icon(Icons.edit_outlined),title:Text(S.t('tv.rename')))),
               PopupMenuItem(value:'auto',child:ListTile(leading:const Icon(Icons.fit_screen),title:Text(S.t('tv.auto')))),
               PopupMenuItem(value:'messages',child:ListTile(leading:Icon(d['messages']==false?Icons.chat_outlined:Icons.speaker_notes_off_outlined),
                 title:Text(S.t(d['messages']==false?'tv.messagesShow':'tv.messagesHide')))),

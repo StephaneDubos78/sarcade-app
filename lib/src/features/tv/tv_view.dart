@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart' show ThemeMode;
 import 'package:latlong2/latlong.dart';
 
 /// View of the map of this device, copied onto a TV by « Envoyer ma vue »
@@ -12,7 +13,12 @@ TvView? Function()? currentMapView;
 typedef TvOptions=({Map<String,bool> layers,Map<String,double> opacity,bool messages});
 TvOptions? Function()? currentMapOptions;
 
-Map<String,dynamic> tvViewJson(TvView v,{TvOptions? options,String? from})=>{
+/// Day / night mode of this device (Paramètres › Affichage), pushed to the
+/// whole TV page with the view (lot 7, 30 Oct 2026).
+String tvThemeName(ThemeMode m)=>switch(m){ThemeMode.light=>'day',ThemeMode.dark=>'night',_=>'auto'};
+
+Map<String,dynamic> tvViewJson(TvView v,{TvOptions? options,String? from,ThemeMode? theme})=>{
+  if(theme!=null)'theme':tvThemeName(theme),
   // Small « Vue de <terminal> » banner of the TV (30 Oct 2026).
   if(from!=null&&from.trim().isNotEmpty)'from':from.trim().length>64?from.trim().substring(0,64):from.trim(),
   if(options!=null)...{
@@ -49,5 +55,12 @@ String tvWhen(Object? seconds,{String lang='fr'}){
 
 /// Screens of the list: the active ones, plus the expired or revoked ones
 /// with « Afficher les anciens ».
+/// Title of a screen in the list: its name, else « Code ABC123 » (screens
+/// paired before lot 7).
+String tvScreenTitle(Map<String,dynamic> d,String codeLabel){
+  final n='${d['name']??''}'.trim();
+  return n.isNotEmpty?n:'$codeLabel ${d['code']??''}';
+}
+
 List<Map<String,dynamic>> tvVisibleScreens(List<Map<String,dynamic>> list,{required bool showOld})=>
   [for(final d in list)if(showOld||d['active']==true)d];

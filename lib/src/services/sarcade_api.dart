@@ -196,9 +196,32 @@ class SarcadeApi {
   }
   /// Smart TV (« Affichage sur Smart TV »): approve the code shown by the
   /// TV for this event; list and revoke the screens.
-  Future<void> approveDisplay(String code,String eventId) async {
-    final r=await _client.post(Uri.parse('$baseUrl/api/v0.1/tv/approve'),headers:_json,body:jsonEncode({'code':code,'event_id':eventId}));
+  Future<void> approveDisplay(String code,String eventId,{String? name}) async {
+    final r=await _client.post(Uri.parse('$baseUrl/api/v0.1/tv/approve'),headers:_json,
+      body:jsonEncode({'code':code,'event_id':eventId,if(name!=null&&name.trim().isNotEmpty)'name':name.trim()}));
     if(r.statusCode!=200) throw SarcadeHttpException('tv_approve',r.statusCode,r.body);
+  }
+  /// Default name of the TV showing [code] (« TV Samsung · 1920×1080 »);
+  /// null when unknown, expired or with an older server.
+  Future<String?> tvCodeName(String code) async {
+    try{
+      final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/tv/code/${Uri.encodeComponent(code)}'));
+      if(r.statusCode!=200)return null;
+      final n='${(jsonDecode(r.body) as Map)['name']??''}'.trim();
+      return n.isEmpty?null:n;
+    }catch(_){
+      return null;
+    }
+  }
+  /// « Renommer » a screen.
+  Future<void> renameDisplay(String eventId,String displayId,String name) async {
+    final r=await _client.put(Uri.parse('$baseUrl/api/v0.1/events/$eventId/displays/$displayId/name'),headers:_json,body:jsonEncode({'name':name}));
+    if(r.statusCode!=200) throw SarcadeHttpException('display_name',r.statusCode,r.body);
+  }
+  /// « Identifier »: the TV shows its name in very large letters for 5 s.
+  Future<void> identifyDisplay(String eventId,String displayId) async {
+    final r=await _client.post(Uri.parse('$baseUrl/api/v0.1/events/$eventId/displays/$displayId/identify'));
+    if(r.statusCode!=200) throw SarcadeHttpException('display_identify',r.statusCode,r.body);
   }
   /// « Envoyer ma vue »: [view] null gives the TV its automatic framing back.
   Future<void> sendDisplayView(String eventId,String displayId,Map<String,dynamic>? view) async {
