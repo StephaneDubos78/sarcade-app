@@ -28,6 +28,11 @@ class S {
 }
 
 const Texts _fr={
+  'locate.follow':'Suivi','locate.compass':'Boussole','locate.all':'Tous les opérateurs',
+  'display.menu':'Fond et affichage','display.layers':'Affichage','layers.teams':'Équipes',
+  'point.bearing':'Relevé','point.poi':'Point d’intérêt','point.order':'Envoyer un opérateur','point.measure':'Mesurer','point.go':'Y aller','point.weather':'Météo',
+  'point.navInApp':'Naviguer dans SARCADE','point.route':'Créer un itinéraire','point.otherApp':'Ouvrir dans une autre application',
+  'about.mapNotices':'Mentions des fonds de carte',
   'files.err.folder_exists':'Un dossier porte déjà ce nom','files.err.folder_not_empty':'Le dossier n’est pas vide : déplacez ou supprimez d’abord son contenu','files.err.folder_too_deep':'Trois niveaux de dossiers au plus','files.err.folder_inside_itself':'Impossible de déplacer un dossier dans lui-même','files.err.invalid_folder':'Nom de dossier invalide (1 à 60 caractères, sans « / »)','files.err.quota':'Espace personnel plein','files.actionFailed':'Action impossible, réessayez','files.name':'Nom','files.newFolder':'Nouveau dossier','files.rename':'Renommer','files.moveTo':'Déplacer vers…','files.deleteFolderConfirm':'Supprimer le dossier vide « {name} » ?','files.saved':'Fichier enregistré','files.more':'Plus d’actions','files.download':'Télécharger','files.move':'Déplacer','files.deleteFolder':'Supprimer le dossier','files.folderCount':'{n} fichier(s)','files.emptyFolder':'Ce dossier est vide','files.nonePersonal':'Aucun fichier personnel','files.noneEvent':'Aucun fichier partagé dans l’événement','files.import':'Importer','files.up':'Dossier parent','files.asList':'Afficher en liste','files.asGrid':'Afficher en grille','files.new':'Nouveau','files.personalHelpShort':'Visible de vous seul, sur tous vos appareils. Pas de pièces d’identité','files.eventHelpShort':'Partagés avec tous les opérateurs de l’événement',
   'weather.now':'Maintenant','weather.feels':'Ressenti {t}','weather.gusts':'Rafales {v}','weather.curve':'Températures sur 24 h','weather.detail':'Heure par heure',
   'tv.messagesPanel':'Afficher les messages sur la TV','tv.messagesPanelHelp':'Colonne à droite de la carte, au prochain « Envoyer ma vue »','tv.sendViewHelp2':'Centre, zoom, fond, filtres et transparences',
@@ -301,6 +306,11 @@ const Texts _fr={
 };
 
 const Texts _en={
+  'locate.follow':'Follow','locate.compass':'Compass','locate.all':'All operators',
+  'display.menu':'Base map and display','display.layers':'Display','layers.teams':'Teams',
+  'point.bearing':'Bearing','point.poi':'Point of interest','point.order':'Send an operator','point.measure':'Measure','point.go':'Go there','point.weather':'Weather',
+  'point.navInApp':'Navigate in SARCADE','point.route':'Create a route','point.otherApp':'Open in another application',
+  'about.mapNotices':'Base map notices',
   'files.err.folder_exists':'A folder already has this name','files.err.folder_not_empty':'The folder is not empty: move or delete its content first','files.err.folder_too_deep':'Three folder levels at most','files.err.folder_inside_itself':'A folder cannot be moved into itself','files.err.invalid_folder':'Invalid folder name (1 to 60 characters, no « / »)','files.err.quota':'Personal space full','files.actionFailed':'Could not do it, try again','files.name':'Name','files.newFolder':'New folder','files.rename':'Rename','files.moveTo':'Move to…','files.deleteFolderConfirm':'Delete the empty folder « {name} »?','files.saved':'File saved','files.more':'More actions','files.download':'Download','files.move':'Move','files.deleteFolder':'Delete the folder','files.folderCount':'{n} file(s)','files.emptyFolder':'This folder is empty','files.nonePersonal':'No personal file','files.noneEvent':'No file shared in the event','files.import':'Import','files.up':'Parent folder','files.asList':'Show as a list','files.asGrid':'Show as a grid','files.new':'New','files.personalHelpShort':'Seen by you only, on all your devices. No identity papers','files.eventHelpShort':'Shared with every operator of the event',
   'weather.now':'Now','weather.feels':'Feels like {t}','weather.gusts':'Gusts {v}','weather.curve':'Temperatures over 24 h','weather.detail':'Hour by hour',
   'tv.messagesPanel':'Show the messages on the TV','tv.messagesPanelHelp':'Column right of the map, at the next « Send my view »','tv.sendViewHelp2':'Centre, zoom, base map, filters and transparencies',

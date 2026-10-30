@@ -1,5 +1,5 @@
 /// Menu « Outils » (validated on 29 Oct 2026, 13 h 14): the tools used less
-/// often than the rail entries, as tiles — Résection, Mesure, convertisseur
+/// often than the rail entries, as tiles — Itinéraires, Résection, convertisseur
 /// de coordonnées, Afficher sur une TV, APRS (PCO), Météo.
 library;
 

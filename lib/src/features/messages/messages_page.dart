@@ -586,9 +586,10 @@ class _MessagesPageState extends State<MessagesPage>{
              child:Text(S.t('priority.$_priority'),style:TextStyle(fontSize:12,fontWeight:FontWeight.w600,color:prioColor))))),
          Expanded(child:Focus(onKeyEvent:_onKey,child:TextField(controller:_text,maxLength:2048,minLines:1,maxLines:widget.initialText==null?6:8,
            textCapitalization:TextCapitalization.sentences,style:const TextStyle(fontSize:17),
-           decoration:InputDecoration(hintText:S.t('messages.hint'),counterText:'',border:InputBorder.none,isDense:true,
-             contentPadding:const EdgeInsets.symmetric(vertical:13),
-             helperText:_enterSends?S.t('messages.enterHint'):null)))),
+           // Empty field (30 Oct 2026, 1 h 22): the hint stays as the label
+           // read by screen readers and the e2e tests, drawn transparent.
+           decoration:InputDecoration(hintText:S.t('messages.hint'),hintStyle:const TextStyle(color:Colors.transparent),counterText:'',border:InputBorder.none,isDense:true,
+             contentPadding:const EdgeInsets.symmetric(vertical:13))))),
          IconButton(tooltip:S.t('messages.emoji'),onPressed:_pickEmoji,icon:Icon(Icons.emoji_emotions_outlined,color:iconColor)),
        ]))),
      if(empty)SizedBox(height:48,child:_picking
