@@ -128,7 +128,8 @@ async function sendMessage(page, body, { priority = 'Urgent' } = {}) {
  * ACK pattern stops at the first « ACK: » after the text, i.e. the same card. */
 function messageCard(page, body, ack) {
   const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  // Bubble (28 Oct 2026): « ✓✓ read by 0 · received by 1 » under the text.
+  // Bubble (30 Oct 2026): « 16:42 ✓✓ 1 » next to the time; its accessible
+  // label keeps « ✓✓ read by 0 · received by 1 », which the ACK pattern finds.
   const re = new RegExp(esc(body) + (ack ? `[\\s\\S]{0,300}${esc(ack)}` : ''));
   return page.getByRole('group', { name: re })
     .or(page.locator('flt-semantics').filter({ hasText: re }))
