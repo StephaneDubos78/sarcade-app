@@ -89,7 +89,7 @@ class MultiSelectionBar extends StatelessWidget {
             const Icon(Icons.file_download_outlined),Text(S.t('draw.exportShort'),style:const TextStyle(fontSize:11)),
           ]))),
         IconButton(key:const ValueKey('multi-delete'),tooltip:S.t('routes.delete'),onPressed:()=>deleteSelection(context,c),icon:const Icon(Icons.delete_outline),color:Colors.red.shade700),
-        IconButton(tooltip:S.t('draw.deselect'),onPressed:()=>c.select(null),icon:const Icon(Icons.close)),
+        IconButton(tooltip:S.t('draw.deselect'),onPressed:c.endSelection,icon:const Icon(Icons.close)),
       ])));
   }
 }

@@ -102,3 +102,10 @@ BoxDecoration glass(BuildContext context,{double radius=20,Color? border}){
     border:Border.all(color:border??s.outlineVariant),
     boxShadow:const [BoxShadow(blurRadius:12,color:Color(0x33000000))]);
 }
+
+/// Colours of the map markers and of the scale (revue d'ergonomie n° 5, 45):
+/// the day colours whatever the theme, on their own light background, so
+/// that they stay readable on a light map in the dark theme.
+final ColorScheme mapMarkerScheme=dayTheme().colorScheme;
+const Color mapInkBackground=Color(0xF2FFFFFF);
+const Color mapInkText=Color(0xFF1F1F1F);
