@@ -1866,8 +1866,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     final s=Theme.of(context).colorScheme; final b=_bearings; final az=b.trueDeg; final p=b.position;
     final mouse=_aim!=null, decl=b.declinationDeg, mag=mouse?(az==null||decl==null?null:normDeg(az-decl)):b.magneticDeg;
     final t=DateTime.now(); String two(int v)=>v.toString().padLeft(2,'0');
-    if(mouse)return MouseBearingHud(trueDeg:az,magneticDeg:mag,position:p,accuracyM:b.accuracyM,time:t,onClose:_cancelAim,
-      decoration:glass(context,border:s.primary.withValues(alpha:0.6)));
+    if(mouse){return MouseBearingHud(trueDeg:az,magneticDeg:mag,position:p,accuracyM:b.accuracyM,time:t,onClose:_cancelAim,
+      decoration:glass(context,border:s.primary.withValues(alpha:0.6)));}
     return Container(padding:const EdgeInsets.fromLTRB(14,10,8,10),decoration:glass(context,border:s.primary.withValues(alpha:0.6)),
       child:Column(crossAxisAlignment:CrossAxisAlignment.start,mainAxisSize:MainAxisSize.min,children:[
         Row(children:[
