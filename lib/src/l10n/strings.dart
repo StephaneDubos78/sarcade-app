@@ -45,6 +45,10 @@ class S {
 }
 
 const Texts _fr={
+  'paste.title':'Coller une position','paste.button':'Coller','paste.hint':'Texte, message, lien Google Maps, Plans, OpenStreetMap, Waze…','paste.read':'Lire',
+  'paste.empty':'Le presse-papiers est vide','paste.none':'Aucune position trouvée dans ce texte','paste.offline':'Aucune position trouvée ; recherche d’adresse impossible hors connexion',
+  'paste.foundOne':'Une position trouvée','paste.foundMany':'{n} positions trouvées : choisissez','paste.read1':'Lu : {what}','paste.use':'Utiliser','paste.applied':'Position reprise : {what}',
+  'paste.link':'Lien','paste.address':'Adresse',
   'search.examples':'Adresse, opérateur, point haut, coordonnées…',
   'servers.addItem':'+ Ajouter un serveur…',
   'draw.exportShort':'Exporter',
@@ -482,6 +486,10 @@ const Texts _fr={
 };
 
 const Texts _en={
+  'paste.title':'Paste a position','paste.button':'Paste','paste.hint':'Text, message, Google Maps, Apple Maps, OpenStreetMap, Waze link…','paste.read':'Read',
+  'paste.empty':'The clipboard is empty','paste.none':'No position found in this text','paste.offline':'No position found; address search impossible offline',
+  'paste.foundOne':'One position found','paste.foundMany':'{n} positions found: choose one','paste.read1':'Read: {what}','paste.use':'Use','paste.applied':'Position taken: {what}',
+  'paste.link':'Link','paste.address':'Address',
   'search.examples':'Address, operator, high point, coordinates…',
   'servers.addItem':'+ Add a server…',
   'draw.exportShort':'Export',
