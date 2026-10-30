@@ -88,6 +88,7 @@ import '../routes/routes_layers.dart';
 import '../routes/routes_panel.dart';
 import '../tv/tv_view.dart';
 import '../tv/tv_nearby.dart';
+import '../tv/tv_screens_button.dart';
 import 'fixed_stations.dart';
 import '../orders/move_orders.dart';
 import '../bearings/signals.dart';
@@ -210,7 +211,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       _deskId=id;_deskPage=build();_showPanel=false; // one icon in blue (30 Oct 2026, 1 h 21)
     });
   }
-  @override void initState(){super.initState();_initNotificationActions();unawaited(requestPersistentStorage());_sync=OfflineSyncService(api:widget.api,store:widget.store,eventId:widget.eventId,onRemoteChange:_onRemoteChange);_initDrawing();_initBearings();_loadLocal();_initRoutes();_initMeasure();_sync.start();_initOperations();_loadBasemaps();_initWebUpdate();unawaited(_loadMyPreferences());_syncUiTimer=Timer.periodic(const Duration(seconds:2),(t){final pw=PowerState.instance;if(!pw.foreground)return;if(t.tick%8==0)_checkOrderArrival();if(t.tick%30==1)unawaited(_loadDevices());if(t.tick%3==0)_drainAnswers();if(shouldPollTvNearby(t.tick,foreground:pw.foreground,pco:true))unawaited(_tvNearby.check(context,widget.eventId));if(mounted&&shouldRefreshUi(t.tick,foreground:pw.foreground,saver:pw.saver))setState((){});});AccessManager.instance.addListener(_onAccessChanged);_start();unawaited(_loadRoles());}
+  @override void initState(){super.initState();_initNotificationActions();unawaited(requestPersistentStorage());_sync=OfflineSyncService(api:widget.api,store:widget.store,eventId:widget.eventId,onRemoteChange:_onRemoteChange);_initDrawing();_initBearings();_loadLocal();_initRoutes();_initMeasure();_sync.start();_initOperations();_loadBasemaps();_initWebUpdate();unawaited(_loadMyPreferences());_syncUiTimer=Timer.periodic(const Duration(seconds:2),(t){final pw=PowerState.instance;if(!pw.foreground)return;if(t.tick%8==0)_checkOrderArrival();if(t.tick%30==1){unawaited(_loadDevices());unawaited(_tvScreens.refresh(pco:isPco(widget.deviceId)));}if(t.tick%3==0)_drainAnswers();if(shouldPollTvNearby(t.tick,foreground:pw.foreground,pco:true))unawaited(_tvNearby.check(context,widget.eventId));if(mounted&&shouldRefreshUi(t.tick,foreground:pw.foreground,saver:pw.saver))setState((){});});AccessManager.instance.addListener(_onAccessChanged);_start();unawaited(_loadRoles());}
 
   /// Rights given by the server for the checked email (PCO, administrator).
   Future<void> _loadRoles() async {
@@ -748,7 +749,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     ToolItem(icon:Icons.route,title:S.t('routes.menu'),subtitle:S.t('tools.routesHelp'),color:Colors.green,onTap:_openRoutesPanel),
     ToolItem(icon:Icons.my_location,title:S.t('resection.title'),subtitle:S.t('tools.resectionHelp'),color:Colors.indigo,onTap:_openResection),
     ToolItem(icon:Icons.tv,title:S.t('tv.menu'),subtitle:S.t('tools.tvHelp'),color:Colors.deepPurple,group:ToolGroup.pc,
-      onTap:()=>_openDesk('tv',()=>TvScreensPage(key:const ValueKey('desk-tv'),api:widget.api,eventId:widget.eventId))),
+      onTap:_openTvScreens),
     if(isPco(widget.deviceId))ToolItem(icon:Icons.settings_input_antenna,title:S.t('aprs.title'),subtitle:S.t('tools.aprsHelp'),color:Colors.purple,group:ToolGroup.pc,
       onTap:()=>_openDesk('aprs',()=>AprsPage(api:widget.api,eventId:widget.eventId,actorId:widget.deviceId,
         onShowOnMap:(p,_)=>_onMapNow((){setState(()=>_searchPin=p);_map.move(p,15);})))),
@@ -1329,6 +1330,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     _mapEvents??=_map.mapEventStream.listen((e){
       if((_followMe||_locate!=LocateMode.idle)&&e.source!=MapEventSource.mapController&&e.source!=MapEventSource.nonRotatedSizeChange&&e is MapEventMove)_stopFollowing();
       if(e is MapEventRotate||e is MapEventRotateEnd)setState((){});
+      // « Suivre ma vue » (lot 11): the followed screens get the new view.
+      if(e is MapEventMoveEnd||e is MapEventRotateEnd||e is MapEventFlingAnimationEnd||e is MapEventDoubleTapZoomEnd||(e is MapEventMove&&e.source==MapEventSource.mapController))_tvScreens.mapMoved();
     });
   }
 
@@ -1352,6 +1355,10 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       ],
       LocateButton(mode:_locate,fab:(tip,icon,active)=>_fab('map-me',tip,icon,_myPosition,
         background:active?scheme.primary:null,foreground:active?scheme.onPrimary:null)),
+      // « Écrans » (lot 11): shown once a screen is allowed, blue while followed.
+      TvScreensButton(controller:_tvScreens,onManage:_openTvScreens,
+        fab:(tip,icon,onPressed,active)=>Padding(padding:const EdgeInsets.only(top:10),child:_fab('map-screens',tip,icon,onPressed,
+          background:active?scheme.primary:null,foreground:active?scheme.onPrimary:null))),
       if(_sosVisible)...[const SizedBox(height:16),_sosButton()],
     ]);
   }
@@ -2208,9 +2215,12 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     child:child,
   );
 
-  @override void dispose(){if(currentMapView==_tvView)currentMapView=null;if(currentMapOptions==_tvOptions)currentMapOptions=null;_stopCompass();_webUpdateTimer?.cancel();_saveViewTimer?.cancel();_bearings.dispose();_positionsTimer?.cancel();_meSub?.cancel();_mapEvents?.cancel();AccessManager.instance.removeListener(_onAccessChanged);_fcmRefresh?.cancel();_fcmForeground?.cancel();if(registerWakeupHook==_wakeupNoted)registerWakeupHook=null;_opensSub?.cancel();_answersSub?.cancel();_rtSub?.cancel();_tracking.removeListener(_onOperationsChanged);_ops.removeListener(_onOperationsChanged);_tracking.dispose();_ops.dispose();_routes.removeListener(_onRoutesChanged);_nav.removeListener(_onNavigationChanged);_variantHits.dispose();_bearingHits.dispose();_routeHits.dispose();_routes.dispose();_nav.dispose();_graphs.removeListener(_onRoutesChanged);_graphs.dispose();_measure.removeListener(_onRoutesChanged);_measure.dispose();_syncUiTimer?.cancel();_sync.dispose();_realtime.dispose();_drawing.dispose();_resectionCtl.dispose();widget.api.close();super.dispose();}
+  @override void dispose(){_tvScreens.dispose();if(currentMapView==_tvView)currentMapView=null;if(currentMapOptions==_tvOptions)currentMapOptions=null;_stopCompass();_webUpdateTimer?.cancel();_saveViewTimer?.cancel();_bearings.dispose();_positionsTimer?.cancel();_meSub?.cancel();_mapEvents?.cancel();AccessManager.instance.removeListener(_onAccessChanged);_fcmRefresh?.cancel();_fcmForeground?.cancel();if(registerWakeupHook==_wakeupNoted)registerWakeupHook=null;_opensSub?.cancel();_answersSub?.cancel();_rtSub?.cancel();_tracking.removeListener(_onOperationsChanged);_ops.removeListener(_onOperationsChanged);_tracking.dispose();_ops.dispose();_routes.removeListener(_onRoutesChanged);_nav.removeListener(_onNavigationChanged);_variantHits.dispose();_bearingHits.dispose();_routeHits.dispose();_routes.dispose();_nav.dispose();_graphs.removeListener(_onRoutesChanged);_graphs.dispose();_measure.removeListener(_onRoutesChanged);_measure.dispose();_syncUiTimer?.cancel();_sync.dispose();_realtime.dispose();_drawing.dispose();_resectionCtl.dispose();widget.api.close();super.dispose();}
 
   late final _tvNearby=TvNearbyWatcher(widget.api);
+  // « Écrans » button of the map (lot 11).
+  late final _tvScreens=TvScreensController(api:widget.api,eventId:widget.eventId);
+  void _openTvScreens()=>_openDesk('tv',()=>TvScreensPage(key:const ValueKey('desk-tv'),api:widget.api,eventId:widget.eventId));
   /// Current view, for « Envoyer ma vue » on a TV (Paramètres › Affichage › Écrans).
   TvView? _tvView(){
     try{final c=_map.camera;return (center:c.center,zoom:c.zoom,basemapId:_basemap.id,tileUrl:_basemap.url,attribution:_basemap.attribution,basemapName:_basemap.name);}
