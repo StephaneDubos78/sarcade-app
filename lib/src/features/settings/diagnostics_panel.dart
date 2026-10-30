@@ -32,6 +32,7 @@ import '../../services/notification_service.dart';
 import '../../services/realtime_service.dart';
 import '../../services/sarcade_api.dart';
 import '../aprs/aprs_models.dart' show linkState;
+import '../../services/event_names.dart';
 
 /// green / orange / red / off → colour of the dot.
 Color stateColor(String? s)=>switch(s){'green'||'ok'||'connected'=>Colors.green,'orange'||'degraded'||'waiting'=>Colors.orange,
@@ -161,6 +162,8 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
     Map<String,dynamic>? link(String k)=>aprs?[k] is Map?Map<String,dynamic>.from(aprs![k] as Map):null;
     final device=<DiagLine>[
       (block:dev,label:S.t('diag.version'),value:'SARCADE $appVersionFull${appBuild.isEmpty?'':' · $appBuild'}',state:null),
+      // Name and identifier of the event: the identifier only here (revue n° 60).
+      (block:dev,label:S.t('diagnostics.event'),value:eventReportValue(await loadEventName(widget.api,widget.eventId),widget.eventId),state:null),
       (block:dev,label:S.t('diag.localIp'),value:local.isEmpty?'—':local.join(', '),state:null),
       (block:dev,label:S.t('diag.publicIp'),value:'${client?['ip']??'—'}',state:null),
       (block:dev,label:S.t('diag.network'),value:net,state:null),
