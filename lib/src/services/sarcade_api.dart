@@ -224,8 +224,10 @@ class SarcadeApi {
     if(r.statusCode!=200) throw SarcadeHttpException('display_identify',r.statusCode,r.body);
   }
   /// « Envoyer ma vue »: [view] null gives the TV its automatic framing back.
-  Future<void> sendDisplayView(String eventId,String displayId,Map<String,dynamic>? view) async {
-    final r=await _client.put(Uri.parse('$baseUrl/api/v0.1/events/$eventId/displays/$displayId/view'),headers:_json,body:jsonEncode({'view':view}));
+  /// [live] (« Suivre ma vue », lot 11): one logbook line for the whole follow.
+  Future<void> sendDisplayView(String eventId,String displayId,Map<String,dynamic>? view,{bool live=false}) async {
+    final r=await _client.put(Uri.parse('$baseUrl/api/v0.1/events/$eventId/displays/$displayId/view'),headers:_json,
+      body:jsonEncode({'view':view,if(live)'live':true}));
     if(r.statusCode!=200) throw SarcadeHttpException('display_view',r.statusCode,r.body);
   }
   /// « Messages : afficher / masquer » of one screen, applied at once.
