@@ -28,6 +28,7 @@ class S {
 }
 
 const Texts _fr={
+  'traces.window':'Durée des traces','traces.aprsInclude':'Inclure les stations APRS',
   'bearings.title':'Relevé','bearings.noCompassHelp':'Pas de boussole : saisissez l’azimut vrai','bearings.azimuthField':'Azimut (°)','bearings.azimuthHint':'ex. 045','bearings.aimHelp':'Visez la source avec le haut du téléphone',
   'point.selectArea':'Sélectionner une zone','draw.selectHint':'Touchez des objets ou tracez un rectangle',
   'routes.entrySummary':'{d} · {n} points','routes.undoPoint':'Annuler le dernier point','routes.done':'Terminer',
@@ -461,6 +462,7 @@ const Texts _fr={
 };
 
 const Texts _en={
+  'traces.window':'Trace duration','traces.aprsInclude':'Include the APRS stations',
   'bearings.title':'Bearing','bearings.noCompassHelp':'No compass: type the true azimuth','bearings.azimuthField':'Azimuth (°)','bearings.azimuthHint':'e.g. 045','bearings.aimHelp':'Aim the top of the phone at the source',
   'point.selectArea':'Select an area','draw.selectHint':'Tap objects or draw a rectangle',
   'routes.entrySummary':'{d} · {n} points','routes.undoPoint':'Undo last point','routes.done':'Done',

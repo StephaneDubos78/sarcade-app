@@ -1377,7 +1377,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
 
   bool get _showOrders=>widget.store.preference('show_orders:${widget.eventId}')!='0';
   bool get _allTraces=>widget.store.preference('traces_all:${widget.eventId}')=='1';
-  bool get _aprsTraces=>widget.store.preference('traces_aprs:${widget.eventId}')=='1';
+  bool get _aprsTraces=>aprsTracesFrom(widget.store.preference('traces_aprs:${widget.eventId}'));
   int get _traceWindow=>traceWindowFrom(widget.store.preference('trace_window'));
   Future<void> _setFlag(String key,bool v) async {await widget.store.setPreference('$key:${widget.eventId}',v?'1':null);if(mounted)setState((){});}
   late final TracesStore _traces=TracesStore(load:(id)=>widget.api.positionHistory(widget.eventId,id,limit:2000),onChanged:(){if(mounted)setState((){});});
@@ -1494,8 +1494,11 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       if(_showOrders)...moveOrderList(c,isPco(widget.deviceId)?_moveOrders:_moveOrders.where((o)=>o.targetId==widget.deviceId||o.createdBy==widget.deviceId).toList(),
         onOpen:(o){Navigator.pop(c);_fitPoints([o.destination]);_showMoveOrder(o);}),
       row(S.t('traces.layer'),_allTraces,(v)=>_setFlag('traces_all',v),op:'traces'),
-      if(_allTraces)row(S.t('traces.aprs'),_aprsTraces,(v)=>_setFlag('traces_aprs',v)),
+      // « Toutes les traces » → « Durée des traces » → « Inclure les stations
+      // APRS » as a sub-option, indented (card of 30 Oct 2026, 17 h 45).
       if(_allTraces||_traces.pinned.isNotEmpty)traceWindowChips(_traceWindow,(w) async {await widget.store.setPreference('trace_window',w==defaultTraceWindow?null:'$w');refresh((){});if(mounted)setState((){});}),
+      if(_allTraces)Padding(padding:const EdgeInsets.only(left:24),child:row(S.t('traces.aprsInclude'),_aprsTraces,
+        (v) async {await widget.store.setPreference('traces_aprs:${widget.eventId}',v?null:'0');if(mounted)setState((){});})),
       layerSectionTitle(c,S.t('layers.reference')),
       row(S.t('refs.highPoints'),_showHighPoints,(v) async =>setState(()=>_showHighPoints=v),op:'high'),
       row(S.t('refs.relays'),_showRelays,(v) async =>setState(()=>_showRelays=v),op:'relay'),
