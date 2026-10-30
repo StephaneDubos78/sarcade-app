@@ -68,7 +68,11 @@ class SharedCompass extends ChangeNotifier {
   /// (computers). Each start is matched by one [stop].
   bool start(){
     _users++;
-    if(_sub!=null)return true;
+    if(_sub!=null||_paused)return true;
+    return _listen();
+  }
+
+  bool _listen(){
     Stream<CompassReading>? s;
     try{s=_open();}catch(_){s=null;}
     if(s==null)return false;
@@ -79,9 +83,26 @@ class SharedCompass extends ChangeNotifier {
   void stop(){
     if(_users>0)_users--;
     if(_users>0)return;
+    _release();
+  }
+
+  void _release(){
     _sub?.cancel(); _sub=null;
     heading=null; accuracyDeg=null; status=-1; calibrate=false;
     _smoother.clear(); _raw.clear();
+  }
+
+  /// Sensor actually read now (Diagnostic › Consommation).
+  bool get running=>_sub!=null;
+  bool _paused=false;
+  /// Battery card (30 Oct 2026, point A): the sensor is released while
+  /// SARCADE is in the background or the screen is off, and read again on
+  /// return if a bearing, résection, measure or the turned map still uses it.
+  void setPaused(bool paused){
+    if(paused==_paused)return;
+    _paused=paused;
+    if(paused){_release();notifyListeners();}
+    else if(_users>0&&_sub==null){_listen();}
   }
 
   void _on(CompassReading r){
