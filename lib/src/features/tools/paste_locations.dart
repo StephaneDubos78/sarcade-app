@@ -2,7 +2,8 @@
 /// ou image », validated 30 Oct 2026, 16 h 34), text part: every position
 /// found in a pasted text — decimal degrees, DMS, DM, UTM, MGRS, Lambert 93,
 /// DFCI, links of Google Maps / Apple Plans / OpenStreetMap / Waze, `geo:` —
-/// each with its excerpt; the address search comes last, by the page.
+/// each with its excerpt; the address search comes last, by the page. The
+/// image part (OCR, EXIF) was cancelled by the porteur (30 Oct 2026, 18 h 32).
 library;
 
 import 'package:latlong2/latlong.dart';
