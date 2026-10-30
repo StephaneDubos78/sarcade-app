@@ -17,7 +17,7 @@ void main(){
 
   test('placeholders and missing keys',(){
     S.setLanguage('fr');
-    expect(S.t('sync.alert',{'n':3,'min':7}),'3 élément(s) non envoyé(s) depuis 7 min');
+    expect(S.t('sync.alert',{'n':3,'min':7}),'3 éléments non envoyés depuis 7 min');
     expect(S.t('no.such.key'),'no.such.key');
   });
 }

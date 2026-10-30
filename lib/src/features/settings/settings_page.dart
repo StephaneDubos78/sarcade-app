@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../ui/overlay_page.dart';
 import '../../ui/choice_pills.dart';
@@ -163,14 +164,14 @@ class _SettingsPageState extends State<SettingsPage> {
   /// Remembered servers (« Paramètres › Général au même style que
   /// l'onglet Événement »): the list, a pencil to rename, the bin to forget;
   /// a new address is typed in a small window (« + Ajouter un serveur »).
+  /// Rebuilds the list after « + Ajouter un serveur… » (back to the current one).
+  int _pickRev=0;
   bool get _serverList=>!widget.firstRun&&widget.readServers!=null&&_servers.isNotEmpty;
 
   Widget _serverPicker(){
     final current=findServer(_servers,_serverText);
-    return Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
-      Row(children:[
-        Expanded(child:DropdownButtonFormField<String>(
-          key:ValueKey('servers|${current?.url}|${_servers.length}|$_serverText'),
+    return _withActions(DropdownButtonFormField<String>(
+          key:ValueKey('servers|${current?.url}|${_servers.length}|$_serverText|$_pickRev'),
           initialValue:current?.url??_serverText,
           isExpanded:true,
           // The row already says « Serveur » (29 Oct 2026: no word twice).
@@ -178,17 +179,19 @@ class _SettingsPageState extends State<SettingsPage> {
           items:[
             for(final s in _servers)DropdownMenuItem(value:s.url,child:Text('${s.label} · ${s.shortAddress}',overflow:TextOverflow.ellipsis)),
             if(current==null&&_serverText.isNotEmpty)DropdownMenuItem(value:_serverText,child:Text(S.t('servers.new',{'url':_serverText}),overflow:TextOverflow.ellipsis)),
+            // « + Ajouter un serveur… » at the bottom of the list (16 h 38).
+            DropdownMenuItem(key:const ValueKey('server-add'),value:addServerValue,child:Text(S.t('servers.addItem'),overflow:TextOverflow.ellipsis)),
           ],
-          onChanged:(v){final s=v==null?null:findServer(_servers,v);if(s!=null){_chooseServer(s);_touch();}},
+          onChanged:(v){
+            if(v==addServerValue){unawaited(_addServer());setState(()=>_pickRev++);return;}
+            final s=v==null?null:findServer(_servers,v);if(s!=null){_chooseServer(s);_touch();}},
           validator:(_)=>_url(_server.text),
-        )),
+        ),[
         if(current!=null)...[
           RoundIconButton(tooltip:S.t('servers.rename'),onPressed:()=>_renameServer(current),icon:Icons.edit_outlined),
           if(canRemoveServer(current))RoundIconButton(tooltip:S.t('servers.remove'),onPressed:()=>_removeServer(current),icon:Icons.delete_outline),
         ],
-      ]),
-      Align(alignment:Alignment.centerLeft,child:FilledButton.icon(onPressed:_addServer,icon:const Icon(Icons.add),label:Text(S.t('servers.add')))),
-    ]);
+      ]);
   }
 
   Future<void> _addServer() async {
@@ -257,8 +260,7 @@ class _SettingsPageState extends State<SettingsPage> {
     final help=_eventsError!=null?S.t('settings.eventsError',{'error':_eventsError})
       :_eventsOffline?S.t('settings.eventsOffline')
       :(_events.isEmpty&&!_loadingEvents)?S.t('settings.eventsEmpty'):null;
-    return Row(crossAxisAlignment:CrossAxisAlignment.start,children:[
-      Expanded(child:DropdownButtonFormField<String>(
+    return _withActions(DropdownButtonFormField<String>(
         key:ValueKey('$current|${_events.length}'),
         initialValue:current.isEmpty?null:current,
         isExpanded:true,
@@ -266,11 +268,10 @@ class _SettingsPageState extends State<SettingsPage> {
         items:items,
         onChanged:(v)=>setState((){_event.text=v??'';_dirty=true;}),
         validator:(_)=>_required(_event.text),
-      )),
-      const SizedBox(width:8),
-      Padding(padding:const EdgeInsets.only(top:4),child:_loadingEvents
+      ),[
+      _loadingEvents
         ? const SizedBox(width:48,height:48,child:Padding(padding:EdgeInsets.all(12),child:CircularProgressIndicator(strokeWidth:2)))
-        : IconButton(tooltip:S.t('settings.eventsRefresh'),onPressed:_loadEvents,icon:Icon(_eventsOffline?Icons.cloud_off:Icons.refresh))),
+        : IconButton(tooltip:S.t('settings.eventsRefresh'),onPressed:_loadEvents,icon:Icon(_eventsOffline?Icons.cloud_off:Icons.refresh)),
     ]);
   }
 
@@ -325,10 +326,16 @@ class _SettingsPageState extends State<SettingsPage> {
 
   /// One setting per line: bold label and grey help on the left (under it
   /// on a phone), the control on the right.
-  Widget _row(String label,{String? help,required Widget child}){
+  Widget _row(String label,{String? help,String? tip,required Widget child}){
     final t=Theme.of(context);
     final head=Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-      Text(label,style:t.textTheme.titleSmall?.copyWith(fontWeight:FontWeight.w600)),
+      Row(children:[
+        Flexible(child:Text(label,style:t.textTheme.titleSmall?.copyWith(fontWeight:FontWeight.w600))),
+        // Fewer words (card « Paramètres › Général, mise en page », 16 h 38):
+        // the explanation in an ⓘ rather than grey text.
+        if(tip!=null)Tooltip(message:tip,triggerMode:TooltipTriggerMode.tap,child:Padding(padding:const EdgeInsets.only(left:6),
+          child:Icon(Icons.info_outline,size:16,color:t.colorScheme.onSurfaceVariant))),
+      ]),
       if(help!=null)Padding(padding:const EdgeInsets.only(top:2),child:Text(help,style:t.textTheme.bodySmall?.copyWith(color:t.colorScheme.onSurfaceVariant))),
     ]);
     return Column(children:[
@@ -383,9 +390,9 @@ class _SettingsPageState extends State<SettingsPage> {
   ]);
 
   Widget _generalTab()=>widget.firstRun?_firstRunTab():Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
-    _row(S.t('settings.serverRow'),help:S.t('settings.serverHelp'),child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+    _row(S.t('settings.serverRow'),tip:S.t('settings.serverHelp'),child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
       if(_serverList)_serverPicker()
-      else Focus(
+      else _withActions(Focus(
         // Leaving the server field reloads the events of that server.
         onFocusChange:(f){if(!f)_loadEvents();},
         child:TextFormField(
@@ -395,13 +402,21 @@ class _SettingsPageState extends State<SettingsPage> {
           onFieldSubmitted:(_)=>_loadEvents(),
           onChanged:(_)=>setState((){}),
         ),
-      ),
+      )),
       _accessRow(),
     ])),
-    _row(S.t('settings.eventRow'),help:S.t('settings.eventHelp'),child:widget.loadEvents!=null?_eventPicker():TextFormField(
-      controller:_event,decoration:_field(),autocorrect:false,validator:_required)),
-    _row(S.t('settings.deviceRow'),help:S.t('settings.deviceHelp'),child:_compact(TextFormField(
+    _row(S.t('settings.eventRow'),tip:S.t('settings.eventHelp'),child:widget.loadEvents!=null?_eventPicker():_withActions(TextFormField(
+      controller:_event,decoration:_field(),autocorrect:false,validator:_required))),
+    _row(S.t('settings.deviceRow'),tip:S.t('settings.deviceHelp'),child:_withActions(TextFormField(
       controller:_device,decoration:_field(hint:'TERRAIN-01'),autocorrect:false,validator:_required))),
+  ]);
+
+  /// Serveur, Événement suivi and Terminal of the same width, their buttons
+  /// (pencil, bin, refresh) in one column on the right (16 h 38).
+  static const double _actionsWidth=96;
+  Widget _withActions(Widget field,[List<Widget> actions=const []])=>Row(crossAxisAlignment:CrossAxisAlignment.start,children:[
+    Expanded(child:field),
+    SizedBox(width:_actionsWidth,child:Row(mainAxisAlignment:MainAxisAlignment.end,children:actions)),
   ]);
 
   Widget _profileTab()=>Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
@@ -579,3 +594,6 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 }
+
+/// Value of « + Ajouter un serveur… » in the list of servers.
+const addServerValue='\u0000add-server';
