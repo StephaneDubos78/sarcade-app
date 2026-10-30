@@ -1,0 +1,21 @@
+/// Lot 3 « objets de la carte » (30 Oct 2026): small pieces of the
+/// « Affichage » tab kept out of operational_map_page.dart.
+library;
+
+import 'package:flutter/material.dart';
+
+import '../../l10n/strings.dart';
+import '../../models/position.dart';
+
+/// « Voir la liste » under the « Points d'intérêt (n) » line.
+Widget poiSeeListLink(BuildContext c,{required VoidCallback onTap})=>Padding(padding:const EdgeInsets.only(left:8),
+  child:Align(alignment:Alignment.centerLeft,child:TextButton.icon(key:const ValueKey('poi-see-list'),onPressed:onTap,
+    icon:const Icon(Icons.list,size:18),label:Text(S.t('poi.seeList')))));
+
+/// Stations whose trace is drawn: the pinned ones, and with « Toutes les
+/// traces » every operator shown (APRS stations only with their option).
+List<String> tracedStations(Iterable<SarcadePosition> onMap,{required Set<String> pinned,required bool all,required bool aprs}){
+  final ids=<String>{...pinned};
+  if(all){for(final p in onMap){if(!p.isAprs||aprs)ids.add(p.deviceId);}}
+  return ids.toList()..sort();
+}

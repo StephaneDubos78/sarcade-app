@@ -20,7 +20,22 @@ class MoveOrder {
   String get label{final l='${_d['label']??''}';return l.isEmpty?S.t('order.point'):l;}
   /// Still to carry out: sent or accepted.
   bool get open=>status=='sent'||status=='accepted';
+  DateTime? get updatedAt=>DateTime.tryParse('${json['updated_at']??''}');
 }
+
+/// An order arrived or refused leaves the map on its own after 30 min
+/// (card « drapeau vert impossible à retirer », 30 Oct 2026, 1 h 19); it
+/// stays in the logbook.
+const moveOrderShownAfterAnswer=Duration(minutes:30);
+bool moveOrderOnMap(MoveOrder o,DateTime now){
+  if(o.status=='cancelled')return false;
+  if(o.open)return true;
+  final t=o.updatedAt;
+  return t==null||now.toUtc().difference(t.toUtc())<moveOrderShownAfterAnswer;
+}
+
+/// « Retirer de la carte »: the PCO or the author, at any time.
+bool canRemoveMoveOrder(MoveOrder o,String actor,{required bool pco})=>pco||o.createdBy==actor;
 
 /// Distance under which the operator is « arrivé » on his own.
 const moveOrderArrivalM=50.0;
@@ -34,8 +49,9 @@ Color moveOrderColor(String status)=>switch(status){
 
 /// PCO view: a dashed line from the operator to the destination and a flag
 /// coloured by the answer, for the open orders and the recent answers.
-List<Widget> buildMoveOrderLayers(List<MoveOrder> orders,LatLng? Function(String deviceId) positionOf,void Function(MoveOrder) onTap){
-  final shown=orders.where((o)=>o.status!='cancelled').toList();
+List<Widget> buildMoveOrderLayers(List<MoveOrder> orders,LatLng? Function(String deviceId) positionOf,void Function(MoveOrder) onTap,{DateTime? now}){
+  final at=now??DateTime.now();
+  final shown=orders.where((o)=>moveOrderOnMap(o,at)).toList();
   if(shown.isEmpty)return const [];
   final lines=<Polyline>[];
   for(final o in shown.where((o)=>o.open)){
@@ -108,4 +124,21 @@ class MoveOrderBanner extends StatelessWidget {
         ]),
       ])));
   }
+}
+
+/// « Ordres » of the « Affichage » tab: in progress, then done.
+List<Widget> moveOrderList(BuildContext c,List<MoveOrder> orders,{required ValueChanged<MoveOrder> onOpen,DateTime? now}){
+  final at=now??DateTime.now();
+  final live=orders.where((o)=>o.status!='cancelled').toList()..sort((a,b)=>'${b.json['updated_at']}'.compareTo('${a.json['updated_at']}'));
+  final open=live.where((o)=>o.open).toList(), done=live.where((o)=>!o.open).toList();
+  Widget tile(MoveOrder o)=>ListTile(dense:true,visualDensity:VisualDensity.compact,key:ValueKey('order-row-${o.id}'),
+    leading:Icon(Icons.flag,color:moveOrderColor(o.status).withValues(alpha:moveOrderOnMap(o,at)?1:0.4)),
+    title:Text('${o.targetId} · « ${o.label} »',maxLines:1,overflow:TextOverflow.ellipsis),
+    subtitle:Text(S.t('order.status.${o.status}')),onTap:()=>onOpen(o));
+  final t=Theme.of(c).textTheme.labelLarge;
+  return [
+    if(live.isEmpty)Padding(padding:const EdgeInsets.fromLTRB(16,0,16,8),child:Text(S.t('order.none'))),
+    if(open.isNotEmpty)...[Padding(padding:const EdgeInsets.fromLTRB(16,4,16,0),child:Text('${S.t('order.inProgress')} · ${open.length}',style:t)),...open.map(tile)],
+    if(done.isNotEmpty)...[Padding(padding:const EdgeInsets.fromLTRB(16,4,16,0),child:Text('${S.t('order.done')} · ${done.length}',style:t)),...done.map(tile)],
+  ];
 }
