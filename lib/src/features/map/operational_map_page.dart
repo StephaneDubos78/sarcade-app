@@ -1,7 +1,6 @@
 import 'dart:async';
 import '../../ui/choice_pills.dart';
 import '../messages/operator_avatar.dart';
-import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -31,6 +30,7 @@ import '../../ui/compass_follow.dart';
 import '../compass/shared_compass.dart';
 import '../compass/compass_status.dart';
 import '../measure/wmm.dart' show magneticDeclination;
+import 'drawing/export_formats.dart';
 import '../../ui/theme.dart';
 import 'stations.dart';
 import 'sos_placement.dart';
@@ -2183,15 +2183,15 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
 
   /// Exports the event's drawn objects as GeoJSON: a local copy on the device,
   /// and an upload to the event's shared files so the PCO receives it.
-  Future<void> _exportGeoJson({List<MapFeature>? only}) async {
+  Future<void> _exportGeoJson({List<MapFeature>? only,ExportFormat format=ExportFormat.geojson}) async {
     final messenger=ScaffoldMessenger.of(context);
     final stamp=DateTime.now().toIso8601String().substring(0,16).replaceAll(RegExp(r'[:T]'),'-');
-    final name='sarcade-objets-${widget.eventId}-$stamp.geojson'.replaceAll(RegExp(r'[\\/:*?"<>|]'),'_');
-    final bytes=only==null?utf8.encode(const JsonEncoder.withIndent('  ').convert(featureCollection(_drawing.features))):selectionGeoJson(only);
+    final name='sarcade-objets-${widget.eventId}-$stamp.${format.extension}'.replaceAll(RegExp(r'[\\/:*?"<>|]'),'_');
+    final bytes=exportFeatures(only??_drawing.features,format);
     String? localPath;
-    try{localPath=await saveFile(name,bytes,mimeType:'application/geo+json');}catch(_){localPath=null;}
+    try{localPath=await saveFile(name,bytes,mimeType:format.mimeType);}catch(_){localPath=null;}
     var shared=false;
-    try{await widget.api.uploadFile(widget.eventId,widget.deviceId,name,'application/geo+json',bytes);shared=true;}catch(_){}
+    try{await widget.api.uploadFile(widget.eventId,widget.deviceId,name,format.mimeType,bytes);shared=true;}catch(_){}
     if(!mounted)return;
     final count=only?.length??_drawing.features.length;
     messenger.showSnackBar(SnackBar(
@@ -2492,7 +2492,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           if(!_drawingTools)Padding(padding:const EdgeInsets.only(top:8),child:Wrap(spacing:8,runSpacing:8,children:[?_staleBanner(),?_orderBanner()])),
           if(_drawing.isDrawing)Padding(padding:const EdgeInsets.only(top:8),child:DraftBar(controller:_drawing)),
           if(_drawing.selectMode&&!_drawing.hasSelection)Padding(padding:const EdgeInsets.only(top:8),child:SelectionHint(controller:_drawing)),
-          if(_drawing.isMulti)Padding(padding:const EdgeInsets.only(top:8),child:MultiSelectionBar(controller:_drawing,onExport:()=>_exportGeoJson(only:_drawing.selection))),
+          if(_drawing.isMulti)Padding(padding:const EdgeInsets.only(top:8),child:MultiSelectionBar(controller:_drawing,onExport:(f)=>_exportGeoJson(only:_drawing.selection,format:f))),
           if(_drawing.selected!=null)Padding(padding:const EdgeInsets.only(top:8),child:SelectionBar(controller:_drawing,onEditLabel:_editSelectedLabel,canFence:isPco(widget.deviceId))),
           if(_drawingClosure)Padding(padding:const EdgeInsets.only(top:8),child:Card(child:Padding(padding:const EdgeInsets.symmetric(horizontal:12,vertical:6),child:Row(mainAxisSize:MainAxisSize.min,children:[
             const Icon(Icons.block,color:Colors.red),const SizedBox(width:8),

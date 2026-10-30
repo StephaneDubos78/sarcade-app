@@ -28,6 +28,7 @@ class S {
 }
 
 const Texts _fr={
+  'draw.exportShort':'Exporter',
   'traces.window':'Durée des traces','traces.aprsInclude':'Inclure les stations APRS',
   'bearings.title':'Relevé','bearings.noCompassHelp':'Pas de boussole : saisissez l’azimut vrai','bearings.azimuthField':'Azimut (°)','bearings.azimuthHint':'ex. 045','bearings.aimHelp':'Visez la source avec le haut du téléphone',
   'point.selectArea':'Sélectionner une zone','draw.selectHint':'Touchez des objets ou tracez un rectangle',
@@ -217,7 +218,7 @@ const Texts _fr={
   'draw.hint.point':'Touchez la carte pour placer le point','draw.hint.text':'Touchez la carte pour placer le texte',
   'draw.hint.circle':'Touchez le centre, puis le bord','draw.hint.rectangle':'Touchez un coin, puis le coin opposé',
   'draw.hint.freehand':'Dessinez au doigt sur la carte','draw.hint.zone':'Touchez les sommets de la zone','draw.hint.line':'Touchez les points du tracé',
-  'draw.undo':'Annuler','draw.redo':'Rétablir','draw.import':'Importer GPX, KML ou GeoJSON','draw.hint.arrow':'Touchez le départ puis la pointe de la flèche','files.drawings':'Dessins de l’événement','files.importDrawings':'Importer des dessins (GeoJSON, KML, GPX)','files.exportDrawings':'Exporter les dessins','draw.export':'Exporter en GeoJSON',
+  'draw.undo':'Annuler','draw.redo':'Rétablir','draw.import':'Importer GPX, KML ou GeoJSON','draw.hint.arrow':'Touchez le départ puis la pointe de la flèche','files.drawings':'Dessins de l’événement','files.importDrawings':'Importer des dessins (GeoJSON, KML, GPX)','files.exportDrawings':'Exporter les dessins','draw.export':'Exporter (GeoJSON, KML, GPX)',
   'draw.close':'Fermer les outils','draw.points':'{n} point(s)','draw.removeLast':'Retirer le dernier point','draw.cancel':'Annuler le tracé',
   'draw.radius':'Rayon','draw.width':'Épaisseur','draw.editText':'Modifier le texte','draw.duplicate':'Dupliquer','draw.deselect':'Désélectionner',
   'draw.open':'Dessiner sur la carte',
@@ -462,6 +463,7 @@ const Texts _fr={
 };
 
 const Texts _en={
+  'draw.exportShort':'Export',
   'traces.window':'Trace duration','traces.aprsInclude':'Include the APRS stations',
   'bearings.title':'Bearing','bearings.noCompassHelp':'No compass: type the true azimuth','bearings.azimuthField':'Azimuth (°)','bearings.azimuthHint':'e.g. 045','bearings.aimHelp':'Aim the top of the phone at the source',
   'point.selectArea':'Select an area','draw.selectHint':'Tap objects or draw a rectangle',
@@ -638,7 +640,7 @@ const Texts _en={
   'draw.hint.point':'Tap the map to place the point','draw.hint.text':'Tap the map to place the text',
   'draw.hint.circle':'Tap the centre, then the edge','draw.hint.rectangle':'Tap a corner, then the opposite corner',
   'draw.hint.freehand':'Draw with your finger on the map','draw.hint.zone':'Tap the corners of the zone','draw.hint.line':'Tap the points of the line',
-  'draw.undo':'Undo','draw.redo':'Redo','draw.import':'Import GPX, KML or GeoJSON','draw.hint.arrow':'Tap the start then the tip of the arrow','files.drawings':'Drawings of the event','files.importDrawings':'Import drawings (GeoJSON, KML, GPX)','files.exportDrawings':'Export the drawings','draw.export':'Export as GeoJSON',
+  'draw.undo':'Undo','draw.redo':'Redo','draw.import':'Import GPX, KML or GeoJSON','draw.hint.arrow':'Tap the start then the tip of the arrow','files.drawings':'Drawings of the event','files.importDrawings':'Import drawings (GeoJSON, KML, GPX)','files.exportDrawings':'Export the drawings','draw.export':'Export (GeoJSON, KML, GPX)',
   'draw.close':'Close the tools','draw.points':'{n} point(s)','draw.removeLast':'Remove the last point','draw.cancel':'Cancel the drawing',
   'draw.radius':'Radius','draw.width':'Width','draw.editText':'Edit the text','draw.duplicate':'Duplicate','draw.deselect':'Deselect',
   'draw.open':'Draw on the map',
