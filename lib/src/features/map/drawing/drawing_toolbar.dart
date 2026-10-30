@@ -58,18 +58,14 @@ class DrawingToolbar extends StatelessWidget {
   Widget build(BuildContext context){
     final c=controller;
     final scheme=Theme.of(context).colorScheme;
-    final width=toolButtonWidth(context,[for(final k in drawingToolbarKinds)k.label,S.t('draw.select')]);
+    final width=toolButtonWidth(context,[for(final k in drawingToolbarKinds)k.label]);
     final tools=<Widget>[
       for(final k in drawingToolbarKinds)Padding(
         padding:const EdgeInsets.symmetric(horizontal:2),
         child:_ToolButton(key:ValueKey('draw-tool-${k.name}'),kind:k,active:c.tool==k,width:width,onTap:()=>c.selectTool(c.tool==k?null:k)),
       ),
-      // Phone: « Sélection » then drag a rectangle (multiple selection).
-      Padding(padding:const EdgeInsets.symmetric(horizontal:2),child:Tooltip(message:S.t('draw.selectHelp'),child:InkWell(key:const ValueKey('draw-select'),
-        borderRadius:BorderRadius.circular(10),onTap:()=>c.setSelectMode(!c.selectMode),
-        child:Container(width:width,padding:const EdgeInsets.symmetric(vertical:4),
-          decoration:BoxDecoration(color:c.selectMode?scheme.primaryContainer:null,borderRadius:BorderRadius.circular(10)),
-          child:_toolFace(Icons.highlight_alt,S.t('draw.select'),c.selectMode,scheme))))),
+      // « Sélection » left the drawing bar (17 h 36): long press on an
+      // object, or « Sélectionner une zone » of the point menu.
     ];
     final undo=IconButton(tooltip:S.t('draw.undo'),onPressed:c.canUndo?c.undo:null,icon:const Icon(Icons.undo));
     final redo=IconButton(tooltip:S.t('draw.redo'),onPressed:c.canRedo?c.redo:null,icon:const Icon(Icons.redo));
@@ -204,10 +200,22 @@ class SelectionBar extends StatelessWidget {
               isSelected:f.geofence,icon:Icon(f.geofence?Icons.notifications_active:Icons.notifications_none_outlined)),
             IconButton(tooltip:S.t('draw.duplicate'),onPressed:c.duplicateSelected,icon:const Icon(Icons.copy_all_outlined)),
             IconButton(tooltip:S.t('routes.delete'),onPressed:c.deleteSelected,icon:const Icon(Icons.delete_outline),color:Colors.red.shade700),
-            IconButton(tooltip:S.t('draw.deselect'),onPressed:()=>c.select(null),icon:const Icon(Icons.close)),
+            IconButton(tooltip:S.t('draw.deselect'),onPressed:c.endSelection,icon:const Icon(Icons.close)),
           ])),
         ]),
       ),
     );
   }
+}
+
+/// Selection mode with nothing selected yet: what to do, and ✕.
+class SelectionHint extends StatelessWidget {
+  final DrawingController controller;
+  const SelectionHint({super.key,required this.controller});
+  @override Widget build(BuildContext context)=>Material(key:const ValueKey('selection-hint'),elevation:4,borderRadius:BorderRadius.circular(14),
+    color:Theme.of(context).colorScheme.surface,child:Padding(padding:const EdgeInsets.fromLTRB(14,4,4,4),child:Row(mainAxisSize:MainAxisSize.min,children:[
+      const Icon(Icons.highlight_alt),const SizedBox(width:8),
+      Flexible(child:Text(S.t('draw.selectHint'))),
+      IconButton(tooltip:S.t('common.cancel'),onPressed:controller.endSelection,icon:const Icon(Icons.close)),
+    ])));
 }
