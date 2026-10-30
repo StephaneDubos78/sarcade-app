@@ -707,11 +707,10 @@ class _MessagesPageState extends State<MessagesPage>{
      }
      // Computer, like WhatsApp Web (30 Oct 2026, 1 h 31): no title bar, one
      // line — search, « Nouveau groupe » (+ ADRASEC model) on the left; the
-     // conversation, « Modifier le groupe » and ⋮ on the right.
+     // conversation, « Modifier le groupe » and the star on the right. No ⋮
+     // any more: it only held « Ajouter aux favoris », already the star (card
+     // « Messages (web), retirer les trois points », 30 Oct 2026, 16 h 25).
      if(wide){
-       final fav=_favConvs.contains(_conv);
-       final more=PopupMenuButton<String>(tooltip:S.t('files.more'),onSelected:(_)=>_toggleFavConv(_conv),itemBuilder:(_)=>[
-         PopupMenuItem(value:'fav',child:ListTile(leading:Icon(fav?Icons.star:Icons.star_border),title:Text(S.t(fav?'messages.unfav':'messages.fav'))))]);
        return Scaffold(body:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
          SizedBox(height:60,child:Row(children:[
            SizedBox(width:360,child:Padding(padding:const EdgeInsets.fromLTRB(12,8,4,8),child:Row(children:[
@@ -722,7 +721,7 @@ class _MessagesPageState extends State<MessagesPage>{
            Flexible(child:Text(_convName(_conv,by),overflow:TextOverflow.ellipsis,style:Theme.of(context).textTheme.titleMedium)),
            ?pending,
            const Spacer(),
-           ?editGroup,favButton,more,?close,const SizedBox(width:4),
+           ?editGroup,favButton,?close,const SizedBox(width:4),
          ])),
          const Divider(height:1),
          Expanded(child:Row(children:[

@@ -2266,8 +2266,13 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     ];
     final railBottom=(widget.onSettings!=null||widget.settingsBuilder!=null)
       ?_RailAction(Icons.settings_outlined,S.t('map.settings'),openSettings,selected:_deskId=='settings',alert:diagnosticsAlert()):null;
-    final messagesButton=IconButton(tooltip:S.t('map.messages'),onPressed:openMessages,icon:_messagesIcon(),
-      style:IconButton.styleFrom(fixedSize:const Size(48,48)));
+    // Blue while Messages is open, page or side panel (card « Bouton Messages
+    // pas mis en évidence », 30 Oct 2026, 16 h 13): one button in blue.
+    final messagesOn=messagesRailSelected(deskId:_deskId,chatPeer:_chatPeer);
+    final railScheme=Theme.of(context).colorScheme;
+    final messagesButton=IconButton(key:const ValueKey('rail-messages'),tooltip:S.t('map.messages'),onPressed:openMessages,icon:_messagesIcon(),isSelected:messagesOn,
+      style:IconButton.styleFrom(fixedSize:const Size(48,48),shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(14)),
+        backgroundColor:messagesOn?railScheme.primaryContainer:null,foregroundColor:messagesOn?railScheme.primary:railScheme.onSurfaceVariant));
     final sosAlert=_sosAlert();
     final banners=OperationsBanners(settings:_ops.settings,update:_ops.update,
           alert:syncAlert(_sync.currentItems,DateTime.now(),_ops.settings.syncAlertMinutes),
@@ -2300,7 +2305,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         ?graphBanner,
         Expanded(child:IndexedStack(index:compact?_tab:0,children:[_withDrawingShortcuts(Row(children:[
         // Computer: rail on the left (mock-up V2).
-        if(!compact)_Rail(messages:messagesButton,actions:rail,bottom:railBottom,onMap:showMap,mapSelected:_deskPage==null&&!_showPanel&&!_showReferencePanel&&!_showRoutesPanel&&!_showResection),
+        if(!compact)_Rail(messages:messagesButton,actions:rail,bottom:railBottom,onMap:showMap,mapSelected:_deskPage==null&&_chatPeer==null&&!_showPanel&&!_showReferencePanel&&!_showRoutesPanel&&!_showResection),
         // Computer: Messages, Fichiers, APRS… open beside the rail, which
         // stays visible (« rail toujours visible », 28 Oct 2026).
         Expanded(child:IndexedStack(index:!compact&&_deskPage!=null?1:0,sizing:StackFit.expand,children:[Row(children:[
