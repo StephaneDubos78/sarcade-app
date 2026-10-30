@@ -24,7 +24,9 @@ class LocationService {
   /// Positions while the app runs. With [background] (Beacon), Android keeps
   /// sending from a foreground service with a permanent notification, so
   /// that positions keep reaching the PCO screen off or app in background.
-  Stream<Position> positions({bool background=false,String? title,String? text}){
+  /// With [reduced] (iPhone in the background or power-saving mode, battery
+  /// card of 30 Oct 2026), the iPhone asks for ~100 m and every 20 m.
+  Stream<Position> positions({bool background=false,bool reduced=false,String? title,String? text}){
     if(background&&!kIsWeb&&defaultTargetPlatform==TargetPlatform.android){
       return Geolocator.getPositionStream(locationSettings:AndroidSettings(accuracy:LocationAccuracy.high,distanceFilter:5,
         foregroundNotificationConfig:ForegroundNotificationConfig(notificationTitle:title??'SARCADE',
@@ -33,7 +35,7 @@ class LocationService {
     // iPhone: the Beacon goes on with SARCADE in the background (blue
     // indicator in the status bar), with the « While in use » permission.
     if(background&&!kIsWeb&&defaultTargetPlatform==TargetPlatform.iOS){
-      return Geolocator.getPositionStream(locationSettings:AppleSettings(accuracy:LocationAccuracy.high,distanceFilter:5,
+      return Geolocator.getPositionStream(locationSettings:AppleSettings(accuracy:reduced?LocationAccuracy.medium:LocationAccuracy.high,distanceFilter:reduced?20:5,
         activityType:ActivityType.otherNavigation,pauseLocationUpdatesAutomatically:false,
         showBackgroundLocationIndicator:true,allowBackgroundLocationUpdates:true));
     }

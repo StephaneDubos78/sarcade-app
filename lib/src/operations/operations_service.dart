@@ -4,6 +4,7 @@ import '../config/https_switch.dart';
 import '../config/version.dart';
 import '../offline/local_store.dart';
 import '../offline/sync_service.dart';
+import '../services/power_state.dart';
 import '../services/sarcade_api.dart';
 import 'event_settings.dart';
 import 'version_state.dart';
@@ -45,7 +46,9 @@ class OperationsService extends ChangeNotifier {
   void _schedule(){
     _timer?.cancel();
     final s=settings.lowBandwidth?settings.lowBandwidthIntervalS:30;
-    _timer=Timer.periodic(Duration(seconds:s),(_)=>beat());
+    // Battery card (30 Oct 2026, point D): no heartbeat in the background,
+    // except while the Beacon runs (the PCO keeps seeing the device).
+    _timer=Timer.periodic(Duration(seconds:s),(_){if(PowerState.instance.foreground||tracking().enabled)beat();});
   }
 
   Future<void> beat() async {

@@ -5,7 +5,8 @@
 /// administrators only) gets « Un écran demande à se connecter sur votre réseau (code
 /// …). Autoriser ? ». Nothing is approved without a touch; the code is
 /// always shown; QR code and typed code stay. Channel: the timer of the map
-/// page asks the server every 20 s (no new real-time message).
+/// page asks the server every 60 s, SARCADE on screen only (battery card,
+/// 30 Oct 2026; no new real-time message).
 library;
 
 import 'package:flutter/material.dart';

@@ -23,6 +23,8 @@ import 'diagnostics_panel.dart';
 import 'event_settings_section.dart';
 import '../bearings/signal_defaults_page.dart';
 import '../../offline/local_store.dart';
+import '../compass/shared_compass.dart';
+import '../../services/power_state.dart';
 import '../../ui/save_bar.dart';
 import '../../ui/action_buttons.dart';
 
@@ -458,6 +460,10 @@ class _SettingsPageState extends State<SettingsPage> {
     ))),
     // Smart TV screens: managed in Outils › Afficher sur une TV only
     // (« Écrans Smart TV en double », 30 Oct 2026).
+    // Battery card (30 Oct 2026, point E): applied at once, kept on the device.
+    _row(S.t('power.saver'),help:S.t('power.saverHelp'),child:ListenableBuilder(listenable:PowerState.instance,
+      builder:(context,_)=>Align(alignment:Alignment.centerRight,child:Switch(key:const ValueKey('power-saver'),
+        value:PowerState.instance.saver,onChanged:(v){PowerState.instance.setSaver(v);})))),
   ]);
 
   Widget _notificationsTab()=>Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
@@ -491,6 +497,10 @@ class _SettingsPageState extends State<SettingsPage> {
         })]);
     })),
     if(VersionStatus.shown)const Padding(padding:EdgeInsets.only(bottom:12),child:VersionStatus()),
+    // Battery card (30 Oct 2026, point F).
+    _row(S.t('power.consumption'),child:Builder(builder:(_){final p=PowerState.instance;
+      return Text(consumptionLine(trackingS:p.trackingS,moving:p.trackingMoving,reduced:p.gpsReduced,
+        compass:SharedCompass.instance.running,saver:p.saver,t:S.t));})),
     // Cet appareil, Liaisons, Serveur (PCO / admin), « Copier le rapport » (lot 5).
     if(widget.api!=null)DiagnosticsPanel(api:widget.api!,server:widget.initial.serverUrl,eventId:widget.initial.eventId,actorId:widget.initial.deviceId),
   ]);

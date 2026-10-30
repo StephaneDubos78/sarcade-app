@@ -3,6 +3,7 @@ import 'src/access/access_manager.dart';
 import 'src/app.dart';
 import 'src/offline/local_store.dart';
 import 'src/platform/platform_services.dart';
+import 'src/services/power_state.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -21,6 +22,7 @@ Future<void> main() async {
   }
   final store=LocalStore();
   await store.init();
+  PowerState.instance.init(store);
   await AccessManager.instance.load();
   runApp(SarcadeApp(store:store));
 }

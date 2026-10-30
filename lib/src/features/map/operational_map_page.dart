@@ -56,6 +56,7 @@ import '../../services/wakeup_fcm.dart';
 import '../../services/wakeup_state.dart';
 import '../../services/notification_service.dart';
 import '../../services/location_service.dart';
+import '../../services/power_state.dart';
 import '../../services/realtime_service.dart';
 import '../../services/sarcade_api.dart';
 import '../../offline/local_store.dart';
@@ -209,7 +210,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       _deskId=id;_deskPage=build();_showPanel=false; // one icon in blue (30 Oct 2026, 1 h 21)
     });
   }
-  @override void initState(){super.initState();_initNotificationActions();unawaited(requestPersistentStorage());_sync=OfflineSyncService(api:widget.api,store:widget.store,eventId:widget.eventId,onRemoteChange:_onRemoteChange);_initDrawing();_initBearings();_loadLocal();_initRoutes();_initMeasure();_sync.start();_initOperations();_loadBasemaps();_initWebUpdate();unawaited(_loadMyPreferences());_syncUiTimer=Timer.periodic(const Duration(seconds:2),(t){if(t.tick%8==0)_checkOrderArrival();if(t.tick%30==1)unawaited(_loadDevices());if(t.tick%3==0)_drainAnswers();if(t.tick%10==5)unawaited(_tvNearby.check(context,widget.eventId));if(mounted)setState((){});});AccessManager.instance.addListener(_onAccessChanged);_start();unawaited(_loadRoles());}
+  @override void initState(){super.initState();_initNotificationActions();unawaited(requestPersistentStorage());_sync=OfflineSyncService(api:widget.api,store:widget.store,eventId:widget.eventId,onRemoteChange:_onRemoteChange);_initDrawing();_initBearings();_loadLocal();_initRoutes();_initMeasure();_sync.start();_initOperations();_loadBasemaps();_initWebUpdate();unawaited(_loadMyPreferences());_syncUiTimer=Timer.periodic(const Duration(seconds:2),(t){final pw=PowerState.instance;if(!pw.foreground)return;if(t.tick%8==0)_checkOrderArrival();if(t.tick%30==1)unawaited(_loadDevices());if(t.tick%3==0)_drainAnswers();if(shouldPollTvNearby(t.tick,foreground:pw.foreground,pco:true))unawaited(_tvNearby.check(context,widget.eventId));if(mounted&&shouldRefreshUi(t.tick,foreground:pw.foreground,saver:pw.saver))setState((){});});AccessManager.instance.addListener(_onAccessChanged);_start();unawaited(_loadRoles());}
 
   /// Rights given by the server for the checked email (PCO, administrator).
   Future<void> _loadRoles() async {
@@ -239,7 +240,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       // Safety net: positions only come by the realtime channel; read the
       // latest ones again every minute in case some were missed.
       _positionsTimer?.cancel();
-      _positionsTimer=Timer.periodic(const Duration(seconds:60),(_)=>unawaited(_reloadPositions()));
+      _positionsTimer=Timer.periodic(const Duration(seconds:60),(_){if(PowerState.instance.foreground)unawaited(_reloadPositions());});
       try{await _refreshReferences(silent:true);}catch(_){}
       _realtime.connect(widget.api.websocketUri(widget.eventId),headers:widget.api.realtimeHeaders);
       await _rtSub?.cancel();

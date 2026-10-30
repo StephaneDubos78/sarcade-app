@@ -5,6 +5,7 @@ import 'package:uuid/uuid.dart';
 import '../models/position.dart';
 import '../l10n/strings.dart';
 import '../services/location_service.dart';
+import '../services/power_state.dart';
 
 /// Position tracking (« Suivi de position », Beacon in English): when on,
 /// the last GPS fix is sent to the PCO at the interval chosen by the
@@ -22,32 +23,64 @@ class TrackingService extends ChangeNotifier {
   /// A new GPS fix arrived since the last position sent.
   bool _fresh=false;
 
-  TrackingService({required this.eventId,required this.deviceId,required this.location,required this.onPosition,this._intervalS=30});
+  /// On screen / power saving (battery card, 30 Oct 2026).
+  final PowerState power;
+  TrackingService({required this.eventId,required this.deviceId,required this.location,required this.onPosition,this._intervalS=30,PowerState? power})
+    :power=power??PowerState.instance;
 
   bool get enabled=>_enabled;
+  /// Interval chosen by the operator (bounded by the PCO).
   int get intervalS=>_intervalS;
   Position? get lastFix=>_last;
+  /// Last position sent and whether the device moves since (point B).
+  Position? _sent; bool _moving=true;
+  /// Interval actually used: chosen when moving, 60 s standing still, 2 min
+  /// in power-saving mode.
+  int get effectiveIntervalS=>adaptiveIntervalS(_intervalS,moving:_moving,saver:power.saver);
+  /// iPhone: reduced accuracy in the background or in power-saving mode.
+  bool get _reduced=>!kIsWeb&&defaultTargetPlatform==TargetPlatform.iOS&&(!power.foreground||power.saver);
+  bool _gpsReduced=false;
 
   /// False when the location is refused or unavailable.
   Future<bool> start() async {
     if(_enabled)return true;
     if(!await location.ensurePermission())return false;
-    _gps=location.positions(background:true,title:S.t('tracking.title'),text:S.t('tracking.notification')).listen((p){
-      final first=_last==null;
-      _last=p; _fresh=true;
-      if(first)_send();
-    },onError:(_){});
+    _listenGps();
     _enabled=true;
+    power.addListener(_onPower);
     _restartTimer();
     notifyListeners();
     return true;
   }
 
+  void _listenGps(){
+    _gps?.cancel();
+    _gpsReduced=_reduced;
+    _gps=location.positions(background:true,reduced:_gpsReduced,title:S.t('tracking.title'),text:S.t('tracking.notification')).listen((p){
+      final first=_last==null;
+      _last=p; _fresh=true;
+      final was=_moving, s=_sent;
+      _moving=isMoving(speedMps:p.speed,accuracyM:p.accuracy,
+        distanceM:s==null?null:Geolocator.distanceBetween(s.latitude,s.longitude,p.latitude,p.longitude));
+      if(first){_send();}
+      else if(_moving&&!was){_send();_restartTimer();}
+    },onError:(_){});
+  }
+
+  /// Screen on / off or power-saving mode changed.
+  void _onPower(){
+    if(!_enabled)return;
+    if(_reduced!=_gpsReduced)_listenGps();
+    _restartTimer();
+  }
+
   Future<void> stop() async {
     if(!_enabled)return;
     _enabled=false;
+    power.removeListener(_onPower);
     _timer?.cancel(); _timer=null;
     await _gps?.cancel(); _gps=null;
+    power.reportTracking();
     notifyListeners();
   }
 
@@ -58,9 +91,13 @@ class TrackingService extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// One-shot timer, set again after each tick with the interval of the
+  /// moment (moving or not, power saving).
   void _restartTimer(){
     _timer?.cancel();
-    _timer=Timer.periodic(Duration(seconds:_intervalS),(_)=>_send());
+    final s=effectiveIntervalS;
+    power.reportTracking(intervalS:s,moving:_moving,reduced:_gpsReduced);
+    _timer=Timer(Duration(seconds:s),(){_send();if(_enabled)_restartTimer();});
   }
 
   /// Sends the last fix if it is newer than the last one sent: a device
@@ -68,12 +105,12 @@ class TrackingService extends ChangeNotifier {
   Future<void> _send() async {
     final g=_last;
     if(g==null||!_fresh)return;
-    _fresh=false;
+    _fresh=false; _sent=g;
     await onPosition(SarcadePosition(id:_uuid.v4(),eventId:eventId,deviceId:deviceId,lat:g.latitude,lon:g.longitude,
       time:fixTime(g.timestamp,DateTime.now().toUtc()),altM:g.altitude,accuracyM:g.accuracy,headingDeg:g.heading>=0?g.heading:null,speedMps:g.speed>=0?g.speed:null));
   }
 
-  @override void dispose(){_timer?.cancel();_gps?.cancel();super.dispose();}
+  @override void dispose(){power.removeListener(_onPower);_timer?.cancel();_gps?.cancel();super.dispose();}
 }
 
 /// Time of a GPS fix, or now when the fix carries a time that cannot be
