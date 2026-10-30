@@ -205,6 +205,18 @@ class SarcadeApi {
     final r=await _client.put(Uri.parse('$baseUrl/api/v0.1/events/$eventId/displays/$displayId/view'),headers:_json,body:jsonEncode({'view':view}));
     if(r.statusCode!=200) throw SarcadeHttpException('display_view',r.statusCode,r.body);
   }
+  /// « Messages : afficher / masquer » of one screen, applied at once.
+  Future<void> setDisplayMessages(String eventId,String displayId,bool messages) async {
+    final r=await _client.put(Uri.parse('$baseUrl/api/v0.1/events/$eventId/displays/$displayId/messages'),headers:_json,body:jsonEncode({'messages':messages}));
+    if(r.statusCode!=200) throw SarcadeHttpException('display_messages',r.statusCode,r.body);
+  }
+  /// Codes shown by TVs on the same network (same public address), for a
+  /// PCO or an administrator; empty otherwise or with an older server.
+  Future<List<String>> tvNearby() async {
+    final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/tv/nearby'));
+    if(r.statusCode!=200)return const [];
+    return [for(final d in jsonDecode(r.body) as List)'${(d as Map)['code']}'];
+  }
   Future<List<Map<String,dynamic>>> displays(String eventId) async {
     final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/events/$eventId/displays'));
     if(r.statusCode!=200) throw SarcadeHttpException('displays',r.statusCode,r.body);

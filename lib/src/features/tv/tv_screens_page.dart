@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../l10n/strings.dart';
+import '../../models/comm_group.dart';
 import '../../services/sarcade_api.dart';
 import 'tv_code.dart';
 import 'tv_qr_scan_page.dart';
@@ -22,8 +23,8 @@ class TvScreensPage extends StatelessWidget {
     ]));
 }
 
-/// The content of « Afficher sur une TV », also shown directly in
-/// Paramètres › Affichage (no more « Gérer les écrans », 29 Oct 2026).
+/// The content of « Afficher sur une TV » (the only place where the screens
+/// are managed since 30 Oct 2026: section removed from Paramètres).
 class TvScreensPanel extends StatefulWidget {
   final SarcadeApi api; final String eventId; final bool scanOnOpen;
   const TvScreensPanel({super.key,required this.api,required this.eventId,this.scanOnOpen=false});
@@ -111,17 +112,57 @@ class _TvScreensPanelState extends State<TvScreensPanel> {
     }
   }
 
-  /// Messages panel shown on the TV with « Envoyer ma vue ».
-  bool _messages=true;
-  TvOptions? _options(){final o=currentMapOptions?.call();return o==null?null:(layers:o.layers,opacity:o.opacity,messages:_messages);}
+  /// Expired or revoked screens, hidden unless « Afficher les anciens ».
+  bool _showOld=false;
 
-  /// « Envoyer ma vue » (view of the map of this device) or back to the
-  /// automatic framing (null).
+  /// « Envoyer ma vue »: summary of what leaves (zoom, base map, layers)
+  /// with the « Colonne des messages » box; null when cancelled.
+  Future<bool?> _confirmView(TvView v,TvOptions? o,bool messages) async {
+    var m=messages;
+    final layers=o==null?const <String>[]:tvShownLayers(o.layers);
+    return showDialog<bool>(context:context,builder:(c)=>StatefulBuilder(builder:(c,set)=>AlertDialog(title:Text(S.t('tv.sendView')),
+      content:Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.start,children:[
+        Text(S.t('tv.sumZoom',{'z':v.zoom.toStringAsFixed(1).replaceAll('.',',')})),
+        Text(S.t('tv.sumBase',{'b':v.basemapName.isEmpty?v.basemapId:v.basemapName})),
+        Text(S.t('tv.sumLayers',{'l':layers.isEmpty?S.t('tv.sumNone'):[for(final k in layers)S.t(tvLayerLabels[k]!)].join(', ')})),
+        CheckboxListTile(key:const ValueKey('tv-messages-box'),contentPadding:EdgeInsets.zero,value:m,onChanged:(x)=>set(()=>m=x??true),
+          title:Text(S.t('tv.messagesColumn'))),
+      ]),
+      actions:[TextButton(onPressed:()=>Navigator.pop(c),child:Text(S.t('common.cancel'))),
+        FilledButton(onPressed:()=>Navigator.pop(c,m),child:Text(S.t('tv.send')))])));
+  }
+
+  /// « Messages : afficher / masquer » of this screen, at once, without
+  /// sending the view again.
+  Future<void> _messages(Map<String,dynamic> d) async {
+    final show=d['messages']==false;
+    try{
+      await widget.api.setDisplayMessages(widget.eventId,'${d['id']}',show);
+      _say(show?'tv.messagesShown':'tv.messagesHidden');
+      await _load();
+    }on SarcadeHttpException catch(e){
+      _say(e.statusCode==401||e.statusCode==403?'tv.signIn':'event.offline');
+    }catch(_){
+      _say('event.offline');
+    }
+  }
+
+  /// « Envoyer ma vue » (view of the map of this device) or « Revenir à la
+  /// vue par défaut » (null); no automatic return (30 Oct 2026).
   Future<void> _view(Map<String,dynamic> d,{required bool mine}) async {
     final v=mine?currentMapView?.call():null;
     if(mine&&v==null){_say('tv.noMap');return;}
+    Map<String,dynamic>? json;
+    if(v!=null){
+      final o=currentMapOptions?.call();
+      final m=await _confirmView(v,o,d['messages']!=false);
+      if(m==null||!mounted)return;
+      json=tvViewJson(v,options:o==null?null:(layers:o.layers,opacity:o.opacity,messages:m),from:myActorId);
+      if(o==null)json['messages']=m;
+    }
     try{
-      await widget.api.sendDisplayView(widget.eventId,'${d['id']}',v==null?null:tvViewJson(v,options:_options()));
+      await widget.api.sendDisplayView(widget.eventId,'${d['id']}',json);
+      await _load();
       _say(mine?'tv.viewSent':'tv.autoSent');
     }on SarcadeHttpException catch(e){
       _say(e.statusCode==401||e.statusCode==403?'tv.signIn':'event.offline');
@@ -130,11 +171,11 @@ class _TvScreensPanelState extends State<TvScreensPanel> {
     }
   }
 
-  String _when(Object? s)=>s is num?DateTime.fromMillisecondsSinceEpoch((s*1000).toInt()).toLocal().toString().substring(0,16):'';
-
   @override
   Widget build(BuildContext context){
-    final t=Theme.of(context); final list=_list;
+    final t=Theme.of(context); final all=_list;
+    final list=all==null?null:tvVisibleScreens(all,showOld:_showOld);
+    final old=all==null?0:all.length-tvVisibleScreens(all,showOld:false).length;
     return AbsorbPointer(absorbing:_busy,child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,mainAxisSize:MainAxisSize.min,children:[
         Wrap(spacing:8,runSpacing:8,children:[
           if(canScanTvQr)FilledButton.icon(onPressed:_scan,icon:const Icon(Icons.qr_code_scanner),label:Text(S.t('tv.scan'))),
@@ -143,8 +184,6 @@ class _TvScreensPanelState extends State<TvScreensPanel> {
         if(_busy)const Padding(padding:EdgeInsets.only(top:16),child:LinearProgressIndicator()),
         const SizedBox(height:16),
         Text(S.t('tv.list'),style:t.textTheme.titleMedium),
-        SwitchListTile(contentPadding:EdgeInsets.zero,value:_messages,onChanged:(v)=>setState(()=>_messages=v),
-          title:Text(S.t('tv.messagesPanel')),subtitle:Text(S.t('tv.messagesPanelHelp'))),
         if(_offline)ListTile(contentPadding:EdgeInsets.zero,leading:const Icon(Icons.cloud_off),title:Text(S.t('event.offline')),
           trailing:TextButton(onPressed:_load,child:Text(S.t('common.retry'))))
         else if(list==null)const Padding(padding:EdgeInsets.all(16),child:Center(child:CircularProgressIndicator()))
@@ -152,16 +191,23 @@ class _TvScreensPanelState extends State<TvScreensPanel> {
         else for(final d in list)ListTile(contentPadding:EdgeInsets.zero,
           leading:Icon(d['active']==true?(d['alert']==true?Icons.sos:Icons.tv):Icons.tv_off,
             color:d['active']==true?(d['alert']==true?t.colorScheme.error:Colors.green):null),
-          title:Text('${S.t('tv.code')} ${d['code']??''}'),subtitle:Text(S.t('tv.until',{'t':_when(d['expires'])})),
+          title:Text('${S.t('tv.code')} ${d['code']??''}'),
+          subtitle:Text([d['active']==true?S.t('tv.until',{'t':tvWhen(d['expires'],lang:S.lang)}):S.t(d['revoked']==true?'tv.revoked':'tv.expired'),
+            if(d['active']==true&&d['messages']==false)S.t('tv.messagesOff'),
+            if(d['active']==true&&'${d['view_from']??''}'.isNotEmpty)S.t('tv.viewOf',{'who':d['view_from']})].join(' · ')),
           trailing:d['active']==true?PopupMenuButton<String>(
-            onSelected:(a){if(a=='view')_view(d,mine:true);if(a=='auto')_view(d,mine:false);if(a=='revoke')_revoke(d);if(a=='sos')_clearSos(d);},
+            onSelected:(a){if(a=='view')_view(d,mine:true);if(a=='auto')_view(d,mine:false);if(a=='messages')_messages(d);if(a=='revoke')_revoke(d);if(a=='sos')_clearSos(d);},
             itemBuilder:(_)=>[
               PopupMenuItem(value:'view',child:ListTile(leading:const Icon(Icons.cast),title:Text(S.t('tv.sendView')),subtitle:Text(S.t('tv.sendViewHelp2')))),
               PopupMenuItem(value:'auto',child:ListTile(leading:const Icon(Icons.fit_screen),title:Text(S.t('tv.auto')))),
+              PopupMenuItem(value:'messages',child:ListTile(leading:Icon(d['messages']==false?Icons.chat_outlined:Icons.speaker_notes_off_outlined),
+                title:Text(S.t(d['messages']==false?'tv.messagesShow':'tv.messagesHide')))),
               PopupMenuItem(value:'sos',enabled:d['can_clear_alert']!=false,
                 child:ListTile(leading:const Icon(Icons.sos),title:Text(S.t('tv.clearSos')))),
               PopupMenuItem(value:'revoke',child:ListTile(leading:const Icon(Icons.tv_off),title:Text(S.t('tv.revoke')))),
             ]):null),
+        if(old>0)Align(alignment:Alignment.centerLeft,child:TextButton(key:const ValueKey('tv-show-old'),onPressed:()=>setState(()=>_showOld=!_showOld),
+          child:Text(_showOld?S.t('tv.hideOld'):S.t('tv.showOld',{'n':old})))),
       ]));
   }
 }
