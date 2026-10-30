@@ -85,6 +85,7 @@ import '../routes/routes_layers.dart';
 import '../routes/routes_panel.dart';
 import '../tv/tv_view.dart';
 import '../tv/tv_nearby.dart';
+import 'fixed_stations.dart';
 import '../orders/move_orders.dart';
 import '../bearings/signals.dart';
 import '../tools/tools_page.dart';
@@ -195,7 +196,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       _deskId=id;_deskPage=build();_showPanel=false; // one icon in blue (30 Oct 2026, 1 h 21)
     });
   }
-  @override void initState(){super.initState();_initNotificationActions();unawaited(requestPersistentStorage());_sync=OfflineSyncService(api:widget.api,store:widget.store,eventId:widget.eventId,onRemoteChange:_onRemoteChange);_initDrawing();_initBearings();_loadLocal();_initRoutes();_initMeasure();_sync.start();_initOperations();_loadBasemaps();_initWebUpdate();unawaited(_loadMyPreferences());_syncUiTimer=Timer.periodic(const Duration(seconds:2),(t){if(t.tick%8==0)_checkOrderArrival();if(t.tick%30==1)unawaited(_loadDevices());if(t.tick%3==0)_drainAnswers();if(t.tick%10==5&&isPco(widget.deviceId))unawaited(_tvNearby.check(context,widget.eventId));if(mounted)setState((){});});AccessManager.instance.addListener(_onAccessChanged);_start();unawaited(_loadRoles());}
+  @override void initState(){super.initState();_initNotificationActions();unawaited(requestPersistentStorage());_sync=OfflineSyncService(api:widget.api,store:widget.store,eventId:widget.eventId,onRemoteChange:_onRemoteChange);_initDrawing();_initBearings();_loadLocal();_initRoutes();_initMeasure();_sync.start();_initOperations();_loadBasemaps();_initWebUpdate();unawaited(_loadMyPreferences());_syncUiTimer=Timer.periodic(const Duration(seconds:2),(t){if(t.tick%8==0)_checkOrderArrival();if(t.tick%30==1)unawaited(_loadDevices());if(t.tick%3==0)_drainAnswers();if(t.tick%10==5)unawaited(_tvNearby.check(context,widget.eventId));if(mounted)setState((){});});AccessManager.instance.addListener(_onAccessChanged);_start();unawaited(_loadRoles());}
 
   /// Rights given by the server for the checked email (PCO, administrator).
   Future<void> _loadRoles() async {
@@ -1460,6 +1461,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       layerSectionTitle(c,S.t('layers.teams'),first:true),
       row(S.t('chips.operators'),_showOperators,(v)=>_setShown('show_ops',v),op:'ops'),
       row('APRS',_showAprs,(v) async =>setState(()=>_showAprs=v),op:'aprs'),
+      row(S.t('fixed.layer'),_showFixed,(v)=>_setFlag('show_fixed',v)),
       // A filter, not a layer: no slider.
       row(S.t('chips.withoutInternet'),_withoutInternetOnly,(v) async =>setState(()=>_withoutInternetOnly=v)),
       layerSectionTitle(c,S.t('layers.operation')),
@@ -1498,7 +1500,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     final now=DateTime.now().toUtc(); final fav=_favourites;
     final shown=_favouritesOnly?sorted.where((p)=>fav.contains(p.deviceId)):sorted;
     final by={for(final x in Section.values)x:<SarcadePosition>[]};
-    for(final p in shown){by[sectionOf(p.time.toUtc(),now,oldMin:_oldMin)]!.add(p);}
+    final fixed=shown.where(_isFixed).toList()..sort((a,b)=>a.label.compareTo(b.label));
+    for(final p in shown.where((p)=>!_isFixed(p))){by[sectionOf(p.time.toUtc(),now,oldMin:_oldMin)]!.add(p);}
     final t=Theme.of(context);
     Widget head(String label,int n,{VoidCallback? onTap,bool? open})=>InkWell(onTap:onTap,child:Padding(
       padding:const EdgeInsets.fromLTRB(16,12,8,4),child:Row(children:[
@@ -1514,6 +1517,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       if(silent.isNotEmpty)...[head(S.t('teams.silent'),silent.length),...silent.map(_stationTile)],
       if(old.isNotEmpty)...[head(S.t('teams.old'),old.length,open:_showOld,onTap:()=>setState(()=>_showOld=!_showOld)),
         if(_showOld)...old.map(_stationTile)],
+      if(fixed.isNotEmpty)...[head(S.t('fixed.section'),fixed.length,open:_showFixedList,onTap:()=>setState(()=>_showFixedList=!_showFixedList)),
+        if(_showFixedList)...fixed.map(_stationTile)],
     ]);
   }
 
@@ -1649,6 +1654,15 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       debugPrint('SARCADE personal settings not read: $e');
     }
   }
+  // Fixed APRS stations (fixed_stations.dart): forced by hand on this device.
+  final MovementTracker _moves=MovementTracker();
+  Map<String,String> get _forced=>parseForced(widget.store.preference('fixed_forced:${widget.eventId}'));
+  bool _isFixed(SarcadePosition p)=>isFixedStation(p,forced:_forced[p.deviceId],moved:_moves.moved(p.deviceId),still:_moves.still(p.deviceId,DateTime.now().toUtc()));
+  bool get _showFixed=>widget.store.preference('show_fixed:${widget.eventId}')=='1';
+  bool _showFixedList=false;
+  Future<void> _forceFixed(String id,String v) async {final m=_forced;if(v=='auto'){m.remove(id);}else{m[id]=v;}await widget.store.setPreference('fixed_forced:${widget.eventId}',encodeForced(m));if(mounted)setState((){});}
+  Marker _fixedMarker(SarcadePosition p)=>Marker(point:LatLng(p.lat,p.lon),width:22,height:22,child:Tooltip(message:p.label,child:GestureDetector(onTap:()=>_tapStation(p),
+    child:Opacity(opacity:0.7,child:_stationIcon(p,size:20)))));
   Future<void> _setTraceHours(int h) async {
     setState((){_traceHours=h;_scrub=null;_trace=traceWithin(_history,DateTime.now().toUtc(),h);});
   }
@@ -1755,6 +1769,11 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           IconButton(tooltip:S.t('common.close'),onPressed:()=>setState((){_selectedDevice=null;_trace=[];_history=[];_scrub=null;}),icon:const Icon(Icons.close)),
         ]),
         if(callsignAmong([p.callsign,p.label,_devices[p.deviceId]?['callsign']?.toString()]) case final call?)Padding(padding:const EdgeInsets.only(top:6),child:CallsignLinks(callsign:call)),
+        if(p.isAprs)Padding(padding:const EdgeInsets.only(top:8),child:Row(children:[
+          Text(S.t('fixed.kind'),style:const TextStyle(fontSize:13)),const SizedBox(width:8),
+          Flexible(child:ChoicePills<String>(compact:true,selected:_forced[p.deviceId]??'auto',onSelected:(v)=>_forceFixed(p.deviceId,v),
+            choices:[(value:'auto',label:S.t(_isFixed(p)?'fixed.autoFixed':'fixed.autoMobile'),icon:null),(value:'f',label:S.t('fixed.fixed'),icon:null),(value:'m',label:S.t('fixed.mobile'),icon:null)])),
+        ])),
         const SizedBox(height:8),
         Container(padding:const EdgeInsets.symmetric(horizontal:10,vertical:8),decoration:BoxDecoration(color:s.surfaceContainerHigh,borderRadius:BorderRadius.circular(10)),
           child:Text([_sourceLabel(p),if(p.aprsPath?.isNotEmpty==true)S.t('station.via',{'path':p.aprsPath})].join(' · '),style:const TextStyle(fontSize:12,fontFamily:'monospace'))),
@@ -2215,9 +2234,10 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     currentMapView=_tvView; currentMapOptions=_tvOptions;
     final sorted=_positions.values.where((p)=>(p.isAprs?_showAprs:_showOperators)&&(!_withoutInternetOnly||worksWithoutInternet(p)||p.deviceId==widget.deviceId)).toList()..sort((a,b)=>a.deviceId.compareTo(b.deviceId));
     // Old stations stay in the list and the search, not on the map.
-    final onMap=sorted.where((p)=>p.deviceId==widget.deviceId||sectionOf(p.time.toUtc(),DateTime.now().toUtc(),oldMin:_oldMin)!=Section.old).toList();
+    for(final p in _positions.values){if(p.isAprs)_moves.observe(p);}
+    final onMap=sorted.where((p)=>p.deviceId==widget.deviceId||(sectionOf(p.time.toUtc(),DateTime.now().toUtc(),oldMin:_oldMin)!=Section.old&&(_showFixed||!_isFixed(p)))).toList();
     final selected=_selectedDevice==null?null:_positions[_selectedDevice];
-    final traced=_traceIds(onMap);
+    final traced=_traceIds(onMap.where((p)=>!_isFixed(p)));
     final screenWidth=MediaQuery.sizeOf(context).width;
     final compact=screenWidth<_compactWidth;
     _syncEscapes();
@@ -2351,7 +2371,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           ...buildMeasureLayers(_measure,_coordFormat),
           ..._resectionLayers(),
           if(_showPois)_faded('poi',PoiClusterLayer(pois:_pois.values.toList(),onTap:(p)=>unawaited(_openPoi(p)))),
-          _faded('aprs',MarkerLayer(markers:_stationMarkers(onMap.where((p)=>p.isAprs).toList()))),
+          _faded('aprs',MarkerLayer(markers:[...onMap.where(_isFixed).map(_fixedMarker),..._stationMarkers(onMap.where((p)=>p.isAprs&&!_isFixed(p)).toList())])),
           _faded('ops',MarkerLayer(markers:_stationMarkers(onMap.where((p)=>!p.isAprs).toList()))),
           if(_me!=null)MarkerLayer(markers:[Marker(point:_me!,width:22,height:22,child:GestureDetector(key:const ValueKey('me-dot'),
             onTap:()=>openMyPositionInfo(context,location:_location,places:_places,fallback:_me,onSendMessage:_sendText),
