@@ -63,9 +63,12 @@ ThemeData _base(ColorScheme scheme){
   // Chips and filters: light blue when selected.
   chipTheme:ChipThemeData(shape:StadiumBorder(side:BorderSide(color:day?scheme.outlineVariant:scheme.outline)),
     selectedColor:scheme.secondaryContainer,checkmarkColor:scheme.onSecondaryContainer),
-  // Main action: a full blue pill; secondary actions: blue text.
+  // Charte des boutons (decision of the project owner, 30 Oct 2026, 2 h 15):
+  // the main action of a screen (Enregistrer, Envoyer, SOS) is a FilledButton,
+  // a full blue pill; every other button is an OutlinedButton, drawn as the
+  // « Tester le réveil » pill: light blue, icon + label, no border.
   filledButtonTheme:FilledButtonThemeData(style:FilledButton.styleFrom(shape:const StadiumBorder())),
-  outlinedButtonTheme:OutlinedButtonThemeData(style:OutlinedButton.styleFrom(shape:const StadiumBorder(),foregroundColor:scheme.primary)),
+  outlinedButtonTheme:OutlinedButtonThemeData(style:secondaryPill(scheme)),
   textButtonTheme:TextButtonThemeData(style:TextButton.styleFrom(foregroundColor:scheme.primary)),
   segmentedButtonTheme:SegmentedButtonThemeData(style:SegmentedButton.styleFrom(selectedBackgroundColor:scheme.secondaryContainer,selectedForegroundColor:scheme.onSecondaryContainer)),
   tabBarTheme:TabBarThemeData(labelColor:scheme.primary,indicatorColor:scheme.primary,unselectedLabelColor:scheme.onSurfaceVariant),
@@ -74,6 +77,13 @@ ThemeData _base(ColorScheme scheme){
     shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(14),side:BorderSide(color:scheme.outlineVariant))),
   );
 }
+
+/// Secondary button of the charte: light blue pill, no border (readable by
+/// night too: dark cyan background, pale cyan text).
+ButtonStyle secondaryPill(ColorScheme s)=>OutlinedButton.styleFrom(shape:const StadiumBorder(),side:BorderSide.none,
+  backgroundColor:s.primaryContainer,foregroundColor:s.onPrimaryContainer,iconColor:s.onPrimaryContainer,
+  disabledBackgroundColor:s.onSurface.withValues(alpha:0.08),disabledForegroundColor:s.onSurface.withValues(alpha:0.38),
+  padding:const EdgeInsets.symmetric(horizontal:18,vertical:10));
 
 /// Panel floating over the map: rounded, bordered, nearly opaque (no blur:
 /// too slow in the web app and on old phones).

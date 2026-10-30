@@ -6,6 +6,7 @@ import 'package:uuid/uuid.dart';
 import '../../l10n/strings.dart';
 import '../../models/comm_group.dart';
 import 'conversations.dart';
+import 'operator_avatar.dart';
 import '../../models/message.dart';
 import '../../models/message_status.dart';
 import '../../models/message_unread.dart';
@@ -20,7 +21,6 @@ import 'photo_attachment.dart';
 import 'message_deletion.dart';
 import '../settings/quick_messages_editor.dart' show defaultQuickMessages;
 import '../dictation/dictation_button.dart';
-import '../bearings/bearing_models.dart' show operatorInitials;
 
 class MessagesPage extends StatefulWidget {
  final SarcadeApi api; final String eventId,actorId; final OfflineSyncService sync; final LocalStore store;
@@ -123,10 +123,14 @@ class _MessagesPageState extends State<MessagesPage>{
      SentStatus.received=>(Icons.done_all,Colors.grey),
      SentStatus.read=>(Icons.done_all,Colors.blue),
    };
-   return Tooltip(message:S.t('messages.status.${status.name}'),child:Row(mainAxisSize:MainAxisSize.min,children:[
+   // One acknowledgement per bubble (30 Oct 2026, 2 h 49): « ✓✓ 3/4 »
+   // (read / received) next to the time, the detail on touch.
+   final sum=ackSummary(m.senderId,acks);
+   return Tooltip(message:S.t('messages.status.${status.name}'),child:InkWell(onTap:several?()=>_showInfo(m,acks):null,child:Row(mainAxisSize:MainAxisSize.min,children:[
      Icon(icon,size:18,color:color),
-     if(several&&readers>0)Padding(padding:const EdgeInsets.only(left:2),child:Text(S.t('messages.readBy',{'n':readers}),style:const TextStyle(fontSize:11,color:Colors.blue))),
-   ]));
+     if(several&&sum.received>0)Padding(padding:const EdgeInsets.only(left:2),child:Text(ackCount(read:readers,received:sum.received),
+       semanticsLabel:S.t('messages.ackSummary',{'r':readers,'n':sum.received}),style:const TextStyle(fontSize:11,color:Color(0xFF53BDEB)))),
+   ])));
  }
  /// « Supprimer pour moi »: hidden on this device only.
  Set<String> get _hidden=>parseHidden(widget.store.preference(hiddenMessagesKey(widget.eventId)));
@@ -328,21 +332,20 @@ class _MessagesPageState extends State<MessagesPage>{
 
  /// Round pastille of a person: the 2–3 letters of its map marker, in its
  /// operator colour.
- Widget _personAvatar(String id,{double r=15})=>CircleAvatar(radius:r,backgroundColor:Color(authorColor(id)),foregroundColor:Colors.white,
-   child:Text(operatorInitials(id),style:TextStyle(fontSize:r*0.72,fontWeight:FontWeight.w700)));
+ Widget _personAvatar(String id,{double r=15})=>operatorAvatar(id,radius:r);
 
  Widget _convIcon(String key,Map<String,CommGroup> by,{double r=18}){
    final g=groupOf(key);
-   final color=key==allKey?const Color(0xFF546E7A):g!=null?Color(by[g]?.color??0xFF546E7A):Color(authorColor(peerOf(key)!));
-   final icon=key==allKey?Icons.campaign_outlined:g!=null?Icons.forum_outlined:null;
+   if(key!=allKey&&g==null)return operatorAvatar(peerOf(key)!,radius:r);
+   final color=key==allKey?const Color(0xFF546E7A):Color(by[g]?.color??0xFF546E7A);
    return CircleAvatar(radius:r,backgroundColor:color,foregroundColor:Colors.white,
-     child:icon!=null?Icon(icon,size:r):Text(peerOf(key)!.characters.take(2).toString().toUpperCase(),style:TextStyle(fontSize:r*0.7,fontWeight:FontWeight.w700)));
+     child:Icon(key==allKey?Icons.campaign_outlined:Icons.forum_outlined,size:r));
  }
 
  /// Computer: list of the conversations on the left (WhatsApp Web): chips
  /// Toutes / Non lues / Favoris and a round search on top; pastille, name,
  /// « Auteur : texte », time on the right, unread count in SARCADE blue.
- Widget _convList(Map<String,CommGroup> by,Map<String,List<SarcadeAck>> acks){
+ Widget _convList(Map<String,CommGroup> by,Map<String,List<SarcadeAck>> acks,{bool search=true}){
    final t=Theme.of(context); final s=t.colorScheme;
    final lastBy=<String,SarcadeMessage>{};
    for(final m in _eventMessages){final k=conversationOf(m,widget.actorId,by);final l=lastBy[k];if(l==null||m.createdAt.isAfter(l.createdAt))lastBy[k]=m;}
@@ -356,10 +359,8 @@ class _MessagesPageState extends State<MessagesPage>{
    Widget chip(String id,String label)=>Padding(padding:const EdgeInsets.only(right:6),child:ChoiceChip(label:Text(label),selected:_filter==id,showCheckmark:false,
      onSelected:(_)=>setState(()=>_filter=id)));
    return Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
-     Padding(padding:const EdgeInsets.fromLTRB(12,10,12,6),child:TextField(onChanged:(v)=>setState(()=>_search=v),
-       decoration:InputDecoration(isDense:true,prefixIcon:const Icon(Icons.search),hintText:S.t('messages.search'),filled:true,
-         fillColor:s.surfaceContainerHigh,border:OutlineInputBorder(borderRadius:BorderRadius.circular(24),borderSide:BorderSide.none)))),
-     Padding(padding:const EdgeInsets.fromLTRB(12,0,12,6),child:Row(children:[
+     if(search)Padding(padding:const EdgeInsets.fromLTRB(12,10,12,6),child:_searchField()),
+     Padding(padding:EdgeInsets.fromLTRB(12,search?0:8,12,6),child:Row(children:[
        chip('all',S.t('messages.filterAll')),chip('unread',S.t('messages.filterUnread')),chip('fav',S.t('messages.filterFav'))])),
      Expanded(child:ListView(children:[for(final k in keys)Builder(builder:(_){
        final last=lastBy[k]; final n=_unreadIn(k,by,acks);
@@ -383,6 +384,22 @@ class _MessagesPageState extends State<MessagesPage>{
          onTap:()=>_open(k));
      })])),
    ]);
+ }
+
+ Widget _searchField(){
+   final s=Theme.of(context).colorScheme;
+   return TextField(onChanged:(v)=>setState(()=>_search=v),
+     decoration:InputDecoration(isDense:true,prefixIcon:const Icon(Icons.search),hintText:S.t('messages.search'),filled:true,
+       fillColor:s.surfaceContainerHigh,border:OutlineInputBorder(borderRadius:BorderRadius.circular(24),borderSide:BorderSide.none)));
+ }
+
+ /// « en attente » only when something is waiting: an orange pastille
+ /// with the number, never « 0 en attente » (30 Oct 2026, 1 h 31).
+ Widget? _pendingPill(){
+   final n=widget.store.pendingCount(); if(n<=0)return null;
+   return Tooltip(message:S.t('messages.pendingN',{'n':n}),child:Container(margin:const EdgeInsets.symmetric(horizontal:6),
+     padding:const EdgeInsets.symmetric(horizontal:8,vertical:2),decoration:BoxDecoration(color:const Color(0xFFE8710A),borderRadius:BorderRadius.circular(12)),
+     child:Text(S.t('messages.pendingN',{'n':n}),style:const TextStyle(color:Colors.white,fontSize:12,fontWeight:FontWeight.w700))));
  }
 
  static String _hm(DateTime t){final l=t.toLocal();String two(int v)=>v.toString().padLeft(2,'0');return '${two(l.hour)}:${two(l.minute)}';}
@@ -451,8 +468,6 @@ class _MessagesPageState extends State<MessagesPage>{
    final photos=m.attachments.where((a)=>a.isImage).toList();
    final urgent=m.priority!='routine'; final immediate=m.priority=='immediate';
    final prio=immediate?s.error:const Color(0xFFE8710A);
-   final sum=ackSummary(m.senderId,ma);
-   final several=peerOf(_conv)==null;
    final grey=_night?const Color(0xFF8696A0):const Color(0xFF667781);
    final myAck=ma.where((a)=>a.actorId==widget.actorId).map((a)=>a.status).toSet();
    if(m.deleted)return _deletedBubble(m,ma,mine:mine,showAuthor:showAuthor,grey:grey);
@@ -473,9 +488,6 @@ class _MessagesPageState extends State<MessagesPage>{
      Text(m.body,style:TextStyle(fontSize:15,height:1.3,color:s.onSurface,fontWeight:_unreadAtOpen.contains(m.id)?FontWeight.bold:null)),
      const SizedBox(height:2),
      Align(alignment:Alignment.bottomRight,widthFactor:1,child:meta),
-     // Sent to several people: who read and received it, detail on touch.
-     if(mine&&several&&sum.received>0)InkWell(onTap:()=>_showInfo(m,ma),child:Padding(padding:const EdgeInsets.only(top:2),
-       child:Text(S.t('messages.ackSummary',{'r':sum.read,'n':sum.received}),style:const TextStyle(fontSize:11,color:Color(0xFF53BDEB))))),
      // Immediate: the acknowledgement stays one touch away.
      if(needsAnswer)Padding(padding:const EdgeInsets.only(top:6),child:Wrap(spacing:6,children:[
        FilledButton(style:FilledButton.styleFrom(backgroundColor:s.error,foregroundColor:s.onError,visualDensity:VisualDensity.compact),
@@ -493,6 +505,7 @@ class _MessagesPageState extends State<MessagesPage>{
          boxShadow:const [BoxShadow(blurRadius:1,offset:Offset(0,1),color:Color(0x22000000))]),
        child:body));
    // Others in a channel: the pastille before the first message of a series.
+   final several=peerOf(_conv)==null;
    final avatar=!mine&&several?Padding(padding:const EdgeInsets.only(right:6,top:2),
      child:showAuthor?_personAvatar(m.senderId):const SizedBox(width:30)):null;
    return Padding(padding:EdgeInsets.fromLTRB(10,showAuthor?6:1,10,1),child:Align(alignment:mine?Alignment.centerRight:Alignment.centerLeft,
@@ -656,10 +669,38 @@ class _MessagesPageState extends State<MessagesPage>{
        PopupMenuItem(value:'adrasec',child:Text(S.t('groups.addAdrasec')))]):null;
      final editGroup=group!=null&&group.canManage(widget.actorId)
        ?IconButton(tooltip:S.t('groups.edit'),onPressed:()=>_editGroup(group),icon:const Icon(Icons.edit_outlined)):null;
+     final pending=_pendingPill();
      if(listOnly){
        return Scaffold(
-         appBar:AppBar(title:Text(S.t('messages.title',{'n':widget.store.pendingCount()})),actions:[newGroup,?adrasec]),
+         appBar:AppBar(title:Row(children:[Text(S.t('tabs.messages')),?pending]),actions:[newGroup,?adrasec]),
          body:_convList(by,acks));
+     }
+     // Computer, like WhatsApp Web (30 Oct 2026, 1 h 31): no title bar, one
+     // line — search, « Nouveau groupe » (+ ADRASEC model) on the left; the
+     // conversation, « Modifier le groupe » and ⋮ on the right.
+     if(wide){
+       final fav=_favConvs.contains(_conv);
+       final more=PopupMenuButton<String>(tooltip:S.t('files.more'),onSelected:(_)=>_toggleFavConv(_conv),itemBuilder:(_)=>[
+         PopupMenuItem(value:'fav',child:ListTile(leading:Icon(fav?Icons.star:Icons.star_border),title:Text(S.t(fav?'messages.unfav':'messages.fav'))))]);
+       return Scaffold(body:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+         SizedBox(height:60,child:Row(children:[
+           SizedBox(width:360,child:Padding(padding:const EdgeInsets.fromLTRB(12,8,4,8),child:Row(children:[
+             Expanded(child:_searchField()),newGroup,?adrasec]))),
+           const VerticalDivider(width:1),
+           const SizedBox(width:12),
+           _convIcon(_conv,by),const SizedBox(width:12),
+           Flexible(child:Text(_convName(_conv,by),overflow:TextOverflow.ellipsis,style:Theme.of(context).textTheme.titleMedium)),
+           ?pending,
+           const Spacer(),
+           ?editGroup,more,const SizedBox(width:4),
+         ])),
+         const Divider(height:1),
+         Expanded(child:Row(children:[
+           SizedBox(width:360,child:_convList(by,acks,search:false)),
+           const VerticalDivider(width:1),
+           Expanded(child:_chat(by,acks)),
+         ])),
+       ]));
      }
      final back=!wide&&widget.initialPeer==null&&widget.initialText==null;
      return Scaffold(
@@ -668,20 +709,11 @@ class _MessagesPageState extends State<MessagesPage>{
          titleSpacing:back?0:null,
          title:Row(children:[
            if(!wide)...[_convIcon(_conv,by,r:18),const SizedBox(width:10)],
-           Expanded(child:Text(wide?S.t('messages.title',{'n':widget.store.pendingCount()}):_convName(_conv,by),overflow:TextOverflow.ellipsis)),
+           Flexible(child:Text(_convName(_conv,by),overflow:TextOverflow.ellipsis)),
+           ?pending,
          ]),
-         actions:wide?[?editGroup,newGroup,?adrasec]:[?editGroup]),
-       body:wide
-         ? Row(children:[
-             SizedBox(width:360,child:_convList(by,acks)),
-             const VerticalDivider(width:1),
-             Expanded(child:Column(children:[
-               Material(elevation:0,child:ListTile(leading:_convIcon(_conv,by),title:Text(_convName(_conv,by),style:Theme.of(context).textTheme.titleMedium))),
-               const Divider(height:1),
-               Expanded(child:_chat(by,acks)),
-             ])),
-           ])
-         : _chat(by,acks),
+         actions:[?editGroup]),
+       body:_chat(by,acks),
      );
    });
  }

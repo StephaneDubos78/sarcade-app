@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'ui/overlay_page.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
@@ -106,8 +107,11 @@ class _SarcadeAppState extends State<SarcadeApp> {
     readServers:_readServers,saveServers:_saveServers,
     api:firstRun?null:_apiFor(_config),store:widget.store,
     onThemeChanged:(m)=>widget.store.setPreference('theme_mode',themeModeName(m)),
-    onOpenLogbook:firstRun?null:()=>_navigator.currentState?.push(MaterialPageRoute(
-      builder:(_)=>LogbookPage(api:_apiFor(_config),eventId:_config.eventId))),
+    onOpenLogbook:firstRun?null:(){
+      // A window over Paramètres (« façon Google Play Console », 30 Oct 2026).
+      final c=_navigator.currentState?.overlay?.context;
+      if(c!=null)showOverlayPage<void>(c,(_)=>LogbookPage(api:_apiFor(_config),eventId:_config.eventId));
+    },
   );
 
   Future<List<Map<String,dynamic>>> _loadEvents(String server) async {

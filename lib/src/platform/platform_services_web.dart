@@ -188,3 +188,32 @@ Stream<CompassReading>? compassReadings(){
 
 /// The browser does not give the local address (Paramètres › Diagnostic).
 Future<List<String>> localAddresses() async=>const [];
+
+/// Files dropped from the computer's file manager onto the browser window
+/// (« Fichiers, glisser-déposer », 30 Oct 2026): HTML drag and drop, no
+/// package. Each drop gives its files (name and content).
+Stream<List<({String name,List<int> bytes})>> desktopFileDrops(){
+  late final StreamController<List<({String name,List<int> bytes})>> c;
+  bool hasFiles(web.DragEvent e){
+    final types=e.dataTransfer?.types.toDart??const <JSString>[];
+    return types.any((t)=>t.toDart=='Files');
+  }
+  final over=((web.DragEvent e){if(hasFiles(e)){e.preventDefault();e.dataTransfer?.dropEffect='copy';}}).toJS;
+  Future<void> read(web.FileList list) async {
+    final out=<({String name,List<int> bytes})>[];
+    for(var i=0;i<list.length;i++){
+      final f=list.item(i); if(f==null)continue;
+      try{out.add((name:f.name,bytes:(await f.arrayBuffer().toDart).toDart.asUint8List()));}catch(_){}
+    }
+    if(out.isNotEmpty&&!c.isClosed)c.add(out);
+  }
+  final drop=((web.DragEvent e){
+    final list=e.dataTransfer?.files; if(list==null||list.length==0)return;
+    e.preventDefault();
+    unawaited(read(list));
+  }).toJS;
+  c=StreamController<List<({String name,List<int> bytes})>>(
+    onListen:(){web.window.addEventListener('dragover',over);web.window.addEventListener('drop',drop);},
+    onCancel:(){web.window.removeEventListener('dragover',over);web.window.removeEventListener('drop',drop);});
+  return c.stream;
+}

@@ -9,6 +9,7 @@
 /// « Infos du point ».
 library;
 
+import '../../ui/choice_pills.dart';
 import 'dart:async';
 import 'dart:convert';
 
@@ -158,9 +159,9 @@ class _CoordinateConverterPageState extends State<CoordinateConverterPage> {
     final invalid=_text.text.trim().isNotEmpty&&parseCoordinates(_text.text)==null;
     return Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
       Row(children:[
-        Expanded(child:SegmentedButton<bool>(segments:[
-          ButtonSegment(value:false,label:Text(S.t('converter.free'))),ButtonSegment(value:true,label:Text(S.t('converter.fields')))],
-          selected:{_fields},onSelectionChanged:(v)=>setState(()=>_fields=v.first))),
+        Expanded(child:ChoicePills<bool>(choices:[
+          (value:false,label:S.t('converter.free'),icon:null),(value:true,label:S.t('converter.fields'),icon:null)],
+          selected:_fields,onSelected:(v)=>setState(()=>_fields=v))),
       ]),
       const SizedBox(height:10),
       if(!_fields)TextField(key:const ValueKey('converter-input'),controller:_text,autofocus:widget.initial==null&&widget.location==null,onChanged:(_)=>setState((){}),
@@ -259,7 +260,7 @@ class _CoordinateConverterPageState extends State<CoordinateConverterPage> {
         if(_history.isNotEmpty)...[
           const SizedBox(height:20),
           Row(children:[Expanded(child:Text(S.t('converter.history'),style:t.textTheme.titleSmall)),
-            TextButton(onPressed:(){setState(()=>_history=[]);unawaited(widget.store?.setPreference(_historyKey,null));},child:Text(S.t('converter.historyClear')))]),
+            OutlinedButton(onPressed:(){setState(()=>_history=[]);unawaited(widget.store?.setPreference(_historyKey,null));},child:Text(S.t('converter.historyClear')))]),
           for(final h in _history)ListTile(dense:true,leading:const Icon(Icons.history),
             title:Text('${h['label']??''}',maxLines:1,overflow:TextOverflow.ellipsis),
             subtitle:Text(formatDd(LatLng((h['lat'] as num).toDouble(),(h['lon'] as num).toDouble()))),

@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../../ui/overlay_page.dart';
+import '../../ui/choice_pills.dart';
 import 'package:flutter/services.dart';
 import '../../access/access_login_page.dart';
 import '../../access/access_manager.dart';
@@ -178,7 +180,7 @@ class _SettingsPageState extends State<SettingsPage> {
           if(canRemoveServer(current))IconButton(tooltip:S.t('servers.remove'),onPressed:()=>_removeServer(current),icon:const Icon(Icons.delete_outline)),
         ],
       ]),
-      Align(alignment:Alignment.centerLeft,child:TextButton.icon(onPressed:_addServer,icon:const Icon(Icons.add),label:Text(S.t('servers.add')))),
+      Align(alignment:Alignment.centerLeft,child:OutlinedButton.icon(onPressed:_addServer,icon:const Icon(Icons.add),label:Text(S.t('servers.add')))),
     ]);
   }
 
@@ -221,8 +223,8 @@ class _SettingsPageState extends State<SettingsPage> {
     return Padding(padding:const EdgeInsets.only(top:8),child:Wrap(crossAxisAlignment:WrapCrossAlignment.center,spacing:8,children:[
       Icon(expired?Icons.lock_outline:Icons.lock_open,size:18,color:color),
       Text(text,style:TextStyle(color:color)),
-      TextButton(onPressed:_signIn,child:Text(S.t(session==null?'access.signIn':'access.signInAgain'))),
-      if(session!=null)TextButton(onPressed:() async {await AccessManager.instance.signOut(server);if(mounted)setState((){});},child:Text(S.t('access.signOut'))),
+      OutlinedButton(onPressed:_signIn,child:Text(S.t(session==null?'access.signIn':'access.signInAgain'))),
+      if(session!=null)OutlinedButton(onPressed:() async {await AccessManager.instance.signOut(server);if(mounted)setState((){});},child:Text(S.t('access.signOut'))),
     ]));
   }
 
@@ -341,7 +343,7 @@ class _SettingsPageState extends State<SettingsPage> {
   /// Read-only value with an optional text action on the right (« Ouvrir »).
   Widget _value(String text,{String? action,VoidCallback? onAction})=>Row(children:[
     Expanded(child:SelectableText(text)),
-    if(action!=null)TextButton(onPressed:onAction,child:Text(action)),
+    if(action!=null)OutlinedButton(onPressed:onAction,child:Text(action)),
   ]);
 
   /// Compact field on the right of a row (label inside, read by screen
@@ -436,15 +438,14 @@ class _SettingsPageState extends State<SettingsPage> {
   Widget _displayTab()=>Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
     // Applied at once, kept on the device (not part of the saved form).
     _row(S.t('settings.theme'),help:S.t('settings.themeHelp'),child:ValueListenableBuilder<ThemeMode>(valueListenable:themeMode,
-      builder:(context,mode,_)=>Align(alignment:Alignment.centerLeft,child:SegmentedButton<ThemeMode>(
-        showSelectedIcon:false,
-        segments:[
-          ButtonSegment(value:ThemeMode.light,icon:const Icon(Icons.light_mode_outlined,size:18),label:Text(S.t('settings.themeDay'))),
-          ButtonSegment(value:ThemeMode.dark,icon:const Icon(Icons.dark_mode_outlined,size:18),label:Text(S.t('settings.themeNight'))),
-          ButtonSegment(value:ThemeMode.system,icon:const Icon(Icons.brightness_auto_outlined,size:18),label:Text(S.t('settings.themeAuto'))),
+      builder:(context,mode,_)=>Align(alignment:Alignment.centerLeft,child:ChoicePills<ThemeMode>(
+        choices:[
+          (value:ThemeMode.light,icon:Icons.light_mode_outlined,label:S.t('settings.themeDay')),
+          (value:ThemeMode.dark,icon:Icons.dark_mode_outlined,label:S.t('settings.themeNight')),
+          (value:ThemeMode.system,icon:Icons.brightness_auto_outlined,label:S.t('settings.themeAuto')),
         ],
-        selected:{mode},
-        onSelectionChanged:(v){themeMode.value=v.first;widget.onThemeChanged?.call(v.first);},
+        selected:mode,
+        onSelected:(v){themeMode.value=v;widget.onThemeChanged?.call(v);},
       )))),
     _row(S.t('settings.languageRow'),child:_compact(DropdownButtonFormField<String>(
       initialValue:_language,isExpanded:true,
@@ -501,19 +502,12 @@ class _SettingsPageState extends State<SettingsPage> {
     'event'=>Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
       EventSettingsSection(api:widget.api!,eventId:widget.initial.eventId,actorId:widget.initial.deviceId),
       // Default frequencies of the bearing tool: administrator only.
-      if(myRoles.contains('admin'))_row(S.t('signals.title'),help:S.t('signals.rowHelp'),child:Align(alignment:Alignment.centerLeft,child:FilledButton.tonal(
-        onPressed:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>SignalDefaultsPage(api:widget.api!,store:widget.store))),
+      if(myRoles.contains('admin'))_row(S.t('signals.title'),help:S.t('signals.rowHelp'),child:Align(alignment:Alignment.centerRight,child:OutlinedButton(
+        onPressed:()=>showOverlayPage<void>(context,(_)=>SignalDefaultsPage(api:widget.api!,store:widget.store)),
         child:Text(S.t('signals.manage'))))),
     ]),
     _=>const Padding(padding:EdgeInsets.only(top:16),child:SarcadeAboutContent()),
   };
-
-  /// Status line under the title: the active session, « • » separated.
-  String get _status=>[
-    if(widget.initial.serverUrl.isNotEmpty)Uri.tryParse(widget.initial.serverUrl)?.host??widget.initial.serverUrl,
-    if(widget.initial.eventId.isNotEmpty)S.t('settings.statusEvent',{'v':widget.initial.eventId}),
-    if(widget.initial.deviceId.isNotEmpty)S.t('settings.statusDevice',{'v':widget.initial.deviceId}),
-  ].join('  •  ');
 
   void _cancel(){
     final i=widget.initial;
@@ -552,10 +546,10 @@ class _SettingsPageState extends State<SettingsPage> {
         child:Form(key:_form,onChanged:widget.firstRun?null:_touch,child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
           Padding(padding:const EdgeInsets.fromLTRB(20,0,20,4),child:Text(widget.firstRun?S.t('settings.firstRun'):S.t('settings.title'),
             style:t.textTheme.headlineMedium)),
-          Padding(padding:const EdgeInsets.symmetric(horizontal:20),child:Text(S.t(widget.firstRun?'settings.subtitleFirst':'settings.subtitle'),
+          // « En-tête allégé » (30 Oct 2026, 2 h 56): no lines under the
+          // title; server, event and terminal stay in Diagnostic.
+          if(widget.firstRun)Padding(padding:const EdgeInsets.symmetric(horizontal:20),child:Text(S.t('settings.subtitleFirst'),
             style:t.textTheme.bodyMedium?.copyWith(color:t.colorScheme.onSurfaceVariant))),
-          if(!widget.firstRun&&_status.isNotEmpty)Padding(padding:const EdgeInsets.fromLTRB(20,8,20,0),child:Text(_status,
-            style:t.textTheme.bodySmall?.copyWith(color:t.colorScheme.onSurfaceVariant))),
           const SizedBox(height:8),
           // Underlined tabs; every tab stays built so that the form keeps
           // and validates all its fields.

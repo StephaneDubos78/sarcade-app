@@ -1,5 +1,7 @@
 import '../../l10n/strings.dart';
 import 'package:file_picker/file_picker.dart';
+import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../../models/comm_group.dart' show isPco;
 import '../../models/message.dart';
@@ -40,8 +42,9 @@ class _FilesPageState extends State<FilesPage> with SingleTickerProviderStateMix
   /// Folders of the event: the PCO organises them; personal: the owner.
   bool get _canOrganise=>_personalTab||isPco(widget.actorId);
 
-  @override void initState(){super.initState();_load();_loadPersonal();}
-  @override void dispose(){_search.dispose();_tabs.dispose();super.dispose();}
+  StreamSubscription<List<({String name,List<int> bytes})>>? _drops;
+  @override void initState(){super.initState();_load();_loadPersonal();_drops=desktopFileDrops().listen(_dropped);}
+  @override void dispose(){_drops?.cancel();_search.dispose();_tabs.dispose();super.dispose();}
 
   Future<void> _load() async {
     try{
@@ -83,12 +86,93 @@ class _FilesPageState extends State<FilesPage> with SingleTickerProviderStateMix
 
   Future<void> _import() async {
     final p=await _pick(); if(p==null)return;
+    await _upload([p]);
+  }
+
+  /// Uploads into the open folder; true when every file went.
+  Future<bool> _upload(List<({String name,List<int> bytes})> files) async {
     setState(()=>_uploading=true);
     try{
-      if(_personalTab){await widget.api.uploadPersonalFile(p.name,p.bytes,folder:_path);await _loadPersonal();}
-      else{await widget.api.uploadFile(widget.eventId,widget.actorId,p.name,'application/octet-stream',p.bytes,folder:_path);await _load();}
-    }catch(e){if(mounted)_say(e is SarcadeHttpException&&e.body.contains('quota')?S.t('files.quotaFull'):S.t('files.uploadFailed',{'error':e is SarcadeHttpException?e.statusCode:e}));}
+      for(final p in files){
+        if(_personalTab){await widget.api.uploadPersonalFile(p.name,p.bytes,folder:_path);}
+        else{await widget.api.uploadFile(widget.eventId,widget.actorId,p.name,'application/octet-stream',p.bytes,folder:_path);}
+      }
+      await _reload();
+      return true;
+    }catch(e){if(mounted)_say(e is SarcadeHttpException&&e.body.contains('quota')?S.t('files.quotaFull'):S.t('files.uploadFailed',{'error':e is SarcadeHttpException?e.statusCode:e}));return false;}
     finally{if(mounted)setState(()=>_uploading=false);}
+  }
+
+  /// Files dropped from the Explorer or the desktop: imported into the
+  /// open folder (validated on 30 Oct 2026, 2 h 44).
+  Future<void> _dropped(List<({String name,List<int> bytes})> files) async {
+    if(!mounted||_uploading)return;
+    final ok=[for(final f in files)if(f.bytes.length<=25*1024*1024)f];
+    if(ok.length<files.length)_say(S.t('files.tooLarge'));
+    if(ok.isEmpty)return;
+    final where=_path.isEmpty?S.t(_personalTab?'files.tabPersonal':'files.tabEvent'):folderLabel(_path);
+    if(await _upload(ok)&&mounted)_say(S.t('files.dropImported',{'n':ok.length,'name':where}));
+  }
+
+  /// Drag and drop between folders (« Fichiers, glisser-déposer »): same
+  /// rights as « Déplacer », a « Déplacé dans X » message with Annuler.
+  bool _canDrop(_Drag d,String to){
+    if(d.personal!=_personalTab||!_canOrganise)return false;
+    final f=d.file;
+    if(f!=null)return normalFolder(f.folder)!=to;
+    final from=d.folder!;
+    if(to==from||to.startsWith('$from/')||parentFolder(from)==to)return false;
+    return folderDepth(to)+1+_subDepth(from)<=maxFolderDepth;
+  }
+
+  Future<void> _dropOn(_Drag d,String to) async {
+    final ev=_eventIdOrNull; final actor=_personalTab?null:widget.actorId;
+    final where=to.isEmpty?S.t(_personalTab?'files.tabPersonal':'files.tabEvent'):folderLabel(to);
+    Future<void> Function() undo;
+    try{
+      final f=d.file;
+      if(f!=null){
+        final back=normalFolder(f.folder);
+        await widget.api.moveFile(ev,f.id,folder:to,actorId:actor);
+        undo=()=>widget.api.moveFile(ev,f.id,folder:back,actorId:actor);
+      }else{
+        final from=d.folder!, dest=joinFolder(to,folderName(from));
+        await widget.api.moveFolder(ev,from,dest,actorId:actor);
+        undo=()=>widget.api.moveFolder(ev,dest,from,actorId:actor);
+      }
+      await _reload();
+    }catch(e){if(mounted)_say(_errorText(e));return;}
+    if(!mounted)return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(S.t('files.movedTo',{'name':where})),
+      action:SnackBarAction(label:S.t('common.undo'),onPressed:()=>unawaited(_run(undo)))));
+  }
+
+  /// Phones and tablets: long press then drag; computers: the mouse.
+  bool get _touch=>defaultTargetPlatform==TargetPlatform.android||defaultTargetPlatform==TargetPlatform.iOS;
+
+  Widget _draggable(_Drag d,{required IconData icon,required Color color,required String label,required Widget child}){
+    if(!_canOrganise)return child;
+    final feedback=Material(elevation:6,borderRadius:BorderRadius.circular(12),color:Theme.of(context).colorScheme.surfaceContainerHigh,
+      child:Padding(padding:const EdgeInsets.symmetric(horizontal:12,vertical:8),child:Row(mainAxisSize:MainAxisSize.min,children:[
+        Icon(icon,color:color,size:22),const SizedBox(width:8),
+        ConstrainedBox(constraints:const BoxConstraints(maxWidth:240),child:Text(label,maxLines:1,overflow:TextOverflow.ellipsis)),
+      ])));
+    final faded=Opacity(opacity:0.4,child:child);
+    return _touch?LongPressDraggable<_Drag>(data:d,feedback:feedback,childWhenDragging:faded,child:child)
+      :Draggable<_Drag>(data:d,feedback:feedback,childWhenDragging:faded,child:child);
+  }
+
+  /// A folder that accepts a drop: highlighted while something is over it.
+  Widget _target(String folder,Widget Function(bool over) build)=>DragTarget<_Drag>(
+    onWillAcceptWithDetails:(e)=>_canDrop(e.data,folder),
+    onAcceptWithDetails:(e)=>unawaited(_dropOn(e.data,folder)),
+    builder:(c,cand,_)=>build(cand.isNotEmpty));
+
+  Widget _hl(bool over,Widget child,{double radius=8}){
+    if(!over)return child;
+    final s=Theme.of(context).colorScheme;
+    return DecoratedBox(decoration:BoxDecoration(color:s.primaryContainer,borderRadius:BorderRadius.circular(radius),
+      border:Border.all(color:s.primary,width:2)),child:child);
   }
 
   Future<String?> _askName(String title,{String initial=''}) async {
@@ -206,18 +290,21 @@ class _FilesPageState extends State<FilesPage> with SingleTickerProviderStateMix
     if(_wide&&!_grid)return _details(folders,files,showFolder:showFolder);
     if(_grid){
       return GridView.extent(maxCrossAxisExtent:180,padding:const EdgeInsets.fromLTRB(12,8,12,96),mainAxisSpacing:10,crossAxisSpacing:10,childAspectRatio:1.05,children:[
-        for(final f in folders)_tile(icon:_kindIcon((icon:Icons.folder,color:folderColor),size:56),title:folderLabel(f),subtitle:'',onTap:()=>_select(_personalTab,f),menu:_folderMenu(f)),
-        for(final f in files)_tile(icon:_kindIcon(fileKind(f),size:56),title:f.name,subtitle:'${_size(f.sizeBytes)} · ${_date(f.createdAt)}',onTap:()=>_open(f),menu:_fileMenu(f)),
+        for(final f in folders)_target(f,(over)=>_hl(over,radius:16,_draggable((file:null,folder:f,personal:_personalTab),icon:Icons.folder,color:folderColor,label:folderLabel(f),
+          child:_tile(icon:_kindIcon((icon:Icons.folder,color:folderColor),size:56),title:folderLabel(f),subtitle:'',onTap:()=>_select(_personalTab,f),menu:_folderMenu(f))))),
+        for(final f in files)_draggable((file:f,folder:null,personal:_personalTab),icon:fileKind(f).icon,color:fileKind(f).color,label:f.name,
+          child:_tile(icon:_kindIcon(fileKind(f),size:56),title:f.name,subtitle:'${_size(f.sizeBytes)} · ${_date(f.createdAt)}',onTap:()=>_open(f),menu:_fileMenu(f))),
       ]);
     }
     return ListView(padding:const EdgeInsets.only(bottom:96),children:[
-      for(final f in folders)ListTile(leading:_kindIcon((icon:Icons.folder,color:folderColor)),title:Text(folderLabel(f),style:const TextStyle(fontWeight:FontWeight.w500)),
+      for(final f in folders)_target(f,(over)=>_hl(over,_draggable((file:null,folder:f,personal:_personalTab),icon:Icons.folder,color:folderColor,label:folderLabel(f),
+        child:ListTile(leading:_kindIcon((icon:Icons.folder,color:folderColor)),title:Text(folderLabel(f),style:const TextStyle(fontWeight:FontWeight.w500)),
         subtitle:Text(S.t('files.folderCount',{'n':_currentFiles.where((x)=>normalFolder(x.folder)==f||normalFolder(x.folder).startsWith('$f/')).length})),
-        onTap:()=>_select(_personalTab,f),trailing:_folderMenu(f)),
-      for(final f in files)ListTile(leading:_kindIcon(fileKind(f)),title:Text(f.name,maxLines:1,overflow:TextOverflow.ellipsis),
+        onTap:()=>_select(_personalTab,f),trailing:_folderMenu(f))))),
+      for(final f in files)_draggable((file:f,folder:null,personal:_personalTab),icon:fileKind(f).icon,color:fileKind(f).color,label:f.name,child:ListTile(leading:_kindIcon(fileKind(f)),title:Text(f.name,maxLines:1,overflow:TextOverflow.ellipsis),
         subtitle:Text([if(showFolder&&normalFolder(f.folder).isNotEmpty)folderLabel(normalFolder(f.folder)),if(!_personalTab)f.senderId,_size(f.sizeBytes),_date(f.createdAt)].join(' · '),
           style:t.textTheme.bodySmall?.copyWith(color:t.colorScheme.onSurfaceVariant)),
-        onTap:()=>_open(f),trailing:_fileMenu(f)),
+        onTap:()=>_open(f),trailing:_fileMenu(f))),
     ]);
   }
 
@@ -271,12 +358,14 @@ class _FilesPageState extends State<FilesPage> with SingleTickerProviderStateMix
           const SizedBox(width:48),
         ])),
       Expanded(child:ListView(padding:const EdgeInsets.only(bottom:96),children:[
-        for(final f in dirs)row(icon:const Icon(Icons.folder,color:folderColor,size:22),name:folderLabel(f),type:S.t('files.typeFolder'),
+        for(final f in dirs)_target(f,(over)=>_hl(over,_draggable((file:null,folder:f,personal:_personalTab),icon:Icons.folder,color:folderColor,label:folderLabel(f),
+          child:row(icon:const Icon(Icons.folder,color:folderColor,size:22),name:folderLabel(f),type:S.t('files.typeFolder'),
           size:S.t('files.folderCount',{'n':_currentFiles.where((x)=>normalFolder(x.folder)==f||normalFolder(x.folder).startsWith('$f/')).length}),date:'',
-          onTap:()=>_select(_personalTab,f),menu:_folderMenu(f)),
-        for(final f in sorted)row(icon:Icon(fileKind(f).icon,color:fileKind(f).color,size:22),name:f.name,type:_type(f),size:_size(f.sizeBytes),
+          onTap:()=>_select(_personalTab,f),menu:_folderMenu(f))))),
+        for(final f in sorted)_draggable((file:f,folder:null,personal:_personalTab),icon:fileKind(f).icon,color:fileKind(f).color,label:f.name,
+          child:row(icon:Icon(fileKind(f).icon,color:fileKind(f).color,size:22),name:f.name,type:_type(f),size:_size(f.sizeBytes),
           date:_date(f.createdAt),folder:showFolder&&normalFolder(f.folder).isNotEmpty?folderLabel(normalFolder(f.folder)):null,
-          onTap:()=>_open(f),menu:_fileMenu(f)),
+          onTap:()=>_open(f),menu:_fileMenu(f))),
       ])),
     ]);
   }
@@ -302,16 +391,8 @@ class _FilesPageState extends State<FilesPage> with SingleTickerProviderStateMix
       final kids=childFolders(folders,path);
       final open=_expanded.contains(key);
       final selected=_tabs.index==(personal?1:0)&&(personal?_personalPath:_eventPath)==path;
-      rows.add(Material(color:selected?s.primaryContainer.withValues(alpha:0.6):Colors.transparent,borderRadius:BorderRadius.circular(8),
-        child:InkWell(borderRadius:BorderRadius.circular(8),onTap:()=>_select(personal,path),child:SizedBox(height:36,child:Row(children:[
-          SizedBox(width:8.0+depth*16),
-          SizedBox(width:24,child:kids.isEmpty?null:InkWell(customBorder:const CircleBorder(),
-            onTap:()=>setState((){if(open){_expanded.remove(key);}else{_expanded.add(key);}}),
-            child:Icon(open?Icons.expand_more:Icons.chevron_right,size:20,color:s.onSurfaceVariant))),
-          Icon(icon,size:20,color:path.isEmpty?s.primary:folderColor),const SizedBox(width:8),
-          Expanded(child:Text(label,maxLines:1,overflow:TextOverflow.ellipsis,
-            style:TextStyle(fontWeight:selected||path.isEmpty?FontWeight.w600:FontWeight.w400))),
-        ])))));
+      final same=_tabs.index==(personal?1:0);
+      rows.add(!same?_treeRow(selected,s,personal,path,depth,kids,open,key,icon,label):_target(path,(over)=>_hl(over,_treeRow(selected,s,personal,path,depth,kids,open,key,icon,label))));
       if(open){for(final k in kids){node(personal:personal,path:k,label:folderLabel(k),icon:Icons.folder,folders:folders,depth:depth+1);}}
     }
     node(personal:false,path:'',label:S.t('files.tabEvent'),icon:Icons.groups_outlined,folders:_folders);
@@ -320,6 +401,19 @@ class _FilesPageState extends State<FilesPage> with SingleTickerProviderStateMix
         folders:allFolders(_personal!.folders,_personal!.files));
     }
     return ListView(padding:const EdgeInsets.all(8),children:rows);
+  }
+
+  Widget _treeRow(bool selected,ColorScheme s,bool personal,String path,int depth,List<String> kids,bool open,String key,IconData icon,String label){
+      return Material(color:selected?s.primaryContainer.withValues(alpha:0.6):Colors.transparent,borderRadius:BorderRadius.circular(8),
+        child:InkWell(borderRadius:BorderRadius.circular(8),onTap:()=>_select(personal,path),child:SizedBox(height:36,child:Row(children:[
+          SizedBox(width:8.0+depth*16),
+          SizedBox(width:24,child:kids.isEmpty?null:InkWell(customBorder:const CircleBorder(),
+            onTap:()=>setState((){if(open){_expanded.remove(key);}else{_expanded.add(key);}}),
+            child:Icon(open?Icons.expand_more:Icons.chevron_right,size:20,color:s.onSurfaceVariant))),
+          Icon(icon,size:20,color:path.isEmpty?s.primary:folderColor),const SizedBox(width:8),
+          Expanded(child:Text(label,maxLines:1,overflow:TextOverflow.ellipsis,
+            style:TextStyle(fontWeight:selected||path.isEmpty?FontWeight.w600:FontWeight.w400))),
+        ]))));
   }
 
   Widget _tile({required Widget icon,required String title,required String subtitle,required VoidCallback onTap,Widget? menu})=>Card(elevation:0,
@@ -354,7 +448,10 @@ class _FilesPageState extends State<FilesPage> with SingleTickerProviderStateMix
       Expanded(child:SingleChildScrollView(scrollDirection:Axis.horizontal,reverse:true,child:Row(children:[
         for(var i=0;i<crumbs.length;i++)...[
           if(i>0)Icon(Icons.chevron_right,size:18,color:t.colorScheme.onSurfaceVariant),
-          TextButton(onPressed:i==crumbs.length-1?null:()=>setState(()=>_path=crumbs[i].path),
+          if(i<crumbs.length-1)_target(crumbs[i].path,(over)=>_hl(over,TextButton(onPressed:()=>setState(()=>_path=crumbs[i].path),
+            style:TextButton.styleFrom(padding:const EdgeInsets.symmetric(horizontal:6)),
+            child:Text(crumbs[i].label,style:const TextStyle(fontWeight:FontWeight.w500)))))
+          else TextButton(onPressed:null,
             style:TextButton.styleFrom(padding:const EdgeInsets.symmetric(horizontal:6),disabledForegroundColor:t.colorScheme.onSurface),
             child:Text(crumbs[i].label,style:TextStyle(fontWeight:i==crumbs.length-1?FontWeight.w700:FontWeight.w500))),
         ],
@@ -375,7 +472,7 @@ class _FilesPageState extends State<FilesPage> with SingleTickerProviderStateMix
     if(_loading)return const Center(child:CircularProgressIndicator());
     if(_error!=null){
       return Center(child:Padding(padding:const EdgeInsets.all(24),child:Column(mainAxisSize:MainAxisSize.min,children:[
-        Text(S.t('event.offline')),TextButton(onPressed:_load,child:Text(S.t('common.retry')))])));
+        Text(S.t('event.offline')),OutlinedButton(onPressed:_load,child:Text(S.t('common.retry')))])));
     }
     final photos=_photoIds; final q=_search.text.trim();
     final searching=q.isNotEmpty||_messagePhotos;
@@ -448,3 +545,6 @@ class _FilesPageState extends State<FilesPage> with SingleTickerProviderStateMix
     });
   }
 }
+
+/// What is dragged: a file or a folder, of the Événement or Personnel root.
+typedef _Drag=({SarcadeSharedFile? file,String? folder,bool personal});

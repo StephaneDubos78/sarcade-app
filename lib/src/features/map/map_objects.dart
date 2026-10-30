@@ -9,7 +9,7 @@ import '../../models/position.dart';
 
 /// « Voir la liste » under the « Points d'intérêt (n) » line.
 Widget poiSeeListLink(BuildContext c,{required VoidCallback onTap})=>Padding(padding:const EdgeInsets.only(left:8),
-  child:Align(alignment:Alignment.centerLeft,child:TextButton.icon(key:const ValueKey('poi-see-list'),onPressed:onTap,
+  child:Align(alignment:Alignment.centerLeft,child:OutlinedButton.icon(key:const ValueKey('poi-see-list'),onPressed:onTap,
     icon:const Icon(Icons.list,size:18),label:Text(S.t('poi.seeList')))));
 
 /// Stations whose trace is drawn: the pinned ones, and with « Toutes les

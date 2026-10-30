@@ -84,3 +84,19 @@ String dayLabel(DateTime t,DateTime now,{required String today,required String y
   String two(int v)=>v.toString().padLeft(2,'0');
   return '${two(l.day)}/${two(l.month)}/${l.year}';
 }
+
+/// Round avatar letters (« Messages, avatar rond », 30 Oct 2026): 2 or 3
+/// letters from the shown name or the callsign — « device-demo » → DD,
+/// « PCO-Web » → PW, « F4JPO » → JPO (the suffix of a callsign).
+String avatarInitials(String id){
+  final t=id.trim();
+  final call=RegExp(r'^[A-Z0-9]{1,3}[0-9]([A-Z]{1,4})(-[0-9]{1,2})?$',caseSensitive:false).firstMatch(t);
+  if(call!=null){final suf=call.group(1)!.toUpperCase();return suf.length>3?suf.substring(0,3):suf;}
+  final words=t.split(RegExp(r'[^A-Za-z0-9]+')).where((w)=>w.isNotEmpty).toList();
+  if(words.length>=2)return words.take(3).map((w)=>w[0]).join().toUpperCase();
+  final w=words.isEmpty?'?':words.first.toUpperCase();
+  return w.length<=2?w:w.substring(0,2);
+}
+
+/// « 3/4 »: read by 3 of the 4 who received it (« 4 » alone when nobody read).
+String ackCount({required int read,required int received})=>read>0?'$read/$received':'$received';

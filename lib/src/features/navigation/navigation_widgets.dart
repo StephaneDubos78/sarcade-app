@@ -60,7 +60,7 @@ class NavigationCard extends StatelessWidget {
           onPressed:()=>nav.chooseAlternative(i)),
       ])),
       if(nav.state==NavState.active&&(onRecentre!=null||onRotate!=null))Padding(padding:const EdgeInsets.only(top:4),child:Wrap(spacing:6,crossAxisAlignment:WrapCrossAlignment.center,children:[
-        if(!following&&onRecentre!=null)FilledButton.tonalIcon(onPressed:onRecentre,icon:const Icon(Icons.my_location,size:18),label:Text(S.t('nav.recentre'))),
+        if(!following&&onRecentre!=null)OutlinedButton.icon(onPressed:onRecentre,icon:const Icon(Icons.my_location,size:18),label:Text(S.t('nav.recentre'))),
         if(onRotate!=null&&rotate!=null)FilterChip(selected:rotate!,onSelected:onRotate,avatar:const Icon(Icons.explore,size:18),label:Text(S.t('nav.rotate'))),
       ])),
       if(nav.notice!=null)Padding(padding:const EdgeInsets.only(top:6),child:Text(S.t('nav.notice.${nav.notice}'),style:theme.textTheme.bodySmall?.copyWith(color:nav.notice=='on_device'?null:theme.colorScheme.error))),

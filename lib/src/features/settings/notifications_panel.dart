@@ -1,4 +1,5 @@
 import 'dart:async';
+import '../../ui/choice_pills.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -87,11 +88,10 @@ class _NotificationsPanelState extends State<NotificationsPanel> with WidgetsBin
     ]);
   }
 
-  Widget _segments(String priority)=>Align(alignment:Alignment.centerLeft,child:SegmentedButton<String>(
-    showSelectedIcon:false,
-    segments:[for(final c in soundChoices[priority]!)ButtonSegment(value:c,label:Text(S.t('sound.$c')))],
-    selected:{_sounds[priority]??soundDefaults[priority]!},
-    onSelectionChanged:(v)=>unawaited(_setSound(priority,v.first)),
+  Widget _segments(String priority)=>Align(alignment:Alignment.centerLeft,child:ChoicePills<String>(
+    choices:[for(final c in soundChoices[priority]!)(value:c,label:S.t('sound.$c'),icon:null)],
+    selected:_sounds[priority]??soundDefaults[priority]!,
+    onSelected:(v)=>unawaited(_setSound(priority,v)),
   ));
 
   @override
@@ -101,17 +101,17 @@ class _NotificationsPanelState extends State<NotificationsPanel> with WidgetsBin
     return Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
       row(S.t('settings.notifAllowed'),help:blocked?S.t('notifications.refused'):null,child:Wrap(spacing:12,runSpacing:8,crossAxisAlignment:WrapCrossAlignment.center,children:[
         _state(_allowed,S.t('settings.allowed'),S.t('settings.notAllowed')),
-        if(_allowed==false&&!blocked)FilledButton.tonal(onPressed:_fixPermission,
+        if(_allowed==false&&!blocked)OutlinedButton(onPressed:_fixPermission,
           child:Text(isWebPlatform?S.t('notifications.enable'):S.t('settings.openSystem'))),
       ])),
       if(wakeupSupported)row(S.t('settings.wakeupClosed'),help:S.t(isWebPlatform?'settings.wakeupWeb':'settings.wakeupFcm'),
         child:ValueListenableBuilder<bool?>(valueListenable:wakeupRegistered,builder:(_,on,_)=>Wrap(spacing:12,runSpacing:8,crossAxisAlignment:WrapCrossAlignment.center,children:[
           _state(on,S.t('settings.active'),S.t('settings.inactive')),
-          if(on==false&&!blocked)FilledButton.tonal(onPressed:_fixPermission,
+          if(on==false&&!blocked)OutlinedButton(onPressed:_fixPermission,
             child:Text(isWebPlatform?S.t('notifications.enable'):S.t('settings.openSystem'))),
         ]))),
       if(wakeupSupported&&widget.api!=null)row(S.t('wakeup.test'),help:S.t('wakeup.testSettingsHelp'),child:Wrap(spacing:12,runSpacing:8,crossAxisAlignment:WrapCrossAlignment.center,children:[
-        FilledButton.tonalIcon(onPressed:_testing?null:_test,
+        OutlinedButton.icon(onPressed:_testing?null:_test,
           icon:_testing?const SizedBox(width:16,height:16,child:CircularProgressIndicator(strokeWidth:2)):const Icon(Icons.notifications_active_outlined),
           label:Text(S.t('wakeup.test'))),
         if(_result!=null)Text(_result!,style:TextStyle(fontWeight:FontWeight.w600,
