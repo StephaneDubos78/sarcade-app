@@ -59,31 +59,47 @@ class DrawingToolbar extends StatelessWidget {
     final c=controller;
     final scheme=Theme.of(context).colorScheme;
     final width=toolButtonWidth(context,[for(final k in drawingToolbarKinds)k.label,S.t('draw.select')]);
+    final tools=<Widget>[
+      for(final k in drawingToolbarKinds)Padding(
+        padding:const EdgeInsets.symmetric(horizontal:2),
+        child:_ToolButton(key:ValueKey('draw-tool-${k.name}'),kind:k,active:c.tool==k,width:width,onTap:()=>c.selectTool(c.tool==k?null:k)),
+      ),
+      // Phone: « Sélection » then drag a rectangle (multiple selection).
+      Padding(padding:const EdgeInsets.symmetric(horizontal:2),child:Tooltip(message:S.t('draw.selectHelp'),child:InkWell(key:const ValueKey('draw-select'),
+        borderRadius:BorderRadius.circular(10),onTap:()=>c.setSelectMode(!c.selectMode),
+        child:Container(width:width,padding:const EdgeInsets.symmetric(vertical:4),
+          decoration:BoxDecoration(color:c.selectMode?scheme.primaryContainer:null,borderRadius:BorderRadius.circular(10)),
+          child:_toolFace(Icons.highlight_alt,S.t('draw.select'),c.selectMode,scheme))))),
+    ];
+    final undo=IconButton(tooltip:S.t('draw.undo'),onPressed:c.canUndo?c.undo:null,icon:const Icon(Icons.undo));
+    final redo=IconButton(tooltip:S.t('draw.redo'),onPressed:c.canRedo?c.redo:null,icon:const Icon(Icons.redo));
+    final close=IconButton(key:const ValueKey('draw-close'),tooltip:S.t('draw.close'),onPressed:onClose,icon:const Icon(Icons.close));
+    // Phone (revue d'ergonomie n° 21): the tools on two rows, nothing hidden
+    // behind a scroll; « Fermer » and « Annuler » always in sight on the right.
+    if(drawingToolbarWraps(MediaQuery.sizeOf(context).width)){
+      return Material(elevation:4,borderRadius:BorderRadius.circular(14),color:scheme.surface,
+        child:Padding(padding:const EdgeInsets.all(4),child:Row(crossAxisAlignment:CrossAxisAlignment.start,children:[
+          Expanded(child:Wrap(runSpacing:4,children:[...tools,redo])),
+          Column(mainAxisSize:MainAxisSize.min,children:[close,undo]),
+        ])));
+    }
     return Material(
       elevation:4,borderRadius:BorderRadius.circular(14),color:scheme.surface,
       child:SingleChildScrollView(
         scrollDirection:Axis.horizontal,
         padding:const EdgeInsets.symmetric(horizontal:4,vertical:4),
         child:Row(mainAxisSize:MainAxisSize.min,children:[
-          for(final k in drawingToolbarKinds)Padding(
-            padding:const EdgeInsets.symmetric(horizontal:2),
-            child:_ToolButton(key:ValueKey('draw-tool-${k.name}'),kind:k,active:c.tool==k,width:width,onTap:()=>c.selectTool(c.tool==k?null:k)),
-          ),
-          // Phone: « Sélection » then drag a rectangle (multiple selection).
-          Padding(padding:const EdgeInsets.symmetric(horizontal:2),child:Tooltip(message:S.t('draw.selectHelp'),child:InkWell(key:const ValueKey('draw-select'),
-            borderRadius:BorderRadius.circular(10),onTap:()=>c.setSelectMode(!c.selectMode),
-            child:Container(width:width,padding:const EdgeInsets.symmetric(vertical:4),
-              decoration:BoxDecoration(color:c.selectMode?scheme.primaryContainer:null,borderRadius:BorderRadius.circular(10)),
-              child:_toolFace(Icons.highlight_alt,S.t('draw.select'),c.selectMode,scheme))))),
+          ...tools,
           const SizedBox(height:40,child:VerticalDivider(width:12)),
-          IconButton(tooltip:S.t('draw.undo'),onPressed:c.canUndo?c.undo:null,icon:const Icon(Icons.undo)),
-          IconButton(tooltip:S.t('draw.redo'),onPressed:c.canRedo?c.redo:null,icon:const Icon(Icons.redo)),
-          IconButton(tooltip:S.t('draw.close'),onPressed:onClose,icon:const Icon(Icons.close)),
+          undo,redo,close,
         ]),
       ),
     );
   }
 }
+
+/// Phone width: the drawing toolbar wraps on two rows.
+bool drawingToolbarWraps(double screenWidth)=>screenWidth<600;
 
 /// Icon and label of a tool button: label on one line, never cut (scaled
 /// down if needed), icons on the same line for every button.

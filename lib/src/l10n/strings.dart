@@ -28,6 +28,7 @@ class S {
 }
 
 const Texts _fr={
+  'routes.entrySummary':'{d} · {n} points','routes.undoPoint':'Annuler le dernier point','routes.done':'Terminer',
   'tvb.title':'Écrans','tvb.sent':'Vue envoyée à {name}','tvb.sentAll':'Vue envoyée à {n} écrans','tvb.all':'Tous les écrans','tvb.follow':'Suivre ma vue','tvb.followStop':'Arrêter','tvb.following':'suit votre vue','tvb.connected':'Connecté','tvb.notConnected':'Non connecté','tvb.manage':'Appairer et gérer les écrans','tvb.settings':'Réglages de l’écran','tvb.disconnect':'Déconnecter','tvb.disconnected':'Écran déconnecté',
   'poi.createHere':'Créer un point d’intérêt ici','poi.create':'Créer','poi.defaultName':'Point {hm}','poi.iconTitle':'Icône','poi.changeIcon':'Changer l’icône','poi.created':'Point d’intérêt créé',
   'poi.icon.pin':'Épingle','poi.icon.gathering':'Rassemblement','poi.icon.command_post':'PC','poi.icon.danger':'Danger','poi.icon.parking':'Parking','poi.icon.water':'Eau',
@@ -166,7 +167,7 @@ const Texts _fr={
   'groups.archivedNotice':'Groupe archivé : plus aucun message.','groups.managers':'Responsables : {names}',
   'groups.listenOnlyBadge':'écoute seule',
   // Routes
-  'routes.title':'Routes','routes.refresh':'Actualiser','routes.new':'Nouvel itinéraire','routes.empty':'Aucune route pour cet événement.',
+  'routes.title':'Itinéraires','routes.refresh':'Actualiser','routes.new':'Nouvel itinéraire','routes.empty':'Aucune route pour cet événement.',
   'routes.points':'points','routes.assigned':'affectée','routes.assignedTo':'Affectée à {name}','routes.addPoints':'Ajouter des points',
   'routes.stopAdding':'Terminer les points','routes.assign':'Affecter','routes.unassigned':'Non affectée','routes.computeLegs':'Calculer',
   'routes.delete':'Supprimer','routes.deleteConfirm':'Supprimer la route « {name} » ?','routes.readOnly':'Route affectée : seuls son auteur et le PCO la modifient.',
@@ -458,6 +459,7 @@ const Texts _fr={
 };
 
 const Texts _en={
+  'routes.entrySummary':'{d} · {n} points','routes.undoPoint':'Undo last point','routes.done':'Done',
   'tvb.title':'Screens','tvb.sent':'View sent to {name}','tvb.sentAll':'View sent to {n} screens','tvb.all':'All screens','tvb.follow':'Follow my view','tvb.followStop':'Stop','tvb.following':'follows your view','tvb.connected':'Connected','tvb.notConnected':'Not connected','tvb.manage':'Pair and manage the screens','tvb.settings':'Screen settings','tvb.disconnect':'Disconnect','tvb.disconnected':'Screen disconnected',
   'poi.createHere':'Create a point of interest here','poi.create':'Create','poi.defaultName':'Point {hm}','poi.iconTitle':'Icon','poi.changeIcon':'Change the icon','poi.created':'Point of interest created',
   'poi.icon.pin':'Pin','poi.icon.gathering':'Gathering','poi.icon.command_post':'Command post','poi.icon.danger':'Danger','poi.icon.parking':'Parking','poi.icon.water':'Water',
