@@ -32,3 +32,11 @@ class LogbookEntry {
  const LogbookEntry({required this.seq,required this.kind,required this.summary,required this.time,this.objectId,this.actorId});
  factory LogbookEntry.fromJson(Map<String,dynamic> j)=>LogbookEntry(seq:j['seq'],kind:j['kind'],objectId:j['object_id'],actorId:j['actor_id'],summary:j['summary'],time:DateTime.parse(j['time']));
 }
+
+/// Priorities known by the server (revue d'ergonomie n° 35): never the
+/// technical name; `normal` and any unknown value read « Routine »;
+/// `distress` reads « Détresse », in red like « Immédiat ».
+const knownPriorities=['routine','urgent','immediate','distress'];
+String priorityKey(String p)=>'priority.${knownPriorities.contains(p)?p:'routine'}';
+bool priorityRaised(String p)=>p=='urgent'||p=='immediate'||p=='distress';
+bool priorityRed(String p)=>p=='immediate'||p=='distress';

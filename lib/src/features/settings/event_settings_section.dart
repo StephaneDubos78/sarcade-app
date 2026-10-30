@@ -4,6 +4,7 @@ import '../../l10n/strings.dart';
 import '../../services/sarcade_api.dart';
 import '../aprs/aprs_page.dart';
 import 'quick_messages_editor.dart';
+import '../../services/event_names.dart';
 
 /// Paramètres › Événement (PCO): settings of the active event kept by the
 /// server, applied at once and written in the logbook by the server —
@@ -80,7 +81,8 @@ class _EventSettingsSectionState extends State<EventSettingsSection> {
     final old=(s['position_old_min'] as num?)?.toInt()??120;
     String dur(int m)=>m%60==0?'${m~/60} h':'$m min';
     return AbsorbPointer(absorbing:_busy,child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
-      Padding(padding:const EdgeInsets.only(top:12),child:Text(S.t('event.intro',{'event':widget.eventId}))),
+      Padding(padding:const EdgeInsets.only(top:12),child:EventNameBuilder(api:widget.api,eventId:widget.eventId,placeholder:S.t('event.this'),
+        builder:(_,name)=>Text(S.t('event.intro',{'event':name})))),
       _row(S.t('event.oldThreshold'),help:S.t('event.oldThresholdHelp'),child:DropdownButton<int>(value:oldChoices.contains(old)?old:120,
         items:[for(final m in oldChoices)DropdownMenuItem(value:m,child:Text(dur(m)))],
         onChanged:(v){if(v!=null)_patch({'position_old_min':v});})),

@@ -27,6 +27,7 @@ import '../compass/shared_compass.dart';
 import '../../services/power_state.dart';
 import '../../ui/save_bar.dart';
 import '../../ui/action_buttons.dart';
+import '../../services/event_names.dart';
 
 /// Operator settings: server address, event and terminal identifier,
 /// language, radio callsign. Lets one APK serve every field operator
@@ -482,11 +483,12 @@ class _SettingsPageState extends State<SettingsPage> {
   /// Active session only: what is shown does not depend on unsaved edits.
   Widget _diagnosticsTab()=>Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
     Padding(padding:const EdgeInsets.only(top:12),child:Text(S.t('diagnostics.description'))),
-    _row(S.t('diagnostics.event'),child:_value(widget.initial.eventId)),
+    // Name of the event; its identifier in the copyable report only (revue n° 60).
+    _row(S.t('diagnostics.event'),child:EventNameBuilder(api:widget.api,eventId:widget.initial.eventId,placeholder:S.t('event.this'),builder:(_,n)=>_value(n))),
     _row(S.t('diagnostics.server'),child:_value(widget.initial.serverUrl)),
     _row(S.t('diagnostics.device'),child:_value(widget.initial.deviceId)),
-    _row(S.t('map.logbook'),help:S.t('diagnostics.activeEvent',{'event':widget.initial.eventId}),
-      child:_value('',action:S.t('diagnostics.open'),onAction:widget.onOpenLogbook)),
+    EventNameBuilder(api:widget.api,eventId:widget.initial.eventId,placeholder:S.t('event.this'),builder:(_,n)=>_row(S.t('map.logbook'),help:S.t('diagnostics.activeEvent',{'event':n}),
+      child:_value('',action:S.t('diagnostics.open'),onAction:widget.onOpenLogbook))),
     // « Copier » at the far right (29 Oct 2026).
     _row(S.t('diagnostics.version'),child:Builder(builder:(c){
       final v='SARCADE $appVersionFull${appBuild.isEmpty?'':' · $appBuild'}';

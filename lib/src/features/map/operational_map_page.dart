@@ -378,7 +378,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       // Realtime and synchronisation may both bring the message: only the
       // first arrival notifies; an old message caught up later stays silent.
       if(shouldNotifyMessage(alreadyReceived:existing,createdAt:m.createdAt,now:DateTime.now().toUtc())){
-        await _notifications.message(title:'SARCADE · ${S.t('priority.${m.priority}')} · ${m.senderId}',body:m.body,priority:m.priority,
+        await _notifications.message(title:'SARCADE · ${S.t(priorityKey(m.priority))} · ${m.senderId}',body:m.body,priority:m.priority,
           payload:NotificationPayload(eventId:widget.eventId,messageId:m.id,deviceId:widget.deviceId,priority:m.priority,tag:messageNotificationKey(m)));
       }
     }
