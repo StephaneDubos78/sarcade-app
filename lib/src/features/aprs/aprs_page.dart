@@ -278,7 +278,7 @@ class _AprsPageState extends State<AprsPage> {
           ])),
           Padding(padding:const EdgeInsets.fromLTRB(16,8,8,0),child:Row(children:[
             Expanded(child:TextField(controller:_addCtrl,enabled:!_ended,textCapitalization:TextCapitalization.characters,
-              decoration:InputDecoration(labelText:S.t('aprs.addCallsign'),helperText:S.t('aprs.ssidHelp'),helperMaxLines:1),
+              decoration:InputDecoration(labelText:S.t('aprs.addCallsign'),helperText:S.t('aprs.ssidHelp'),helperMaxLines:2),
               onSubmitted:(_)=>_addCallsigns())),
             RoundIconButton(tooltip:S.t('aprs.add'),onPressed:_ended?null:_addCallsigns,icon:Icons.add),
           ])),

@@ -64,6 +64,22 @@ class _MapSearchBarState extends State<MapSearchBar> {
   Widget build(BuildContext context){
     final results=[..._local,..._remote];
     final open=_ctrl.text.trim().length>=2&&_focus.hasFocus;
+    // Little room (a panel is open beside the map, revue d'ergonomie n° 53):
+    // a round magnifier rather than a field cut to « R… ».
+    return LayoutBuilder(builder:(context,box){
+      if(searchAsIcon(box.maxWidth,typing:_focus.hasFocus||_ctrl.text.isNotEmpty||_wide)){
+        return Material(elevation:3,shape:const CircleBorder(),child:IconButton(key:const ValueKey('search-icon'),tooltip:S.t('search.hint'),
+          icon:const Icon(Icons.search),onPressed:(){setState(()=>_wide=true);WidgetsBinding.instance.addPostFrameCallback((_){if(mounted)_focus.requestFocus();});}));
+      }
+      return _bar(results,open);
+    });
+  }
+
+  /// Opened from the magnifier: the field stays until it loses the focus.
+  bool _wide=false;
+  @override void initState(){super.initState();_focus.addListener((){if(!_focus.hasFocus&&_ctrl.text.isEmpty&&_wide&&mounted)setState(()=>_wide=false);});}
+
+  Widget _bar(List<SearchResult> results,bool open){
     return ConstrainedBox(constraints:const BoxConstraints(maxWidth:440),child:Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.stretch,children:[
       Material(elevation:3,borderRadius:BorderRadius.circular(28),child:Padding(padding:const EdgeInsets.only(left:14),child:Row(children:[
         const Icon(Icons.search),
@@ -88,3 +104,7 @@ class _MapSearchBarState extends State<MapSearchBar> {
     ]));
   }
 }
+
+/// Below this width, the search shows as a magnifier (unless in use).
+const searchIconBelow=150.0;
+bool searchAsIcon(double width,{required bool typing})=>!typing&&width<searchIconBelow;

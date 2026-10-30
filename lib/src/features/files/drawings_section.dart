@@ -26,8 +26,8 @@ class DrawingsSection extends StatelessWidget {
       Text(S.t('files.drawings'),style:t.textTheme.titleSmall),
       const SizedBox(height:6),
       Wrap(spacing:8,runSpacing:8,children:[
-        OutlinedButton.icon(key:const ValueKey('drawings-import'),onPressed:() async {await actions.importFile();onDone?.call();},
-          icon:const Icon(Icons.file_upload_outlined),label:Text(S.t('files.importDrawings'))),
+        Tooltip(message:S.t('files.importDrawingsHelp'),child:OutlinedButton.icon(key:const ValueKey('drawings-import'),onPressed:() async {await actions.importFile();onDone?.call();},
+          icon:const Icon(Icons.file_upload_outlined),label:Text(S.t('files.importDrawings')))),
         OutlinedButton.icon(key:const ValueKey('drawings-export'),onPressed:empty?null:() async {await actions.exportAll();onDone?.call();},
           icon:const Icon(Icons.file_download_outlined),label:Text(S.t('files.exportDrawings'))),
       ]),

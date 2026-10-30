@@ -20,7 +20,7 @@ void main() {
 
   test('point menu: validated order, PCO entry only for the PCO', () {
     expect(pointMenuEntries(pco: true), [PointAction.bearing, PointAction.poi, PointAction.order,
-      PointAction.measure, PointAction.navigate, PointAction.weather]);
+      PointAction.measure, PointAction.navigate, PointAction.weather, PointAction.select]);
     expect(pointMenuEntries(pco: false).contains(PointAction.order), isFalse);
   });
 

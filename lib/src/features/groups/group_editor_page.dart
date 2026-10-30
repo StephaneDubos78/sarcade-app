@@ -68,7 +68,7 @@ class _GroupEditorPageState extends State<GroupEditorPage> {
       const SizedBox(height:12),
       TextFormField(controller:_description,maxLength:300,maxLines:2,decoration:InputDecoration(labelText:S.t('groups.description'),border:const OutlineInputBorder())),
       const SizedBox(height:12),
-      TextFormField(controller:_members,decoration:InputDecoration(labelText:S.t('groups.members'),border:const OutlineInputBorder())),
+      TextFormField(controller:_members,decoration:InputDecoration(labelText:S.t('groups.members'),helperText:S.t('groups.membersHelp'),border:const OutlineInputBorder())),
       SwitchListTile(contentPadding:EdgeInsets.zero,value:_listenOnly,onChanged:(v)=>setState(()=>_listenOnly=v),
         title:Text(S.t('groups.listenOnly')),subtitle:Text(S.t('groups.listenOnlyHelp'))),
       if(_listenOnly)TextFormField(controller:_senders,decoration:InputDecoration(labelText:S.t('groups.senders'),border:const OutlineInputBorder())),

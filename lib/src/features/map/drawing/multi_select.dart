@@ -13,6 +13,7 @@ import 'drawing_controller.dart';
 import 'hit_test.dart';
 import 'map_feature.dart';
 import '../../../ui/color_palette.dart';
+import 'export_formats.dart';
 
 /// Proposal 6: one's own objects, or every one for the PCO.
 bool canMultiSelect(MapFeature f,String actorId,{required bool pco})=>pco||f.createdBy==null||f.createdBy==actorId;
@@ -63,7 +64,8 @@ List<int> selectionGeoJson(Iterable<MapFeature> features)=>utf8.encode(const Jso
 /// objects, colour, width, duplicate, delete (one confirmation), export.
 /// Moving together uses the move handle at the centre of the selection.
 class MultiSelectionBar extends StatelessWidget {
-  final DrawingController controller; final VoidCallback onExport;
+  /// « Exporter », format chosen (card of 30 Oct 2026, 17 h 41).
+  final DrawingController controller; final ValueChanged<ExportFormat> onExport;
   const MultiSelectionBar({super.key,required this.controller,required this.onExport});
 
   @override Widget build(BuildContext context){
@@ -80,9 +82,14 @@ class MultiSelectionBar extends StatelessWidget {
           child:const Padding(padding:EdgeInsets.all(10),child:Icon(Icons.line_weight)),
         ),
         IconButton(tooltip:S.t('draw.duplicate'),onPressed:c.duplicateSelected,icon:const Icon(Icons.copy_all_outlined)),
-        IconButton(tooltip:S.t('draw.export'),onPressed:onExport,icon:const Icon(Icons.file_download_outlined)),
+        // « Exporter » under the icon, then GeoJSON, KML or GPX; for everyone.
+        PopupMenuButton<ExportFormat>(key:const ValueKey('multi-export'),tooltip:S.t('draw.export'),onSelected:onExport,
+          itemBuilder:(_)=>[for(final f in ExportFormat.values)PopupMenuItem(value:f,child:Text(f.label))],
+          child:Padding(padding:const EdgeInsets.symmetric(horizontal:8,vertical:2),child:Column(mainAxisSize:MainAxisSize.min,children:[
+            const Icon(Icons.file_download_outlined),Text(S.t('draw.exportShort'),style:const TextStyle(fontSize:11)),
+          ]))),
         IconButton(key:const ValueKey('multi-delete'),tooltip:S.t('routes.delete'),onPressed:()=>deleteSelection(context,c),icon:const Icon(Icons.delete_outline),color:Colors.red.shade700),
-        IconButton(tooltip:S.t('draw.deselect'),onPressed:()=>c.select(null),icon:const Icon(Icons.close)),
+        IconButton(tooltip:S.t('draw.deselect'),onPressed:c.endSelection,icon:const Icon(Icons.close)),
       ])));
   }
 }

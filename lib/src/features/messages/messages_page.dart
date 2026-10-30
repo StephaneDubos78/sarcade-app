@@ -379,7 +379,9 @@ class _MessagesPageState extends State<MessagesPage>{
      if(q.isEmpty)return true;
      return _convName(k,by).toLowerCase().contains(q)||(lastBy[k]?.body.toLowerCase().contains(q)??false);
    }).toList();
-   Widget chip(String id,String label)=>Padding(padding:const EdgeInsets.only(right:6),child:ChoiceChip(label:Text(label),selected:_filter==id,showCheckmark:false,
+   Widget chip(String id,String label)=>Padding(padding:const EdgeInsets.only(right:6),child:ChoiceChip(key:ValueKey('msg-filter-$id'),label:Text(label),selected:_filter==id,showCheckmark:false,
+     // 48 px touch area, the drawn pill unchanged (revue d'ergonomie n° 39).
+     materialTapTargetSize:MaterialTapTargetSize.padded,
      onSelected:(_)=>setState(()=>_filter=id)));
    return Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
      if(search)Padding(padding:const EdgeInsets.fromLTRB(12,10,12,6),child:_searchField()),
@@ -490,12 +492,12 @@ class _MessagesPageState extends State<MessagesPage>{
    final t=Theme.of(context); final s=t.colorScheme;
    final mine=m.senderId==widget.actorId;
    final photos=m.attachments.where((a)=>a.isImage).toList();
-   final urgent=m.priority!='routine'; final immediate=m.priority=='immediate';
+   final urgent=priorityRaised(m.priority); final immediate=priorityRed(m.priority);
    final prio=immediate?s.error:const Color(0xFFE8710A);
    final grey=_night?const Color(0xFF8696A0):const Color(0xFF667781);
    final myAck=ma.where((a)=>a.actorId==widget.actorId).map((a)=>a.status).toSet();
    if(m.deleted)return _deletedBubble(m,ma,mine:mine,showAuthor:showAuthor&&named,grey:grey);
-   final needsAnswer=!mine&&immediate&&!myAck.contains('accepted')&&!myAck.contains('rejected');
+   final needsAnswer=!mine&&m.priority=='immediate'&&!myAck.contains('accepted')&&!myAck.contains('rejected');
    final meta=Row(mainAxisSize:MainAxisSize.min,children:[
      Text(_hm(m.createdAt),style:TextStyle(fontSize:11,color:grey)),
      if(mine)...[const SizedBox(width:4),_ticks(m,ma)],
@@ -503,7 +505,7 @@ class _MessagesPageState extends State<MessagesPage>{
    final body=Column(crossAxisAlignment:CrossAxisAlignment.start,mainAxisSize:MainAxisSize.min,children:[
      if(urgent)Padding(padding:const EdgeInsets.only(bottom:3),child:Container(padding:const EdgeInsets.symmetric(horizontal:6,vertical:1),
        decoration:BoxDecoration(color:prio.withValues(alpha:0.14),borderRadius:BorderRadius.circular(6)),
-       child:Text(S.t('priority.${m.priority}').toUpperCase(),style:TextStyle(fontSize:10,fontWeight:FontWeight.w800,color:prio,letterSpacing:0.4)))),
+       child:Text(S.t(priorityKey(m.priority)).toUpperCase(),style:TextStyle(fontSize:10,fontWeight:FontWeight.w800,color:prio,letterSpacing:0.4)))),
      if(showAuthor&&named&&!mine)Padding(padding:const EdgeInsets.only(bottom:2),child:Text(m.senderId,
        style:TextStyle(fontWeight:FontWeight.w700,fontSize:13,color:Color(authorColor(m.senderId))))),
      if(photos.isNotEmpty)Padding(padding:const EdgeInsets.only(bottom:6),child:Wrap(spacing:6,runSpacing:6,children:[
@@ -624,9 +626,8 @@ class _MessagesPageState extends State<MessagesPage>{
              child:Text(S.t('priority.$_priority'),style:TextStyle(fontSize:12,fontWeight:FontWeight.w600,color:prioColor))))),
          Expanded(child:Focus(onKeyEvent:_onKey,child:TextField(controller:_text,maxLength:2048,minLines:1,maxLines:widget.initialText==null?6:8,
            textCapitalization:TextCapitalization.sentences,style:const TextStyle(fontSize:17),
-           // Empty field (30 Oct 2026, 1 h 22): the hint stays as the label
-           // read by screen readers and the e2e tests, drawn transparent.
-           decoration:InputDecoration(hintText:S.t('messages.hint'),hintStyle:const TextStyle(color:Colors.transparent),counterText:'',border:InputBorder.none,isDense:true,
+           // « Message » shown in the empty field (revue d'ergonomie n° 37).
+           decoration:InputDecoration(hintText:S.t('messages.hint'),hintStyle:TextStyle(color:Theme.of(context).colorScheme.onSurfaceVariant),counterText:'',border:InputBorder.none,isDense:true,
              contentPadding:const EdgeInsets.symmetric(vertical:13))))),
          IconButton(tooltip:S.t('messages.emoji'),onPressed:_pickEmoji,icon:Icon(Icons.emoji_emotions_outlined,color:iconColor)),
        ]))),
@@ -707,11 +708,10 @@ class _MessagesPageState extends State<MessagesPage>{
      }
      // Computer, like WhatsApp Web (30 Oct 2026, 1 h 31): no title bar, one
      // line — search, « Nouveau groupe » (+ ADRASEC model) on the left; the
-     // conversation, « Modifier le groupe » and ⋮ on the right.
+     // conversation, « Modifier le groupe » and the star on the right. No ⋮
+     // any more: it only held « Ajouter aux favoris », already the star (card
+     // « Messages (web), retirer les trois points », 30 Oct 2026, 16 h 25).
      if(wide){
-       final fav=_favConvs.contains(_conv);
-       final more=PopupMenuButton<String>(tooltip:S.t('files.more'),onSelected:(_)=>_toggleFavConv(_conv),itemBuilder:(_)=>[
-         PopupMenuItem(value:'fav',child:ListTile(leading:Icon(fav?Icons.star:Icons.star_border),title:Text(S.t(fav?'messages.unfav':'messages.fav'))))]);
        return Scaffold(body:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
          SizedBox(height:60,child:Row(children:[
            SizedBox(width:360,child:Padding(padding:const EdgeInsets.fromLTRB(12,8,4,8),child:Row(children:[
@@ -722,7 +722,7 @@ class _MessagesPageState extends State<MessagesPage>{
            Flexible(child:Text(_convName(_conv,by),overflow:TextOverflow.ellipsis,style:Theme.of(context).textTheme.titleMedium)),
            ?pending,
            const Spacer(),
-           ?editGroup,favButton,more,?close,const SizedBox(width:4),
+           ?editGroup,favButton,?close,const SizedBox(width:4),
          ])),
          const Divider(height:1),
          Expanded(child:Row(children:[

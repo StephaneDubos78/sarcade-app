@@ -17,6 +17,15 @@ double paletteGridWidth([int columns=paletteColumns])=>columns*paletteCellPx+(co
 /// [colors] with [extra] added at the end when it is not one of them.
 List<int> paletteWith(int? extra,[List<int> colors=drawingPalette])=>[...colors,if(extra!=null&&!colors.contains(extra))extra];
 
+/// Thin outline of a swatch, visible in both themes (revue d'ergonomie
+/// n° 26: the black swatch vanished on the dark background): light on dark,
+/// dark on light; a bit thicker for the black and white swatches.
+({Color color,double width}) swatchOutline(int c,Brightness theme){
+  final l=Color(c).computeLuminance();
+  final edge=l<0.05||l>0.9;
+  return (color:theme==Brightness.dark?Colors.white60:Colors.black38,width:edge?1.5:1);
+}
+
 class ColorGrid extends StatelessWidget {
   final List<int> colors; final int? selected; final ValueChanged<int> onPick;
   const ColorGrid({super.key,this.colors=drawingPalette,this.selected,required this.onPick});
@@ -26,7 +35,8 @@ class ColorGrid extends StatelessWidget {
       for(final c in colors)Semantics(label:S.t('color.$c'),selected:c==selected,button:true,child:InkWell(
         key:ValueKey('palette-$c'),customBorder:const CircleBorder(),onTap:()=>onPick(c),
         child:Container(width:paletteCellPx,height:paletteCellPx,
-          decoration:BoxDecoration(color:Color(c),shape:BoxShape.circle,border:Border.all(color:c==selected?primary:Colors.black26,width:c==selected?3:1)),
+          decoration:BoxDecoration(color:Color(c),shape:BoxShape.circle,border:c==selected?Border.all(color:primary,width:3)
+            :Border.all(color:swatchOutline(c,Theme.of(context).brightness).color,width:swatchOutline(c,Theme.of(context).brightness).width)),
           child:c==selected?Icon(Icons.check,size:18,color:Color(c).computeLuminance()>0.5?Colors.black:Colors.white):null),
       )),
     ]));
