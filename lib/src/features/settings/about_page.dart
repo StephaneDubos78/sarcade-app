@@ -47,7 +47,8 @@ class SarcadeAboutContent extends StatelessWidget {
   Widget build(BuildContext context) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         // SARCADE logo above the name, version and publisher, adapted to the
         // theme (card « Paramètres › À propos, logo SARCADE », 30 Oct 2026, 13 h 27).
-        Center(child: Image.asset(
+        // Aligned on the left with the title and the text (revue n° 67).
+        Align(alignment: Alignment.centerLeft, child: Image.asset(
           Theme.of(context).brightness == Brightness.dark ? 'assets/logo/sarcade-logo-dark.png' : 'assets/logo/sarcade-logo-light.png',
           height: 96, semanticLabel: 'SARCADE',
           errorBuilder: (_, _, _) => const SizedBox.shrink(),

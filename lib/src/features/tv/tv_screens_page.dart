@@ -250,7 +250,7 @@ class _TvScreensPanelState extends State<TvScreensPanel> {
         ]),
         if(_busy)const Padding(padding:EdgeInsets.only(top:16),child:LinearProgressIndicator()),
         const SizedBox(height:16),
-        Text(S.t('tv.list'),style:t.textTheme.titleMedium),
+        Text(S.t('tv.list'),style:t.textTheme.titleMedium?.copyWith(fontWeight:FontWeight.w600,color:t.colorScheme.primary)),
         if(_offline)ListTile(contentPadding:EdgeInsets.zero,leading:const Icon(Icons.cloud_off),title:Text(S.t('event.offline')),
           trailing:OutlinedButton(onPressed:_load,child:Text(S.t('common.retry'))))
         else if(list==null)const Padding(padding:EdgeInsets.all(16),child:Center(child:CircularProgressIndicator()))

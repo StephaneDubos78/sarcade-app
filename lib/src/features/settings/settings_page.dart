@@ -426,9 +426,11 @@ class _SettingsPageState extends State<SettingsPage> {
       controller:_callsign,decoration:_field(hint:'F4ABC-7'),
       autocorrect:false,textCapitalization:TextCapitalization.characters,validator:_callsignCheck))),
     // Colour of every new drawing (existing objects keep theirs).
-    _row(S.t('settings.drawColor'),help:S.t('settings.drawColorHelp'),child:Wrap(spacing:8,runSpacing:8,crossAxisAlignment:WrapCrossAlignment.center,children:[
-      // Same 4 × 4 palette as the drawings and the groups (30 Oct 2026, 13 h 25).
+    _row(S.t('settings.drawColor'),help:S.t('settings.drawColorHelp'),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+      // Same 4 × 4 palette as the drawings and the groups (30 Oct 2026, 13 h 25);
+      // « Autre couleur » under the grid, on the left (revue n° 66).
       ColorGrid(colors:paletteWith(_drawColor),selected:_drawColor,onPick:(c)=>setState((){_drawColor=c;_dirty=true;})),
+      const SizedBox(height:8),
       ActionChip(avatar:const Icon(Icons.palette_outlined,size:18),label:Text(S.t('settings.otherColor')),onPressed:_pickOtherColor),
     ])),
     // Under « Couleur de dessin » (29 Oct 2026).
@@ -564,10 +566,12 @@ class _SettingsPageState extends State<SettingsPage> {
   Widget build(BuildContext context){
     final t=Theme.of(context);
     return Scaffold(
-      appBar:AppBar(automaticallyImplyLeading:!widget.firstRun),
-      // Fixed save bar at the bottom (charte « style Play Console »).
-      bottomNavigationBar:SaveBar(changed:widget.firstRun||_dirty,saving:_saving,onSave:_trySave,
-        onCancel:widget.firstRun?null:_cancel),
+      // Same surface as the content in both themes (revue n° 68).
+      appBar:AppBar(automaticallyImplyLeading:!widget.firstRun,backgroundColor:t.colorScheme.surface,surfaceTintColor:Colors.transparent,scrolledUnderElevation:0),
+      // Fixed save bar at the bottom (charte « style Play Console »); none on
+      // Diagnostic and À propos, nothing to save there (revue n° 64).
+      bottomNavigationBar:settingsShowsSaveBar(tab:_tabs[_tab.clamp(0,_tabs.length-1)],firstRun:widget.firstRun,dirty:_dirty)?SaveBar(changed:widget.firstRun||_dirty,saving:_saving,onSave:_trySave,
+        onCancel:widget.firstRun?null:_cancel):null,
       body:SafeArea(child:Center(child:ConstrainedBox(
         constraints:const BoxConstraints(maxWidth:900),
         child:Form(key:_form,onChanged:widget.firstRun?null:_touch,child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
@@ -598,5 +602,7 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 }
 
+/// The save bar, except on Diagnostic and À propos with nothing changed.
+bool settingsShowsSaveBar({required String tab,required bool firstRun,required bool dirty})=>firstRun||dirty||!(tab=='diagnostics'||tab=='about');
 /// Value of « + Ajouter un serveur… » in the list of servers.
 const addServerValue='\u0000add-server';
