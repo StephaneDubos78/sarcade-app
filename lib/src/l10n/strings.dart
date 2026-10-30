@@ -28,6 +28,7 @@ class S {
 }
 
 const Texts _fr={
+  'draw.exportShort':'Exporter',
   'poi.createHere':'Créer un point d’intérêt ici','poi.create':'Créer','poi.defaultName':'Point {hm}','poi.iconTitle':'Icône','poi.changeIcon':'Changer l’icône','poi.created':'Point d’intérêt créé',
   'poi.icon.pin':'Épingle','poi.icon.gathering':'Rassemblement','poi.icon.command_post':'PC','poi.icon.danger':'Danger','poi.icon.parking':'Parking','poi.icon.water':'Eau',
   'poi.icon.helipad':'Hélisurface','poi.icon.vehicle':'Véhicule','poi.icon.viewpoint':'Point de vue','poi.icon.medical':'Secours','poi.icon.radio':'Radio','poi.icon.shelter':'Abri','poi.icon.flag':'Repère',
@@ -212,7 +213,7 @@ const Texts _fr={
   'draw.hint.point':'Touchez la carte pour placer le point','draw.hint.text':'Touchez la carte pour placer le texte',
   'draw.hint.circle':'Touchez le centre, puis le bord','draw.hint.rectangle':'Touchez un coin, puis le coin opposé',
   'draw.hint.freehand':'Dessinez au doigt sur la carte','draw.hint.zone':'Touchez les sommets de la zone','draw.hint.line':'Touchez les points du tracé',
-  'draw.undo':'Annuler','draw.redo':'Rétablir','draw.import':'Importer GPX, KML ou GeoJSON','draw.hint.arrow':'Touchez le départ puis la pointe de la flèche','files.drawings':'Dessins de l’événement','files.importDrawings':'Importer des dessins (GeoJSON, KML, GPX)','files.exportDrawings':'Exporter les dessins','draw.export':'Exporter en GeoJSON',
+  'draw.undo':'Annuler','draw.redo':'Rétablir','draw.import':'Importer GPX, KML ou GeoJSON','draw.hint.arrow':'Touchez le départ puis la pointe de la flèche','files.drawings':'Dessins de l’événement','files.importDrawings':'Importer des dessins (GeoJSON, KML, GPX)','files.exportDrawings':'Exporter les dessins','draw.export':'Exporter (GeoJSON, KML, GPX)',
   'draw.close':'Fermer les outils','draw.points':'{n} point(s)','draw.removeLast':'Retirer le dernier point','draw.cancel':'Annuler le tracé',
   'draw.radius':'Rayon','draw.width':'Épaisseur','draw.editText':'Modifier le texte','draw.duplicate':'Dupliquer','draw.deselect':'Désélectionner',
   'draw.open':'Dessiner sur la carte',
@@ -457,6 +458,7 @@ const Texts _fr={
 };
 
 const Texts _en={
+  'draw.exportShort':'Export',
   'poi.createHere':'Create a point of interest here','poi.create':'Create','poi.defaultName':'Point {hm}','poi.iconTitle':'Icon','poi.changeIcon':'Change the icon','poi.created':'Point of interest created',
   'poi.icon.pin':'Pin','poi.icon.gathering':'Gathering','poi.icon.command_post':'Command post','poi.icon.danger':'Danger','poi.icon.parking':'Parking','poi.icon.water':'Water',
   'poi.icon.helipad':'Helipad','poi.icon.vehicle':'Vehicle','poi.icon.viewpoint':'Viewpoint','poi.icon.medical':'Medical','poi.icon.radio':'Radio','poi.icon.shelter':'Shelter','poi.icon.flag':'Marker',
@@ -628,7 +630,7 @@ const Texts _en={
   'draw.hint.point':'Tap the map to place the point','draw.hint.text':'Tap the map to place the text',
   'draw.hint.circle':'Tap the centre, then the edge','draw.hint.rectangle':'Tap a corner, then the opposite corner',
   'draw.hint.freehand':'Draw with your finger on the map','draw.hint.zone':'Tap the corners of the zone','draw.hint.line':'Tap the points of the line',
-  'draw.undo':'Undo','draw.redo':'Redo','draw.import':'Import GPX, KML or GeoJSON','draw.hint.arrow':'Tap the start then the tip of the arrow','files.drawings':'Drawings of the event','files.importDrawings':'Import drawings (GeoJSON, KML, GPX)','files.exportDrawings':'Export the drawings','draw.export':'Export as GeoJSON',
+  'draw.undo':'Undo','draw.redo':'Redo','draw.import':'Import GPX, KML or GeoJSON','draw.hint.arrow':'Tap the start then the tip of the arrow','files.drawings':'Drawings of the event','files.importDrawings':'Import drawings (GeoJSON, KML, GPX)','files.exportDrawings':'Export the drawings','draw.export':'Export (GeoJSON, KML, GPX)',
   'draw.close':'Close the tools','draw.points':'{n} point(s)','draw.removeLast':'Remove the last point','draw.cancel':'Cancel the drawing',
   'draw.radius':'Radius','draw.width':'Width','draw.editText':'Edit the text','draw.duplicate':'Duplicate','draw.deselect':'Deselect',
   'draw.open':'Draw on the map',
