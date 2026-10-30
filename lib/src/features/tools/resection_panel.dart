@@ -2,6 +2,7 @@
 /// known point and to see the sights).
 library;
 
+import '../../ui/choice_pills.dart';
 import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart' hide Path;
 
@@ -86,10 +87,10 @@ class _ResectionPanelState extends State<ResectionPanel> {
           ],
         ]),
         const SizedBox(height:8),
-        SegmentedButton<bool>(showSelectedIcon:false,style:SegmentedButton.styleFrom(visualDensity:VisualDensity.compact),
-          segments:[ButtonSegment(value:false,label:Text(S.t('resection.true'))),
-            ButtonSegment(value:true,label:Text(S.t('resection.magnetic',{'d':formatDeclination(c.declination)})))],
-          selected:{s.magnetic},onSelectionChanged:(v)=>c.setMagnetic(i,v.first)),
+        ChoicePills<bool>(compact:true,
+          choices:[(value:false,label:S.t('resection.true'),icon:null),
+            (value:true,label:S.t('resection.magnetic',{'d':formatDeclination(c.declination)}),icon:null)],
+          selected:s.magnetic,onSelected:(v)=>c.setMagnetic(i,v)),
       ])));
   }
 
@@ -132,9 +133,9 @@ class _ResectionPanelState extends State<ResectionPanel> {
             SelectableText(formatDd(r.centre!),style:t.textTheme.bodyLarge),
             const SizedBox(height:10),
             Wrap(spacing:8,runSpacing:8,children:[
-              FilledButton.tonalIcon(onPressed:()=>widget.onCreatePoint(r.centre!),icon:const Icon(Icons.add_location_alt_outlined),label:Text(S.t('resection.createPoint'))),
-              FilledButton.tonalIcon(onPressed:()=>widget.onSendPosition(r.centre!),icon:const Icon(Icons.send_outlined),label:Text(S.t('resection.send'))),
-              TextButton.icon(onPressed:()=>widget.onCopy(r.centre!),icon:const Icon(Icons.copy_outlined),label:Text(S.t('common.copy'))),
+              OutlinedButton.icon(onPressed:()=>widget.onCreatePoint(r.centre!),icon:const Icon(Icons.add_location_alt_outlined),label:Text(S.t('resection.createPoint'))),
+              OutlinedButton.icon(onPressed:()=>widget.onSendPosition(r.centre!),icon:const Icon(Icons.send_outlined),label:Text(S.t('resection.send'))),
+              OutlinedButton.icon(onPressed:()=>widget.onCopy(r.centre!),icon:const Icon(Icons.copy_outlined),label:Text(S.t('common.copy'))),
             ]),
           ]))),
         ],

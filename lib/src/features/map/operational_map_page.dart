@@ -1,4 +1,6 @@
 import 'dart:async';
+import '../../ui/choice_pills.dart';
+import '../messages/operator_avatar.dart';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -1458,10 +1460,10 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
 
   /// « Colorer les relevés par : Signal / Opérateur » (Filtres).
   Widget _bearingColorBy(void Function(VoidCallback) refresh)=>ListTile(title:Text(S.t('bearings.colorBy')),
-    trailing:SegmentedButton<bool>(showSelectedIcon:false,
-      segments:[ButtonSegment(value:false,label:Text(S.t('bearings.colorSignal'))),ButtonSegment(value:true,label:Text(S.t('bearings.colorOperator')))],
-      selected:{_brgByOperator},
-      onSelectionChanged:(v) async {await widget.store.setPreference('brg_color:${widget.eventId}',v.first?'op':null);refresh((){});if(mounted)setState((){});}));
+    trailing:ChoicePills<bool>(compact:true,
+      choices:[(value:false,label:S.t('bearings.colorSignal'),icon:null),(value:true,label:S.t('bearings.colorOperator'),icon:null)],
+      selected:_brgByOperator,
+      onSelected:(v) async {await widget.store.setPreference('brg_color:${widget.eventId}',v?'op':null);refresh((){});if(mounted)setState((){});}));
 
   /// « Équipes »: the stations and « À proximité » in one place, a screen on
   /// the phone, a panel next to the map on a computer.
@@ -1688,7 +1690,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   Widget _stationTile(SarcadePosition p){
     final now=DateTime.now().toUtc(); final s=Theme.of(context).colorScheme;
     final f=freshness(p.time.toUtc(),now,ageingMin:_ageingMin,staleMin:_staleMin); final fav=_favourites.contains(p.deviceId);
-    return ListTile(selected:_selectedDevice==p.deviceId,leading:_stationIcon(p,size:32),
+    return ListTile(selected:_selectedDevice==p.deviceId,leading:p.isAprs?_stationIcon(p,size:32):operatorAvatar(p.deviceId,label:p.label,radius:16,stale:f==Freshness.stale),
       title:Text(p.label,style:TextStyle(decoration:f==Freshness.stale?TextDecoration.lineThrough:null)),
       subtitle:Text([_sourceLabel(p),ageLabel(p.time.toUtc(),now),
           if(!_isCompact&&isPco(widget.deviceId)&&'${_devices[p.deviceId]?['app_version']??''}'.isNotEmpty)'v${_devices[p.deviceId]!['app_version']}'].join(' · '),
@@ -1990,8 +1992,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           decoration:InputDecoration(labelText:S.t('bearings.signalFreq'),suffixText:'MHz',hintText:'121,375')),
         const SizedBox(height:8),
         TextField(controller:l,maxLength:50,decoration:InputDecoration(labelText:S.t('bearings.signalLabel'))),
-        SegmentedButton<bool>(segments:[ButtonSegment(value:false,label:Text(S.t('bearings.signalReal'))),ButtonSegment(value:true,label:Text(S.t('bearings.signalExercise')))],
-          selected:{exercise},onSelectionChanged:(v)=>set(()=>exercise=v.first)),
+        ChoicePills<bool>(choices:[(value:false,label:S.t('bearings.signalReal'),icon:null),(value:true,label:S.t('bearings.signalExercise'),icon:null)],
+          selected:exercise,onSelected:(v)=>set(()=>exercise=v)),
       ]),
       actions:[TextButton(onPressed:()=>Navigator.pop(c,false),child:Text(S.t('common.cancel'))),
         FilledButton(onPressed:()=>Navigator.pop(c,true),child:Text(S.t('common.ok')))])));
@@ -2240,7 +2242,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           padding:const EdgeInsets.symmetric(horizontal:12,vertical:4),
           child:Row(children:[const Icon(Icons.alt_route,size:18),const SizedBox(width:8),
             Expanded(child:Text(S.t('graph.mobile',{'mb':(_graphs.pendingMobileBytes!/1048576).toStringAsFixed(1)}),style:Theme.of(context).textTheme.bodySmall)),
-            TextButton(onPressed:()=>_graphs.check(allowMobile:true),child:Text(S.t('graph.download'))),
+            OutlinedButton(onPressed:()=>_graphs.check(allowMobile:true),child:Text(S.t('graph.download'))),
           ]))):null;
     // Phone, Carte tab, nothing above the map: full screen.
     final fullBleed=compact&&_tab==0&&sosAlert==null&&!banners.visible&&graphBanner==null;
@@ -2390,7 +2392,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           if(_drawingClosure)Padding(padding:const EdgeInsets.only(top:8),child:Card(child:Padding(padding:const EdgeInsets.symmetric(horizontal:12,vertical:6),child:Row(mainAxisSize:MainAxisSize.min,children:[
             const Icon(Icons.block,color:Colors.red),const SizedBox(width:8),
             Flexible(child:Text(S.t('closures.drawHelp'))),
-            TextButton(onPressed:()=>setState((){_drawingClosure=false;_closureDraft.clear();}),child:Text(S.t('closures.cancel'))),
+            OutlinedButton(onPressed:()=>setState((){_drawingClosure=false;_closureDraft.clear();}),child:Text(S.t('closures.cancel'))),
             FilledButton(onPressed:_finishClosure,child:Text(S.t('closures.finish'))),
           ])))),
         ])),

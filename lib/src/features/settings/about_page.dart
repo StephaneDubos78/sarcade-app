@@ -73,7 +73,7 @@ class SarcadeAboutContent extends StatelessWidget {
         ]),
         if (VersionStatus.shown) const Padding(padding: EdgeInsets.only(top: 12), child: VersionStatus()),
         const Divider(height: 32),
-        _link(context, Icons.language, 'about.website', 'https://sarcade.org'),
+        _link(context, Icons.language, 'about.website', 'https://www.sdubos.com/'),
         _link(context, Icons.code, 'about.source', 'https://github.com/sdubos-consulting/sarcade-app'),
         _link(context, Icons.feedback_outlined, 'about.feedback', 'https://github.com/sdubos-consulting/sarcade-app/issues'),
         _link(context, Icons.privacy_tip_outlined, 'about.privacy', 'https://sdubos-consulting.github.io/sarcade-app/confidentialite/'),

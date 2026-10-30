@@ -185,7 +185,7 @@ class _TvScreensPanelState extends State<TvScreensPanel> {
         const SizedBox(height:16),
         Text(S.t('tv.list'),style:t.textTheme.titleMedium),
         if(_offline)ListTile(contentPadding:EdgeInsets.zero,leading:const Icon(Icons.cloud_off),title:Text(S.t('event.offline')),
-          trailing:TextButton(onPressed:_load,child:Text(S.t('common.retry'))))
+          trailing:OutlinedButton(onPressed:_load,child:Text(S.t('common.retry'))))
         else if(list==null)const Padding(padding:EdgeInsets.all(16),child:Center(child:CircularProgressIndicator()))
         else if(list.isEmpty)ListTile(contentPadding:EdgeInsets.zero,title:Text(S.t('tv.none')))
         else for(final d in list)ListTile(contentPadding:EdgeInsets.zero,
@@ -206,7 +206,7 @@ class _TvScreensPanelState extends State<TvScreensPanel> {
                 child:ListTile(leading:const Icon(Icons.sos),title:Text(S.t('tv.clearSos')))),
               PopupMenuItem(value:'revoke',child:ListTile(leading:const Icon(Icons.tv_off),title:Text(S.t('tv.revoke')))),
             ]):null),
-        if(old>0)Align(alignment:Alignment.centerLeft,child:TextButton(key:const ValueKey('tv-show-old'),onPressed:()=>setState(()=>_showOld=!_showOld),
+        if(old>0)Align(alignment:Alignment.centerLeft,child:OutlinedButton(key:const ValueKey('tv-show-old'),onPressed:()=>setState(()=>_showOld=!_showOld),
           child:Text(_showOld?S.t('tv.hideOld'):S.t('tv.showOld',{'n':old})))),
       ]));
   }

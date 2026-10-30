@@ -116,10 +116,10 @@ class MoveOrderBanner extends StatelessWidget {
         Wrap(spacing:4,children:[
           if(sent)...[
             FilledButton.icon(onPressed:onAccept,icon:const Icon(Icons.check),label:Text(S.t('order.accept'))),
-            TextButton(onPressed:onRefuse,child:Text(S.t('order.refuse'))),
+            OutlinedButton(onPressed:onRefuse,child:Text(S.t('order.refuse'))),
           ] else ...[
             FilledButton.icon(onPressed:onNavigate,icon:const Icon(Icons.directions),label:Text(S.t('nav.goHere'))),
-            TextButton(onPressed:onArrived,child:Text(S.t('order.arrived'))),
+            OutlinedButton(onPressed:onArrived,child:Text(S.t('order.arrived'))),
           ],
         ]),
       ])));

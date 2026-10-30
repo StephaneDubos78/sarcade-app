@@ -105,7 +105,7 @@ class _MeasureCardState extends State<MeasureCard> {
       const Divider(),
       for(final f in formats.shown)row(f),
       if(_more)for(final f in formats.more)row(f),
-      Align(alignment:Alignment.centerLeft,child:TextButton.icon(
+      Align(alignment:Alignment.centerLeft,child:OutlinedButton.icon(
         onPressed:()=>setState(()=>_more=!_more),
         icon:Icon(_more?Icons.expand_less:Icons.expand_more,size:18),
         label:Text(S.t(_more?'measure.lessFormats':'measure.moreFormats')))),

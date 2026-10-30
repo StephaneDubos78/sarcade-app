@@ -108,3 +108,7 @@ Future<List<String>> localAddresses() async {
     return [for(final i in list)for(final a in i.addresses)a.address];
   }catch(_){return const [];}
 }
+
+/// Files dropped from the file manager: web only for now; Windows and Linux
+/// need a package (desktop_drop) not yet added.
+Stream<List<({String name,List<int> bytes})>> desktopFileDrops()=>const Stream<List<({String name,List<int> bytes})>>.empty();

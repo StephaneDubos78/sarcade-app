@@ -57,7 +57,7 @@ class RoutesPanel extends StatelessWidget {
         title:Text(c.label),
         subtitle:Text(c.active?S.t('closures.active'):S.t('closures.lifted')),
         onTap:()=>onFocus(c.points),
-        trailing:isPco(actorId)?TextButton(onPressed:()=>controller.setClosureActive(c,!c.active),
+        trailing:isPco(actorId)?OutlinedButton(onPressed:()=>controller.setClosureActive(c,!c.active),
           child:Text(c.active?S.t('closures.lift'):S.t('closures.restore'))):null,
       ),
     ]);

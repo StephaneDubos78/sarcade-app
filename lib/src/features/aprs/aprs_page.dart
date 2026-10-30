@@ -240,7 +240,7 @@ class _AprsPageState extends State<AprsPage> {
       body:_loading&&_groups.isEmpty?const Center(child:CircularProgressIndicator())
         :_error!=null?Center(child:Padding(padding:const EdgeInsets.all(24),child:Column(mainAxisSize:MainAxisSize.min,children:[
             const Icon(Icons.cloud_off,size:40),const SizedBox(height:8),Text(_error!,textAlign:TextAlign.center),
-            TextButton(onPressed:_load,child:Text(S.t('aprs.reload')))])))
+            OutlinedButton(onPressed:_load,child:Text(S.t('aprs.reload')))])))
         :ListView(padding:const EdgeInsets.symmetric(vertical:8),children:[
           if(_ended)Material(color:theme.colorScheme.tertiaryContainer,child:Padding(padding:const EdgeInsets.all(12),child:Text(S.t('aprs.ended')))),
           // Links
@@ -258,7 +258,7 @@ class _AprsPageState extends State<AprsPage> {
           // Groups
           Padding(padding:const EdgeInsets.fromLTRB(16,0,8,0),child:Row(children:[
             Expanded(child:Text(S.t('aprs.groups'),style:theme.textTheme.titleSmall)),
-            TextButton.icon(onPressed:()=>_editGroup(null),icon:const Icon(Icons.add),label:Text(S.t('aprs.groupNew'))),
+            OutlinedButton.icon(onPressed:()=>_editGroup(null),icon:const Icon(Icons.add),label:Text(S.t('aprs.groupNew'))),
           ])),
           if(_groups.isEmpty)Padding(padding:const EdgeInsets.symmetric(horizontal:16),child:Text(S.t('aprs.groupsNone'),style:theme.textTheme.bodySmall)),
           for(final g in _groups)CheckboxListTile(
@@ -291,7 +291,7 @@ class _AprsPageState extends State<AprsPage> {
             Expanded(child:TextField(key:const ValueKey('aprs-tx-callsign'),controller:_txCall,enabled:!_ended,textCapitalization:TextCapitalization.characters,
               decoration:InputDecoration(labelText:S.t('aprs.txCall'),hintText:'F4ABC',helperText:S.t('aprs.txCallHelp'),helperMaxLines:2),
               onSubmitted:(_)=>_setTxCall())),
-            TextButton(onPressed:_ended?null:_setTxCall,child:Text(S.t('event.apply'))),
+            OutlinedButton(onPressed:_ended?null:_setTxCall,child:Text(S.t('event.apply'))),
           ])),
         ]),
     );

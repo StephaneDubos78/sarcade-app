@@ -77,7 +77,7 @@ class _UnsentPageState extends State<UnsentPage> {
     final retryable=items.where(_here).toList();
     return Scaffold(
       appBar:AppBar(title:Text('${S.t('unsent.title')} (${items.length})'),actions:[
-        if(retryable.isNotEmpty)TextButton.icon(
+        if(retryable.isNotEmpty)OutlinedButton.icon(
           onPressed:()=>_run(() async {for(final op in retryable){await _sync.store.updatePending(resetForRetry(op));}await _sync.syncNow();}),
           icon:const Icon(Icons.refresh),label:Text(S.t('unsent.retryAll'))),
       ]),

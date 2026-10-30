@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../ui/overlay_page.dart';
 import '../../l10n/strings.dart';
 import '../../services/sarcade_api.dart';
 import '../aprs/aprs_page.dart';
@@ -50,7 +51,7 @@ class _EventSettingsSectionState extends State<EventSettingsSection> {
   /// Predefined messages of the event (ATAK 6): an editable list.
   Future<void> _editQuick() async {
     final initial=((_s?['quick_messages'] as List?)??const []).whereType<String>().toList();
-    final list=await Navigator.push<List<String>>(context,MaterialPageRoute(builder:(_)=>QuickMessagesEditor(initial:initial)));
+    final list=await showOverlayPage<List<String>>(context,(_)=>QuickMessagesEditor(initial:initial));
     if(list!=null)await _patch({'quick_messages':list});
   }
 
@@ -74,7 +75,7 @@ class _EventSettingsSectionState extends State<EventSettingsSection> {
     final s=_s;
     if(s==null){
       return Padding(padding:const EdgeInsets.all(16),child:_error==null?const Center(child:CircularProgressIndicator())
-        :Column(children:[Text(S.t('event.offline')),TextButton(onPressed:_load,child:Text(S.t('common.retry')))]));
+        :Column(children:[Text(S.t('event.offline')),OutlinedButton(onPressed:_load,child:Text(S.t('common.retry')))]));
     }
     final old=(s['position_old_min'] as num?)?.toInt()??120;
     String dur(int m)=>m%60==0?'${m~/60} h':'$m min';
@@ -84,10 +85,10 @@ class _EventSettingsSectionState extends State<EventSettingsSection> {
         items:[for(final m in oldChoices)DropdownMenuItem(value:m,child:Text(dur(m)))],
         onChanged:(v){if(v!=null)_patch({'position_old_min':v});})),
       _row(S.t('event.quick'),help:S.t('event.quickHelp',{'n':(s['quick_messages'] as List?)?.length??0}),
-        child:TextButton(onPressed:_editQuick,child:Text(S.t('event.edit')))),
+        child:OutlinedButton(onPressed:_editQuick,child:Text(S.t('event.edit')))),
       _row(S.t('event.aprsFollowed'),help:[S.t('event.aprsFollowedHelp',{'g':(s['aprs_groups'] as List?)?.length??0,'c':(s['aprs_callsigns'] as List?)?.length??0}),
           if(s['aprs_tx_rf']==true)S.t('event.aprsTxOn',{'call':'${s['aprs_tx_callsign']??'—'}'})].join(' · '),
-        child:TextButton(onPressed:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>AprsPage(api:widget.api,eventId:widget.eventId,actorId:widget.actorId))).then((_)=>_load()),
+        child:OutlinedButton(onPressed:()=>showOverlayPage<void>(context,(_)=>AprsPage(api:widget.api,eventId:widget.eventId,actorId:widget.actorId)).then((_)=>_load()),
           child:Text(S.t('diagnostics.open')))),
     ]));
   }

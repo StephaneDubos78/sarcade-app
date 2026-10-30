@@ -43,13 +43,13 @@ class OperationsBanners extends StatelessWidget {
     final rows=<Widget>[
       if(accessRequired)_Banner(icon:Icons.lock_outline,color:Colors.orange.shade200,
         text:S.t('access.required'),
-        action:onSignIn==null?null:TextButton(onPressed:onSignIn,child:Text(S.t('access.signIn')))),
+        action:onSignIn==null?null:OutlinedButton(onPressed:onSignIn,child:Text(S.t('access.signIn')))),
       if(!accessRequired&&accessRenewBy!=null)_Banner(icon:Icons.lock_clock,color:Colors.amber.shade100,
         text:S.t('access.renew',{'date':_date(accessRenewBy!)}),
-        action:onSignIn==null?null:TextButton(onPressed:onSignIn,child:Text(S.t('access.signInAgain')))),
+        action:onSignIn==null?null:OutlinedButton(onPressed:onSignIn,child:Text(S.t('access.signInAgain')))),
       if(onReload!=null)_Banner(icon:Icons.refresh,color:Colors.orange.shade100,
         text:S.t('access.webExpired'),
-        action:TextButton(onPressed:onReload,child:Text(S.t('access.reload')))),
+        action:OutlinedButton(onPressed:onReload,child:Text(S.t('access.reload')))),
       // Night blue, white text, lighter blue button (29 Oct 2026).
       if(onWebUpdate!=null)_Banner(icon:Icons.system_update_alt,color:webUpdateBannerColor,foreground:Colors.white,
         text:S.t('webUpdate.available'),
@@ -59,21 +59,21 @@ class OperationsBanners extends StatelessWidget {
       if(onEnableNotifications!=null)_Banner(icon:Icons.notifications_active_outlined,color:scheme.secondaryContainer,
         text:S.t('notifications.prompt'),
         action:Row(mainAxisSize:MainAxisSize.min,children:[
-          if(onDismissNotifications!=null)TextButton(onPressed:onDismissNotifications,child:Text(S.t('notifications.later'))),
-          FilledButton.tonal(onPressed:onEnableNotifications,child:Text(S.t('notifications.enable'))),
+          if(onDismissNotifications!=null)OutlinedButton(onPressed:onDismissNotifications,child:Text(S.t('notifications.later'))),
+          OutlinedButton(onPressed:onEnableNotifications,child:Text(S.t('notifications.enable'))),
         ])),
       if(settings.eventEnded)_Banner(icon:Icons.flag,color:scheme.tertiaryContainer,
         text:'${S.t('event.ended')} · ${S.t('event.endedDetail')}'),
       if(update.status==UpdateStatus.invited)_Banner(icon:Icons.system_update,color:scheme.secondaryContainer,
         text:S.t('update.invited',{'version':update.targetVersion,'deadline':update.deadline==null?'-':_time(update.deadline!)}),
-        action:update.packageUrl==null?null:TextButton(onPressed:onUpdate,child:Text(S.t('update.download')))),
+        action:update.packageUrl==null?null:OutlinedButton(onPressed:onUpdate,child:Text(S.t('update.download')))),
       if(update.status==UpdateStatus.deferred)_Banner(icon:Icons.system_update,color:scheme.secondaryContainer,
         text:S.t('update.deferred',{'version':update.targetVersion})),
       if(settings.lowBandwidth)_Banner(icon:Icons.network_check,color:Colors.amber.shade200,
         text:S.t('lowband.on',{'s':settings.lowBandwidthIntervalS})+(heldPhotos>0?' · ${S.t('lowband.photosHeld',{'n':heldPhotos})}':'')),
       if(alert!=null)_Banner(icon:Icons.sync_problem,color:scheme.errorContainer,
         text:S.t('sync.alert',{'n':alert!.count,'min':alert!.minutes}),
-        action:TextButton(onPressed:onSyncNow,child:Text(S.t('sync.now')))),
+        action:OutlinedButton(onPressed:onSyncNow,child:Text(S.t('sync.now')))),
     ];
     if(rows.isEmpty)return const SizedBox.shrink();
     return Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.stretch,children:rows);

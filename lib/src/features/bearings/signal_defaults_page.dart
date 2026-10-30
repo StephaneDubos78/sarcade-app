@@ -3,6 +3,7 @@
 /// for every operator.
 library;
 
+import '../../ui/choice_pills.dart';
 import 'package:flutter/material.dart';
 
 import '../../l10n/strings.dart';
@@ -64,8 +65,8 @@ class _SignalDefaultsPageState extends State<SignalDefaultsPage> {
           decoration:InputDecoration(labelText:S.t('bearings.signalFreq'),suffixText:'MHz')),
         const SizedBox(height:8),
         TextField(controller:l,maxLength:60,decoration:InputDecoration(labelText:S.t('bearings.signalLabel'))),
-        SegmentedButton<bool>(segments:[ButtonSegment(value:false,label:Text(S.t('bearings.signalReal'))),ButtonSegment(value:true,label:Text(S.t('bearings.signalExercise')))],
-          selected:{exercise},onSelectionChanged:(v)=>set(()=>exercise=v.first)),
+        ChoicePills<bool>(choices:[(value:false,label:S.t('bearings.signalReal'),icon:null),(value:true,label:S.t('bearings.signalExercise'),icon:null)],
+          selected:exercise,onSelected:(v)=>set(()=>exercise=v)),
       ]),
       actions:[TextButton(onPressed:()=>Navigator.pop(c,false),child:Text(S.t('common.cancel'))),
         FilledButton(onPressed:()=>Navigator.pop(c,true),child:Text(S.t('common.ok')))])));
