@@ -2266,7 +2266,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     // On a phone a panel takes most of the width, leaving a strip of map visible.
     double panelWidth(double w)=>compact?(screenWidth*0.85).clamp(0.0,w):w;
     void toggleOperators()=>setState((){_deskPage=null;_deskId=null;_showPanel=!_showPanel;if(_showPanel){_showReferencePanel=false;_showResection=false;}});
-    void openFiles()=>_openDesk('files',()=>FilesPage(api:widget.api,eventId:widget.eventId,actorId:widget.deviceId,store:widget.store));
+    void openFiles()=>_openDesk('files',()=>FilesPage(api:widget.api,eventId:widget.eventId,actorId:widget.deviceId,store:widget.store,drawings:DrawingFileActions(importFile:_importFile,exportAll:_exportGeoJson,count:()=>_drawing.features.length)));
     void openMessages()=>_openMessages(fromButton:true);
     void showMap()=>setState((){_tab=0;_deskPage=null;_deskId=null;_showPanel=false;_showReferencePanel=false;_showRoutesPanel=false;_showResection=false;_drawingRouteId=null;});
     void openSettings(){
@@ -2446,7 +2446,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
               foreground:_drawingTools?Theme.of(context).colorScheme.onPrimary:null),
             if(_drawingTools)...[
               const SizedBox(width:8),
-              Flexible(child:DrawingToolbar(controller:_drawing,onExport:_exportGeoJson,onImport:_importFile,onClose:_toggleDrawingTools)),
+              // Hidden while an object is edited: its card stays visible (13 h 25).
+              if(_drawing.selection.isEmpty)Flexible(child:DrawingToolbar(controller:_drawing,onClose:_toggleDrawingTools)),
             ]else...[
               const SizedBox(width:8),
               // Computer (29 Oct 2026): « Suivi de position » right after the

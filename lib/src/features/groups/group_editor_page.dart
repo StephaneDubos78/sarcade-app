@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import '../../l10n/strings.dart';
+import '../../ui/color_palette.dart';
 import '../../models/comm_group.dart';
 
 /// Result of the editor: the group to save, or a deletion.
@@ -76,10 +77,8 @@ class _GroupEditorPageState extends State<GroupEditorPage> {
       const SizedBox(height:8),
       Text(S.t('groups.color')),
       const SizedBox(height:6),
-      Wrap(spacing:8,children:[for(final c in groupColors)GestureDetector(
-        onTap:()=>setState(()=>_color=c),
-        child:CircleAvatar(radius:16,backgroundColor:Color(c),child:_color==c?const Icon(Icons.check,color:Colors.white,size:18):null),
-      )]),
+      // Same 4 × 4 palette as the drawings and the profile (30 Oct 2026, 13 h 25).
+      ColorGrid(colors:paletteWith(_color),selected:_color,onPick:(c)=>setState(()=>_color=c)),
       if(widget.initial!=null)SwitchListTile(contentPadding:EdgeInsets.zero,value:_archived,onChanged:(v)=>setState(()=>_archived=v),
         title:Text(S.t('groups.archived'))),
       const SizedBox(height:20),
