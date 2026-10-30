@@ -28,6 +28,10 @@ class S {
 }
 
 const Texts _fr={
+  'paste.title':'Coller une position','paste.button':'Coller','paste.hint':'Texte, message, lien Google Maps, Plans, OpenStreetMap, Waze…','paste.read':'Lire',
+  'paste.empty':'Le presse-papiers est vide','paste.none':'Aucune position trouvée dans ce texte','paste.offline':'Aucune position trouvée ; recherche d’adresse impossible hors connexion',
+  'paste.foundOne':'Une position trouvée','paste.foundMany':'{n} positions trouvées : choisissez','paste.read1':'Lu : {what}','paste.use':'Utiliser','paste.applied':'Position reprise : {what}',
+  'paste.link':'Lien','paste.address':'Adresse',
   'poi.createHere':'Créer un point d’intérêt ici','poi.create':'Créer','poi.defaultName':'Point {hm}','poi.iconTitle':'Icône','poi.changeIcon':'Changer l’icône','poi.created':'Point d’intérêt créé',
   'poi.icon.pin':'Épingle','poi.icon.gathering':'Rassemblement','poi.icon.command_post':'PC','poi.icon.danger':'Danger','poi.icon.parking':'Parking','poi.icon.water':'Eau',
   'poi.icon.helipad':'Hélisurface','poi.icon.vehicle':'Véhicule','poi.icon.viewpoint':'Point de vue','poi.icon.medical':'Secours','poi.icon.radio':'Radio','poi.icon.shelter':'Abri','poi.icon.flag':'Repère',
@@ -457,6 +461,10 @@ const Texts _fr={
 };
 
 const Texts _en={
+  'paste.title':'Paste a position','paste.button':'Paste','paste.hint':'Text, message, Google Maps, Apple Maps, OpenStreetMap, Waze link…','paste.read':'Read',
+  'paste.empty':'The clipboard is empty','paste.none':'No position found in this text','paste.offline':'No position found; address search impossible offline',
+  'paste.foundOne':'One position found','paste.foundMany':'{n} positions found: choose one','paste.read1':'Read: {what}','paste.use':'Use','paste.applied':'Position taken: {what}',
+  'paste.link':'Link','paste.address':'Address',
   'poi.createHere':'Create a point of interest here','poi.create':'Create','poi.defaultName':'Point {hm}','poi.iconTitle':'Icon','poi.changeIcon':'Change the icon','poi.created':'Point of interest created',
   'poi.icon.pin':'Pin','poi.icon.gathering':'Gathering','poi.icon.command_post':'Command post','poi.icon.danger':'Danger','poi.icon.parking':'Parking','poi.icon.water':'Water',
   'poi.icon.helipad':'Helipad','poi.icon.vehicle':'Vehicle','poi.icon.viewpoint':'Viewpoint','poi.icon.medical':'Medical','poi.icon.radio':'Radio','poi.icon.shelter':'Shelter','poi.icon.flag':'Marker',
