@@ -63,7 +63,10 @@ void main() {
     final a = BearingAim.edit(b);
     expect(a.origin, b.origin);
     expect(a.azimuthDeg, 123);
-    expect(a.fixed, isTrue);
+    // The tip follows the mouse at once, a click fixes it.
+    expect(a.fixed, isFalse);
+    expect(a.follow(const LatLng(48.9, 2.1)), isTrue);
+    expect(a.azimuthDeg!.round() % 360, 0);
     a.type(130);
     final e = a.edited(strength: 4, search: 's', exercise: false, lengthM: 10000, by: 'PCO', at: t.add(const Duration(minutes: 5)))!;
     expect(e.id, 'b1');

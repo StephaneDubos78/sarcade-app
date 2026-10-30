@@ -11,7 +11,8 @@ IconData waypointIcon(String type)=>switch(type){
 
 /// Size of the dot of a waypoint and of its touch area (card « Itinéraires,
 /// taille des points », 29 Oct 2026, 3 h 43): 12 px, 44 px to touch.
-const waypointDotPx=12.0, waypointTouchPx=44.0;
+// 8 px like the drawing handles (card « Dessin, poignées d'édition », 30 Oct 2026).
+const waypointDotPx=8.0, waypointTouchPx=44.0;
 
 /// Label beside a waypoint: « Ronde nord · P2 » (card « point de passage
 /// introuvable sur la carte », 3 h 15).
@@ -53,7 +54,7 @@ List<Widget> buildRouteLayers(RoutesController c,{String? selectedRouteId,List<L
       markers.add(Marker(point:w.point,width:200,height:waypointTouchPx,alignment:const Alignment(0.78,0),child:Row(children:[
         GestureDetector(key:ValueKey('wp-${w.id}'),behavior:HitTestBehavior.opaque,onTap:onWaypointTap==null?null:()=>onWaypointTap(w),
           child:SizedBox(width:waypointTouchPx,height:waypointTouchPx,child:Center(child:typed
-            ?Icon(waypointIcon(w.type),size:selected?18:16,color:colour,shadows:const [Shadow(blurRadius:2,color:Colors.white)])
+            ?Icon(waypointIcon(w.type),size:selected?14:12,color:colour,shadows:const [Shadow(blurRadius:2,color:Colors.white)])
             :Container(width:waypointDotPx,height:waypointDotPx,decoration:BoxDecoration(color:colour,shape:BoxShape.circle,
               border:Border.all(color:Colors.white,width:selected?2:1.5),boxShadow:const [BoxShadow(blurRadius:2,color:Colors.black38)]))))),
         Flexible(child:GestureDetector(onTap:onWaypointTap==null?null:()=>onWaypointTap(w),child:Container(

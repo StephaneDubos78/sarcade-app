@@ -22,11 +22,14 @@ double layerOpacityFrom(String? Function(String key) read,String key){
 class LayerRow extends StatelessWidget {
   final String label; final bool on; final ValueChanged<bool> onShown;
   final double? opacity; final ValueChanged<double>? onOpacity;
-  const LayerRow({super.key,required this.label,required this.on,required this.onShown,this.opacity,this.onOpacity});
+  /// Optional action after the name (« Voir la liste » of the points).
+  final Widget? trailing;
+  const LayerRow({super.key,required this.label,required this.on,required this.onShown,this.opacity,this.onOpacity,this.trailing});
   @override Widget build(BuildContext context){
     final t=Theme.of(context); final o=opacity;
     return Padding(padding:const EdgeInsets.only(left:16,right:8),child:SizedBox(height:48,child:Row(children:[
       Expanded(child:Text(label,overflow:TextOverflow.ellipsis,style:t.textTheme.bodyLarge)),
+      ?trailing,
       if(on&&o!=null&&onOpacity!=null)...[
         Tooltip(message:S.t('layers.opacity'),child:Icon(Icons.opacity,size:16,color:t.colorScheme.onSurfaceVariant)),
         SizedBox(width:110,child:Slider(value:o,min:0.1,max:1,divisions:9,label:'${(o*100).round()} %',onChanged:onOpacity)),

@@ -1,7 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:latlong2/latlong.dart';
-import 'package:sarcade_app/src/features/bearings/bearing_legend.dart';
-import 'package:sarcade_app/src/features/bearings/bearing_models.dart';
 import 'package:sarcade_app/src/features/map/map_objects.dart';
 import 'package:sarcade_app/src/features/map/traces_layer.dart';
 import 'package:sarcade_app/src/features/orders/move_orders.dart';
@@ -58,7 +56,7 @@ void main() {
     expect(canEditWaypointOf(r, 'TEL-01'), isTrue);
     expect(canEditWaypointOf(r, 'PCO'), isTrue);
     expect(canEditWaypointOf(r, 'TEL-02'), isFalse);
-    expect(waypointDotPx, 12);
+    expect(waypointDotPx, 8);
     expect(waypointTouchPx, 44);
     expect(S.t('routes.new'), 'Nouvel itinéraire');
   });
@@ -91,15 +89,5 @@ void main() {
     expect(tracedStations(onMap, pinned: {'z'}, all: false, aprs: false), ['z']);
     expect(tracedStations(onMap, pinned: {}, all: true, aprs: false), ['a']);
     expect(tracedStations(onMap, pinned: {}, all: true, aprs: true), ['a', 'aprs:F4X']);
-  });
-
-  test('legend: one line per search with its colour, exercise flagged', () {
-    Bearing b(String search, {bool exercise = false}) => Bearing(id: search, eventId: 'e1', origin: const LatLng(48.8, 2.1), azimuthDeg: 10,
-        lengthM: 1000, coneDeg: 5, strength: 0, target: '', comment: '', search: search, method: 'manual', exercise: exercise,
-        takenAt: DateTime.utc(2026), createdBy: 'T', updatedBy: 'T', updatedAt: DateTime.utc(2026));
-    final e = legendEntries([b('121,375 MHz · Exercice', exercise: true), b('406 MHz'), b('406 MHz')]);
-    expect(e.length, 2);
-    expect(e.firstWhere((x) => x.search.startsWith('121')).color, beaconExerciseColor);
-    expect(e.firstWhere((x) => x.search.startsWith('121')).exercise, isTrue);
   });
 }

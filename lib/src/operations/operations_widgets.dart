@@ -23,10 +23,13 @@ class OperationsBanners extends StatelessWidget {
   final VoidCallback? onEnableNotifications; final VoidCallback? onDismissNotifications;
   /// Web client: a newer build is served; reloading runs it.
   final VoidCallback? onWebUpdate;
+  /// What is blocked (« 1 photo non envoyée », unsent_summary.dart) and the
+  /// list of the items not sent, opened by a touch on the banner.
+  final String? alertWhat; final VoidCallback? onOpenUnsent;
   const OperationsBanners({super.key,required this.settings,required this.update,required this.alert,
     required this.heldPhotos,required this.onSyncNow,required this.onUpdate,
     this.accessRequired=false,this.accessRenewBy,this.onSignIn,this.onReload,
-    this.onEnableNotifications,this.onDismissNotifications,this.onWebUpdate});
+    this.onEnableNotifications,this.onDismissNotifications,this.onWebUpdate,this.alertWhat,this.onOpenUnsent});
 
   static String _date(DateTime t){final l=t.toLocal();String two(int v)=>v.toString().padLeft(2,'0');return '${two(l.day)}/${two(l.month)} ${two(l.hour)}:${two(l.minute)}';}
 
@@ -71,8 +74,8 @@ class OperationsBanners extends StatelessWidget {
         text:S.t('update.deferred',{'version':update.targetVersion})),
       if(settings.lowBandwidth)_Banner(icon:Icons.network_check,color:Colors.amber.shade200,
         text:S.t('lowband.on',{'s':settings.lowBandwidthIntervalS})+(heldPhotos>0?' · ${S.t('lowband.photosHeld',{'n':heldPhotos})}':'')),
-      if(alert!=null)_Banner(icon:Icons.sync_problem,color:scheme.errorContainer,
-        text:S.t('sync.alert',{'n':alert!.count,'min':alert!.minutes}),
+      if(alert!=null)_Banner(key:const ValueKey('unsent-banner'),icon:Icons.sync_problem,color:scheme.errorContainer,onTap:onOpenUnsent,
+        text:(alertWhat??'').isEmpty?S.t('sync.alert',{'n':alert!.count,'min':alert!.minutes}):S.t('unsent.since2',{'what':alertWhat,'min':alert!.minutes}),
         action:OutlinedButton(onPressed:onSyncNow,child:Text(S.t('sync.now')))),
     ];
     if(rows.isEmpty)return const SizedBox.shrink();
@@ -83,13 +86,14 @@ class OperationsBanners extends StatelessWidget {
 const webUpdateBannerColor=Color(0xFF14213D), webUpdateButtonColor=Color(0xFF3D7BFF);
 
 class _Banner extends StatelessWidget {
-  final IconData icon; final Color color; final String text; final Widget? action; final Color? foreground;
-  const _Banner({required this.icon,required this.color,required this.text,this.action,this.foreground});
-  @override Widget build(BuildContext context)=>Material(color:color,child:Padding(
+  final IconData icon; final Color color; final String text; final Widget? action; final Color? foreground; final VoidCallback? onTap;
+  const _Banner({super.key,required this.icon,required this.color,required this.text,this.action,this.foreground,this.onTap});
+  @override Widget build(BuildContext context)=>Material(color:color,child:InkWell(onTap:onTap,child:Padding(
     padding:const EdgeInsets.symmetric(horizontal:12,vertical:6),
     child:Row(children:[Icon(icon,size:18,color:foreground),const SizedBox(width:8),
-      Expanded(child:Text(text,style:Theme.of(context).textTheme.bodySmall?.copyWith(color:foreground))),?action]),
-  ));
+      Expanded(child:Text(text,style:Theme.of(context).textTheme.bodySmall?.copyWith(color:foreground))),
+      if(onTap!=null)Icon(Icons.chevron_right,size:18,color:foreground),?action]),
+  )));
 }
 
 /// Screen shown when the server refuses this version (2 hours after the

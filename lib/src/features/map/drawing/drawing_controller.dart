@@ -62,7 +62,21 @@ class DrawingController extends ChangeNotifier {
 
   FeatureKind? _tool;
   final List<LatLng> _draft=[];
-  String? _selectedId;
+  /// Selected objects, in the order of selection (card « Dessin, sélection
+  /// multiple », 29 Oct 2026): one object for the usual selection bar,
+  /// several for the common action bar.
+  final List<String> _selection=[];
+  /// Phone: « Sélection » button of the drawing bar, a drag draws the
+  /// selection rectangle and a touch adds or removes an object.
+  bool selectMode=false;
+  /// Objects that can join a multiple selection: one's own, or every one
+  /// for the PCO (proposal 6). Set by the map page.
+  bool Function(MapFeature f) canSelect=_any;
+  static bool _any(MapFeature _)=>true;
+  /// Change of several objects at once, carried with each synchronised
+  /// operation so that the server writes one logbook line (proposal 5).
+  ({String id,int n,String action})? _group;
+  Map<String,dynamic>? get groupJson{final g=_group;return g==null?null:{'id':g.id,'n':g.n,'action':g.action};}
   int color=drawingPalette.first;
   double strokeWidth=drawingWidths[1];
 
@@ -70,14 +84,20 @@ class DrawingController extends ChangeNotifier {
   List<LatLng> get draft=>List.unmodifiable(_draft);
   List<MapFeature> get features=>_features.values.toList()..sort((a,b)=>a.updatedAt.compareTo(b.updatedAt));
   MapFeature? feature(String id)=>_features[id];
-  MapFeature? get selected=>_selectedId==null?null:_features[_selectedId];
+  /// The selected object when exactly one is selected.
+  MapFeature? get selected=>_selection.length==1?_features[_selection.first]:null;
+  /// Every selected object.
+  List<MapFeature> get selection=>[for(final id in _selection)?_features[id]];
+  bool get hasSelection=>_selection.isNotEmpty;
+  bool get isMulti=>_selection.length>1;
+  bool isSelected(String id)=>_selection.contains(id);
   bool get canUndo=>_undo.isNotEmpty;
   bool get canRedo=>_redo.isNotEmpty;
   bool get isDrawing=>_tool!=null;
 
   /// The map should not pan while a shape is selected or freehand is active,
   /// so handle drags and freehand strokes are not stolen by the map.
-  bool get locksMapDrag=>_selectedId!=null||_tool==FeatureKind.freehand;
+  bool get locksMapDrag=>_selection.isNotEmpty||selectMode||_tool==FeatureKind.freehand;
 
   /// Length or area of the shape being drawn, for the live status line.
   String? get draftMeasure{
@@ -91,7 +111,7 @@ class DrawingController extends ChangeNotifier {
   bool get canFinish=>_tool!=null&&_tool!.isMultiVertex&&_draft.length>=_tool!.minPoints;
 
   void selectTool(FeatureKind? kind){
-    _tool=kind;_draft.clear();_selectedId=null;
+    _tool=kind;_draft.clear();_selection.clear();if(kind!=null)selectMode=false;
     notifyListeners();
   }
 
@@ -146,7 +166,7 @@ class DrawingController extends ChangeNotifier {
     _draft.clear();
     // Like PowerPoint: the new shape is selected so it can be styled at once,
     // and the tool is released so the next tap selects instead of drawing.
-    _tool=null;_selectedId=f.id;
+    _tool=null;_selection..clear()..add(f.id);
     _record({f.id:null},{f.id:f});
     _put(f,isNew:true);
     notifyListeners();
@@ -165,7 +185,7 @@ class DrawingController extends ChangeNotifier {
         createdBy:actorId,updatedBy:actorId,updatedAt:now,
       ),
     ];
-    _tool=null;_draft.clear();_selectedId=null;
+    _tool=null;_draft.clear();_selection.clear();
     _record({for(final f in created)f.id:null},{for(final f in created)f.id:f});
     for(final f in created){_put(f,isNew:true);}
     notifyListeners();
@@ -174,13 +194,35 @@ class DrawingController extends ChangeNotifier {
 
   void select(String? id){
     if(id!=null&&!_features.containsKey(id))return;
-    _selectedId=id;notifyListeners();
+    _selection.clear();if(id!=null)_selection.add(id);
+    notifyListeners();
+  }
+
+  /// Ctrl / Maj + clic, or a touch in « Sélection »: adds or removes one object.
+  void toggle(String id){
+    final f=_features[id]; if(f==null)return;
+    if(_selection.contains(id)){_selection.remove(id);}
+    else if(canSelect(f)||_selection.isEmpty){_selection.add(id);}
+    notifyListeners();
+  }
+
+  /// Objects touched by the selection rectangle join the selection.
+  void addToSelection(Iterable<String> ids){
+    for(final id in ids){final f=_features[id];if(f!=null&&canSelect(f)&&!_selection.contains(id))_selection.add(id);}
+    notifyListeners();
+  }
+
+  void setSelectMode(bool on){selectMode=on;if(on){_tool=null;_draft.clear();}notifyListeners();}
+
+  void _grouped(String action,int n,void Function() run){
+    _group=n>1?(id:_uuid.v4(),n:n,action:action):null;
+    try{run();}finally{_group=null;}
   }
 
   // Drag gestures: call beginEdit once at the start, then the move/update
   // methods for every frame, then endEdit, so one drag is one undo step and
   // one synchronised change.
-  void beginEdit(){final f=selected;_editBefore=f==null?null:{f.id:f};}
+  void beginEdit(){final all=selection;_editBefore=all.isEmpty?null:{for(final f in all)f.id:f};}
 
   void moveSelected(double dLat,double dLon){_mutateSelected((f)=>f.translated(dLat,dLon));}
 
@@ -193,16 +235,28 @@ class DrawingController extends ChangeNotifier {
     });
   }
 
+  /// Point in the middle of a side dragged: a new vertex there (proposal 4).
+  void insertVertex(int index,LatLng p){
+    _mutateSelected((f){
+      final pts=List.of(f.points);
+      if(index<0||index>pts.length)return f;
+      pts.insert(index,p);
+      return f.copyWith(points:pts);
+    });
+  }
+
   void setRadius(double r){_mutateSelected((f)=>f.copyWith(radiusM:r<1?1:r));}
 
   void endEdit(){
-    final before=_editBefore, f=selected;
+    final before=_editBefore;
     _editBefore=null;
-    if(before==null||f==null||identical(before[f.id],f))return;
-    final stamped=_stamp(f);
-    _features[f.id]=stamped;
-    _record(before,{f.id:stamped});
-    onChanged?.call(stamped,isNew:false);
+    if(before==null)return;
+    final changed=<String,MapFeature>{};
+    for(final id in before.keys){final f=_features[id];if(f!=null&&!identical(before[id],f))changed[id]=_stamp(f);}
+    if(changed.isEmpty)return;
+    _features.addAll(changed);
+    _record({for(final id in changed.keys)id:before[id]},changed);
+    _grouped('move',changed.length,(){for(final f in changed.values){onChanged?.call(f,isNew:false);}});
     notifyListeners();
   }
 
@@ -211,40 +265,43 @@ class DrawingController extends ChangeNotifier {
   void setLabel(String label){_changeSelected((f)=>f.copyWith(label:label.trim()));}
   void toggleGeofence(){_changeSelected((f)=>f.copyWith(geofence:!f.geofence));}
   void setOpacity(double o){_changeSelected((f)=>f.copyWith(opacity:o.clamp(0.1,1.0)));}
+  /// Font size of the selected Texte objects.
+  void setFontSize(double size){_changeSelected((f)=>f.kind==FeatureKind.text?f.copyWith(fontSize:size.clamp(8.0,72.0)):f);}
 
+  /// Deletes every selected object: one undo step.
   void deleteSelected(){
-    final f=selected;
-    if(f==null)return;
-    _selectedId=null;
-    _record({f.id:f},{f.id:null});
-    _remove(f.id);
+    final all=selection;
+    if(all.isEmpty)return;
+    _selection.clear();
+    _record({for(final f in all)f.id:f},{for(final f in all)f.id:null});
+    _grouped('delete',all.length,(){for(final f in all){_remove(f.id);}});
     notifyListeners();
   }
 
   /// Copy shifted slightly north-east, selected, like Ctrl+D in PowerPoint.
   MapFeature? duplicateSelected({double offsetDeg=0.0005}){
-    final f=selected;
-    if(f==null)return null;
-    final copy=_stamp(f.translated(offsetDeg,offsetDeg).copyWith(id:_uuid.v7()));
-    _selectedId=copy.id;
-    _record({copy.id:null},{copy.id:copy});
-    _put(copy,isNew:true);
+    final all=selection;
+    if(all.isEmpty)return null;
+    final copies=[for(final f in all)_stamp(f.translated(offsetDeg,offsetDeg).copyWith(id:_uuid.v7()))];
+    _selection..clear()..addAll(copies.map((c)=>c.id));
+    _record({for(final c in copies)c.id:null},{for(final c in copies)c.id:c});
+    _grouped('duplicate',copies.length,(){for(final c in copies){_put(c,isNew:true);}});
     notifyListeners();
-    return copy;
+    return copies.first;
   }
 
   void undo(){
     if(_undo.isEmpty)return;
     final step=_undo.removeLast();
     _redo.add(step);
-    _apply(step.before);
+    _grouped('undo',step.before.length,()=>_apply(step.before));
   }
 
   void redo(){
     if(_redo.isEmpty)return;
     final step=_redo.removeLast();
     _undo.add(step);
-    _apply(step.after);
+    _grouped('redo',step.after.length,()=>_apply(step.after));
   }
 
   /// Applies a server state. Ignored when it is not newer than the local copy,
@@ -265,7 +322,7 @@ class DrawingController extends ChangeNotifier {
       if(c>0||(c==0&&(local.updatedBy??'').compareTo(by??'')>0))return;
     }
     _features.remove(id);
-    if(_selectedId==id)_selectedId=null;
+    _selection.remove(id);
     notifyListeners();
   }
 
@@ -287,7 +344,7 @@ class DrawingController extends ChangeNotifier {
         _put(_stamp(target),isNew:!existed);
       }
     }
-    if(_selectedId!=null&&!_features.containsKey(_selectedId))_selectedId=null;
+    _selection.removeWhere((id)=>!_features.containsKey(id));
     notifyListeners();
   }
 
@@ -311,19 +368,19 @@ class DrawingController extends ChangeNotifier {
 
   /// One-shot change of the selection (style, label): one undo step.
   void _changeSelected(MapFeature Function(MapFeature) change){
-    final f=selected;
-    if(f==null){notifyListeners();return;}
-    final next=_stamp(change(f));
-    _record({f.id:f},{f.id:next});
-    _put(next,isNew:false);
+    final all=selection;
+    if(all.isEmpty){notifyListeners();return;}
+    final next={for(final f in all)f.id:_stamp(change(f))};
+    _record({for(final f in all)f.id:f},next);
+    _grouped('style',all.length,(){for(final f in next.values){_put(f,isNew:false);}});
     notifyListeners();
   }
 
   /// Live change during a drag: shown at once, recorded and synced on endEdit.
   void _mutateSelected(MapFeature Function(MapFeature) change){
-    final f=selected;
-    if(f==null)return;
-    _features[f.id]=change(f);
+    final all=selection;
+    if(all.isEmpty)return;
+    for(final f in all){_features[f.id]=change(f);}
     notifyListeners();
   }
 }
