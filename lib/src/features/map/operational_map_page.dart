@@ -206,6 +206,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   /// new screen as before.
   Widget? _deskPage; String? _deskId;
   void _openDesk(String id,Widget Function() build){
+    if(_drawing.selectMode)_drawing.endSelection();
     if(_isCompact){Navigator.push(context,MaterialPageRoute(builder:(_)=>build()));return;}
     setState((){
       if(_deskId==id){_deskId=null;_deskPage=null;return;}
@@ -290,7 +291,9 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
 
   void _toggleDrawingTools(){
     // Each opening of the tools starts from the profile colour.
-    if(_drawingTools){_drawing.selectTool(null);}else{
+    // Closing the bar ends any selection: the map is never left blocked
+    // (bug of 30 Oct 2026, 17 h 35).
+    if(_drawingTools){_drawing.selectTool(null);_drawing.endSelection();}else{
       _drawing.color=_profileDrawColor;
       _bearings.operatorColor=_profileDrawColor;
       // Drawing with the drawings hidden shows nothing (28 Oct 2026): shown again.
@@ -424,6 +427,13 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     final wide=MediaQuery.sizeOf(context).width>=_compactWidth;
     final me=_me??_positionOf(widget.deviceId);
     if(gesture&&nearOwnPosition(point,me)){await _bearings.startTaking();if(wide&&mounted)_startAim(BearingAim(me!));return;}
+    // Long press on a drawn object: « Sélectionner » it; other touches add
+    // objects (card « Sélection sortie de la barre de dessin », 17 h 36).
+    if(gesture&&_showDrawings){
+      final cam=_map.camera;
+      final hit=hitTest(_drawing.features,cam.latLngToScreenOffset(point),cam.latLngToScreenOffset,radiusPx:_circleRadiusPx);
+      if(hit!=null&&_drawing.canSelect(hit)){_drawing.startSelection(hit.id);return;}
+    }
     final label=S.t('nav.point');
     final choice=await showPointMenu(context,point:point,places:_places,pco:isPco(widget.deviceId),
       coordinates:formatCoordinates(point,_coordFormat,mgrsDigits:_mgrsDigits));
@@ -436,6 +446,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       case PointAction.navigate: await _navigateTo(point,label);
       case PointAction.route: await _routeToHere(point);
       case PointAction.external: await _openElsewhere(point,label);
+      case PointAction.select: if(!_showDrawings)await _setShown('show_draw',true);_drawing.startSelection();
       case PointAction.weather: _openWeather(point:(lat:point.latitude,lon:point.longitude,label:label));
       case PointAction.info: await openPointInfo(context,point:point,places:_places,from:me,onSendMessage:_sendText);
     }
@@ -1402,7 +1413,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   /// Maj + glisser (computer) or « Sélection » (phone): selection rectangle.
   bool get _rectSelecting=>(_drawing.selectMode||_shiftDown)&&!_drawing.isDrawing&&_aim==null&&!_bearings.taking&&_adjusting==null;
   void _onSelectionRect(Rect r){final cam=_map.camera;_drawing.addToSelection(featuresInRect(_drawing.features,r,cam.latLngToScreenOffset,radiusPx:_circleRadiusPx).map((f)=>f.id));}
-  void _onSelectionTap(Offset at){final cam=_map.camera;final hit=hitTest(_drawing.features,at,cam.latLngToScreenOffset,radiusPx:_circleRadiusPx);if(hit!=null)_drawing.toggle(hit.id);}
+  void _onSelectionTap(Offset at){final cam=_map.camera;final hit=hitTest(_drawing.features,at,cam.latLngToScreenOffset,radiusPx:_circleRadiusPx);if(hit!=null){_drawing.toggle(hit.id);}else{_drawing.endSelection();}}
   void _syncEscapes()=>_escapes.sync([if(_showPanel)'teams',if(_showRoutesPanel)'routes',if(_showReferencePanel)'reference',if(_showResection)'resection',if(_deskId!=null)'desk',if(_chatPeer!=null)'chat']);
   bool _escapePanel(){_syncEscapes();return _escapes.escape((k)=>setState((){switch(k){
     case 'teams':_showPanel=false; case 'routes':_showRoutesPanel=false;_drawingRouteId=null;
@@ -2213,7 +2224,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         LogicalKeyboardKey.keyD when ctrl&&_drawing.hasSelection=>run(()=>_drawing.duplicateSelected()),
         LogicalKeyboardKey.enter||LogicalKeyboardKey.numpadEnter when _drawing.canFinish=>run(()=>_drawing.finish()),
         LogicalKeyboardKey.escape when _drawing.isDrawing=>run(()=>_drawing.selectTool(null)),
-        LogicalKeyboardKey.escape when _drawing.hasSelection||_drawing.selectMode=>run((){_drawing.select(null);_drawing.setSelectMode(false);}),
+        LogicalKeyboardKey.escape when _drawing.hasSelection||_drawing.selectMode=>run(_drawing.endSelection),
         LogicalKeyboardKey.escape=>_escapePanel(),
         _=>false,
       };
@@ -2473,6 +2484,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           // Phone: filters in one button; computer: chips visible.
           if(!_drawingTools)Padding(padding:const EdgeInsets.only(top:8),child:Wrap(spacing:8,runSpacing:8,children:[?_staleBanner(),?_orderBanner()])),
           if(_drawing.isDrawing)Padding(padding:const EdgeInsets.only(top:8),child:DraftBar(controller:_drawing)),
+          if(_drawing.selectMode&&!_drawing.hasSelection)Padding(padding:const EdgeInsets.only(top:8),child:SelectionHint(controller:_drawing)),
           if(_drawing.isMulti)Padding(padding:const EdgeInsets.only(top:8),child:MultiSelectionBar(controller:_drawing,onExport:()=>_exportGeoJson(only:_drawing.selection))),
           if(_drawing.selected!=null)Padding(padding:const EdgeInsets.only(top:8),child:SelectionBar(controller:_drawing,onEditLabel:_editSelectedLabel,canFence:isPco(widget.deviceId))),
           if(_drawingClosure)Padding(padding:const EdgeInsets.only(top:8),child:Card(child:Padding(padding:const EdgeInsets.symmetric(horizontal:12,vertical:6),child:Row(mainAxisSize:MainAxisSize.min,children:[
