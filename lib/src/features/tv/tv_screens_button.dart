@@ -3,7 +3,7 @@
 /// has paired at least one screen (PCO and administrators: any screen of
 /// the event), a button next to the right column sends the current view in
 /// one gesture.
-/// 1) one screen: a tap sends the view at once, « Vue envoyée à <nom> »;
+/// 1) one screen: a tap sends the view at once, « Vue envoyée à `nom` »;
 /// 2) several screens: a short list by name with the connected state, a
 ///    tap sends the view; « Tous les écrans »;
 /// 3) settings of each screen from the list (messages column, SOS banner,
