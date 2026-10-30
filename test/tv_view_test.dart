@@ -37,7 +37,7 @@ void main() {
     final list=[{'id':'a','active':true},{'id':'b','active':false,'revoked':true}];
     expect([for(final d in tvVisibleScreens(list,showOld:false))d['id']],['a']);
     expect(tvVisibleScreens(list,showOld:true).length,2);
-    expect(tvCodesToOffer(['AB','CD'],{'AB'}),['CD']);
+    expect(tvCodesToOffer(['AB','CD'],{'AB'},{},DateTime(2026)),['CD']);
   });
 
   test('lot 7: day / night mode sent with the view, screen title', () {
