@@ -24,6 +24,7 @@ import '../../services/notification_keys.dart';
 import '../settings/quick_messages_editor.dart' show defaultQuickMessages;
 import '../dictation/dictation_button.dart';
 import '../../ui/action_buttons.dart';
+import '../tv/tv_nearby.dart';
 
 class MessagesPage extends StatefulWidget {
  final SarcadeApi api; final String eventId,actorId; final OfflineSyncService sync; final LocalStore store;
@@ -228,7 +229,7 @@ class _MessagesPageState extends State<MessagesPage>{
    setState(()=>_picking=true);
    try{
      // Resized and recompressed on the device: a few hundred kB, quick to send by radio relay or 4G.
-     final shot=await ImagePicker().pickImage(source:source,maxWidth:1920,maxHeight:1920,imageQuality:80);
+     final shot=await TvNearbyGate.during(()=>ImagePicker().pickImage(source:source,maxWidth:1920,maxHeight:1920,imageQuality:80));
      if(shot==null)return;
      final bytes=await shot.readAsBytes();
      if(bytes.length>maxPhotoBytes){_snack(S.t('messages.photoTooLarge'));return;}
@@ -811,7 +812,7 @@ class _PhotoThumbState extends State<_PhotoThumb>{
      child:Column(mainAxisSize:MainAxisSize.min,children:[Icon(icon),Text(title,textAlign:TextAlign.center,style:const TextStyle(fontSize:12)),if(hint!=null)Text(hint,textAlign:TextAlign.center,style:const TextStyle(fontSize:11))])));
    return SizedBox(width:160,height:120,child:bytes!=null
      ?Stack(fit:StackFit.expand,children:[
-       InkWell(onTap:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>_PhotoViewer(attachment:widget.attachment,bytes:bytes))),
+       InkWell(onTap:()=>TvNearbyGate.during(()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>_PhotoViewer(attachment:widget.attachment,bytes:bytes)))),
          child:ClipRRect(borderRadius:BorderRadius.circular(6),child:Image.memory(bytes,fit:BoxFit.cover,cacheWidth:320))),
        if(pending)Positioned(right:4,top:4,child:Tooltip(message:S.t('messages.pendingUpload'),child:const CircleAvatar(radius:12,child:Icon(Icons.cloud_upload_outlined,size:16)))),
      ])
