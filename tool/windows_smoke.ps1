@@ -29,6 +29,7 @@ try {
   # Grey window check (the owner's symptom): colours inside the window of
   # the app. A uniform window means the engine drew nothing, even when the
   # Dart code reports its first screen.
+  try {
   Add-Type @"
 using System; using System.Runtime.InteropServices;
 public static class W32 { [StructLayout(LayoutKind.Sequential)] public struct R { public int L, T, Rt, B; }
@@ -45,7 +46,8 @@ public static class W32 { [StructLayout(LayoutKind.Sequential)] public struct R 
     Write-Host "::notice title=Windows window ($env:PROCESSOR_ARCHITECTURE)::$($r.Rt - $r.L)x$($r.B - $r.T), $n distinct colours"
     if ($n -lt 4) { Write-Host "::error title=Windows window::uniform window ($n colours): nothing drawn (grey screen)"; $script:uniform = $true }
   } else { Write-Host "::warning title=Windows window::no main window found" }
-} catch { Write-Host "No capture: $_" }
+  } catch { Write-Host "::warning title=Windows window::check failed: $($_.Exception.Message -replace "`r?`n", ' ')" }
+} catch { Write-Host "::warning title=Windows capture::no capture: $($_.Exception.Message -replace "`r?`n", ' ')" }
 if (-not $p.WaitForExit($Timeout * 1000)) {
   Write-Host "::error title=Windows start::the app did not end within $Timeout s (first screen never drawn?)"
   Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
@@ -53,7 +55,7 @@ if (-not $p.WaitForExit($Timeout * 1000)) {
 if (Test-Path $log) {
   Copy-Item $log (Join-Path $Out "demarrage.log"); Write-Host "--- demarrage.log"; Get-Content $log -Tail 80
   # Readable from the API without downloading the artifact (one annotation).
-  $tail = (Get-Content $log -Tail 12) -join "%0A"
+  $tail = (Get-Content $log | Select-Object -Last 12) -join " | "
   Write-Host "::notice title=Windows start log ($env:PROCESSOR_ARCHITECTURE)::$tail"
 }
 else { Write-Host "::warning title=Windows start::no startup log (Dart code never ran?)" }
