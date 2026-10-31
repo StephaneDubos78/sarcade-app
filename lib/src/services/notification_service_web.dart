@@ -24,6 +24,8 @@ class NotificationService {
   static final NotificationService _instance=NotificationService._();
   factory NotificationService()=>_instance;
   NotificationService._();
+  /// Windows only (see the installed apps); always null on the web.
+  static String? windowsUnavailable;
 
   String get _permission{try{return web.Notification.permission;}catch(_){return 'unsupported';}}
 

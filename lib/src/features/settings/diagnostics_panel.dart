@@ -171,7 +171,7 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
       (block:dev,label:S.t('diag.publicIp'),value:'${client?['ip']??'—'}',state:null),
       (block:dev,label:S.t('diag.network'),value:net,state:null),
       (block:dev,label:S.t('diag.gps'),value:gps,state:gpsState),
-      (block:dev,label:S.t('diag.notifications'),value:S.t(notif==null?'diag.unknown':notif?'diag.allowed':'diag.refused'),state:notif==null?null:notif?'green':'orange'),
+      (block:dev,label:S.t('diag.notifications'),value:S.t(NotificationService.windowsUnavailable=='admin'?'diag.notifAdmin':notif==null?'diag.unknown':notif?'diag.allowed':'diag.refused'),state:notif==null?null:notif?'green':'orange'),
       (block:dev,label:S.t('diag.lastSync'),value:sync?.lastServerContact==null?'—':_date(sync!.lastServerContact!.toUtc().toIso8601String()),state:sync==null?null:sync.lastSyncOk?'green':'orange'),
     ];
     final links=<DiagLine>[
