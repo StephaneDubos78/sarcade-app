@@ -118,8 +118,12 @@ jobs:
         run: |
           $v = (Select-String -Path pubspec.yaml -Pattern '^version:\s*([0-9.]+)').Matches[0].Groups[1].Value
           $env:SARCADE_VERSION = $v
+          # Latest Inno Setup, not the one of the GitHub machine: its wizard
+          # cut the check boxes on a 200 % screen (Surface, 31 Oct 2026).
+          choco upgrade innosetup -y --no-progress | Out-Null
           $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
-          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress }
+          if (-not (Test-Path $iscc)) { $iscc = (Get-ChildItem "${env:ProgramFiles(x86)}","${env:ProgramFiles}" -Recurse -Filter ISCC.exe -ErrorAction SilentlyContinue | Select-Object -First 1).FullName }
+          Write-Host "::notice title=Inno Setup::$((Get-Item $iscc).VersionInfo.ProductVersion)"
           & $iscc tool\windows_installer.iss
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Compress-Archive -Path build\windows\x64\runner\Release\* -DestinationPath build\installer\sarcade-windows-portable.zip
