@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:math' as math;
 import '../../ui/choice_pills.dart';
 import '../messages/operator_avatar.dart';
 import '../messages/conversations.dart' show avatarInitials;
 import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -1434,6 +1436,20 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   /// Maj + glisser (computer) or « Sélection » (phone): selection rectangle.
   bool get _rectSelecting=>(_drawing.selectMode||_shiftDown)&&!_drawing.isDrawing&&_aim==null&&!_bearings.taking&&_adjusting==null;
   void _onSelectionRect(Rect r){final cam=_map.camera;_drawing.addToSelection(featuresInRect(_drawing.features,r,cam.latLngToScreenOffset,radiusPx:_circleRadiusPx).map((f)=>f.id));}
+  /// Selection mode: a drag moves the map, a pinch or the wheel zooms
+  /// (card C1); the rectangle needs a long press first, or Maj.
+  double _selZoom=0;
+  void _onSelectionMoveStart(ScaleStartDetails d){_selZoom=_map.camera.zoom;}
+  void _onSelectionMove(ScaleUpdateDetails d){
+    final cam=_map.camera;
+    final zoom=(_selZoom+math.log(d.scale)/math.ln2).clamp(cam.minZoom??1.0,cam.maxZoom??20.0).toDouble();
+    final mid=cam.latLngToScreenOffset(cam.center);
+    _map.move(cam.screenOffsetToLatLng(mid-d.focalPointDelta),zoom);
+  }
+  void _onSelectionWheel(PointerScrollEvent e){
+    final cam=_map.camera;
+    _map.move(cam.center,(cam.zoom-e.scrollDelta.dy/200).clamp(cam.minZoom??1.0,cam.maxZoom??20.0).toDouble());
+  }
   void _onSelectionTap(Offset at){final cam=_map.camera;final hit=hitTest(_drawing.features,at,cam.latLngToScreenOffset,radiusPx:_circleRadiusPx);if(hit!=null){_drawing.toggle(hit.id);}else{_drawing.endSelection();}}
   void _syncEscapes()=>_escapes.sync([if(_showPanel)'teams',if(_showRoutesPanel)'routes',if(_showReferencePanel)'reference',if(_showResection)'resection',if(_deskId!=null)'desk',if(_chatPeer!=null)'chat']);
   /// A window open over the map (side panel, page beside the rail).
@@ -1446,6 +1462,9 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   void _showMapOnly(){
     final nav=Navigator.of(context); final me=ModalRoute.of(context);
     nav.popUntil((r)=>r==me||r.isFirst);
+    // The selection is not a work in progress like a bearing or a
+    // navigation: « Carte » leaves it (card C1, 31 Oct 2026).
+    if(_drawing.selectMode||_drawing.hasSelection)_drawing.endSelection();
     setState((){
       _tab=0;_builtTabs.add(0);_deskPage=null;_deskId=null;_chatPeer=null;
       _showPanel=false;_showReferencePanel=false;_selectedReference=null;
@@ -2396,8 +2415,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     return PopScope(
       // Phone: Back first returns to the Carte tab, then leaves the application.
       // A panel over the map is closed first (31 Oct 2026).
-      canPop:!compact||(_tab==0&&!_mapPanelOpen),
-      onPopInvokedWithResult:(didPop,_){if(didPop)return;if(_mapPanelOpen){_escapePanel();}else if(_tab!=0){_goTab(0);}},
+      canPop:!compact||(_tab==0&&!_mapPanelOpen&&!_drawing.selectMode&&!_drawing.hasSelection),
+      onPopInvokedWithResult:(didPop,_){if(didPop)return;if(_drawing.selectMode||_drawing.hasSelection){_drawing.endSelection();}else if(_mapPanelOpen){_escapePanel();}else if(_tab!=0){_goTab(0);}},
       child:Scaffold(
       extendBody:fullBleed,
       body:SafeArea(top:!fullBleed,bottom:false,child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
@@ -2489,7 +2508,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           onPanStart:_onFreehandStart,onPanUpdate:_onFreehandUpdate,onPanEnd:_onFreehandEnd,
           child:CustomPaint(painter:_StrokePainter(_stroke,Color(_drawing.color),_drawing.strokeWidth)),
         )),
-        if(_rectSelecting)Positioned.fill(child:SelectionRectOverlay(onRect:_onSelectionRect,onTap:_onSelectionTap)),
+        if(_rectSelecting)Positioned.fill(child:SelectionRectOverlay(onRect:_onSelectionRect,onTap:_onSelectionTap,
+          onMoveStart:_shiftDown?null:_onSelectionMoveStart,onMove:_shiftDown?null:_onSelectionMove,onWheel:_onSelectionWheel)),
         ShiftWatcher(onChanged:(v){if(mounted)setState(()=>_shiftDown=v);}),
         // Phone (card « Téléphone, carte en portrait », 1 h 32): the map goes
         // under the status bar and the floating tab bar; buttons stay in
