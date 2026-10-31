@@ -25,6 +25,24 @@ async function tapId(page, id) {
   await expect(async () => { at = await centreOf(page, id); expect(at, `${id} on screen`).not.toBeNull(); }).toPass({ timeout: 15_000 });
   await page.mouse.click(at.x, at.y); await page.waitForTimeout(800);
 }
+/** True when some node shows [text] (in its label or its text). */
+async function textShown(page, text) {
+  return page.evaluate((text) => [...document.querySelectorAll('flt-semantics')]
+    .some((x) => ((x.getAttribute('aria-label') || '') + ' ' + (x.textContent || '')).includes(text) && x.getBoundingClientRect().width > 2), text);
+}
+/** Any node whose label is exactly [label] (button, chip, list item). */
+async function tapLabel(page, label) {
+  let at = null;
+  await expect(async () => {
+    at = await page.evaluate((label) => {
+      const e = [...document.querySelectorAll('flt-semantics')].find((x) => ((x.getAttribute('aria-label') || x.textContent || '').trim().replace(/\s+/g, ' ')) === label
+        && x.getBoundingClientRect().width > 2);
+      if (!e) return null; const r = e.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+    }, label);
+    expect(at, `« ${label} » on screen`).not.toBeNull();
+  }).toPass({ timeout: 15_000 });
+  await page.mouse.click(at.x, at.y); await page.waitForTimeout(800);
+}
 async function tapName(page, name) {
   await page.getByRole('button', { name, exact: true }).first().click(); await page.waitForTimeout(800);
 }
@@ -102,6 +120,27 @@ for (const size of SIZES) {
       await tapId(page, 'nav.map');
       await expect(page.getByText('Tap objects, or long press then drag for a rectangle')).toHaveCount(0);
       await expectMapFree(page, size, 'selection › Carte');
+    });
+
+    test('converter « Touch the map »: « Carte » and Escape end it (N1, N2)', async () => {
+      const exits = compact ? ['Carte'] : ['Carte', 'Escape'];
+      for (const exit of exits) {
+        await tapId(page, 'nav.tools'); await tapId(page, 'tool.converter');
+        await tapLabel(page, 'Touch the map');
+        await expect.poll(() => textShown(page, 'point to convert'), { timeout: 10_000 }).toBe(true);
+        if (exit === 'Carte') await tapId(page, 'nav.map'); else { await page.keyboard.press('Escape'); await page.waitForTimeout(700); }
+        await expect.poll(() => textShown(page, 'point to convert'), { timeout: 5_000 }).toBe(false);
+        await expectMapFree(page, size, `converter pick › ${exit}`);
+      }
+    });
+
+    test('Escape closes an empty drawing bar (N1)', async () => {
+      if (compact) test.skip(true, 'no keyboard on a phone');
+      await tapId(page, 'map.drawing-tools');
+      await expect(page.getByRole('button', { name: 'Close the tools' }).first()).toBeVisible({ timeout: 10_000 });
+      await page.keyboard.press('Escape'); await page.waitForTimeout(700);
+      await expect(page.getByRole('button', { name: 'Close the tools' })).toHaveCount(0);
+      await expectMapFree(page, size, 'drawing bar › Échap');
     });
 
     test('point menu and base map sheet close with Escape', async () => {

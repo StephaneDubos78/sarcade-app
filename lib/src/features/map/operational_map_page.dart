@@ -1473,6 +1473,9 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     // The selection is not a work in progress like a bearing or a
     // navigation: « Carte » leaves it (card C1, 31 Oct 2026).
     if(_drawing.selectMode||_drawing.hasSelection)_drawing.endSelection();
+    // « Toucher la carte » of the converter is a mode of a moment too (card
+    // N2, 31 Oct 2026).
+    if(_pickPoint!=null){_pickPoint=null;_pickHint=null;_resectionCtl.pick(null);}
     setState((){
       _tab=0;_builtTabs.add(0);_deskPage=null;_deskId=null;_chatPeer=null;
       _showPanel=false;_showReferencePanel=false;_selectedReference=null;
@@ -2313,6 +2316,13 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         LogicalKeyboardKey.enter||LogicalKeyboardKey.numpadEnter when _drawing.canFinish=>run(()=>_drawing.finish()),
         LogicalKeyboardKey.escape when _drawing.isDrawing=>run(()=>_drawing.selectTool(null)),
         LogicalKeyboardKey.escape when _drawing.hasSelection||_drawing.selectMode=>run(_drawing.endSelection),
+        // Card N1 of the cinématique review (31 Oct 2026): Échap also ends
+        // « Toucher la carte » (converter), then closes the last window, then
+        // clears the measure, then closes an empty drawing bar.
+        LogicalKeyboardKey.escape when _pickPoint!=null=>run(_cancelPick),
+        LogicalKeyboardKey.escape when _mapPanelOpen=>_escapePanel(),
+        LogicalKeyboardKey.escape when _measure.active=>run((){unawaited(_measure.clear());setState((){});}),
+        LogicalKeyboardKey.escape when _drawingTools&&_drawing.selection.isEmpty=>run(_toggleDrawingTools),
         LogicalKeyboardKey.escape=>_escapePanel(),
         _=>false,
       };
@@ -2429,8 +2439,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     return PopScope(
       // Phone: Back first returns to the Carte tab, then leaves the application.
       // A panel over the map is closed first (31 Oct 2026).
-      canPop:!compact||(_tab==0&&!_mapPanelOpen&&!_drawing.selectMode&&!_drawing.hasSelection),
-      onPopInvokedWithResult:(didPop,_){if(didPop)return;if(_drawing.selectMode||_drawing.hasSelection){_drawing.endSelection();}else if(_mapPanelOpen){_escapePanel();}else if(_tab!=0){_goTab(0);}},
+      canPop:!compact||(_tab==0&&!_mapPanelOpen&&!_drawing.selectMode&&!_drawing.hasSelection&&_pickPoint==null),
+      onPopInvokedWithResult:(didPop,_){if(didPop)return;if(_pickPoint!=null){_cancelPick();}else if(_drawing.selectMode||_drawing.hasSelection){_drawing.endSelection();}else if(_mapPanelOpen){_escapePanel();}else if(_tab!=0){_goTab(0);}},
       child:Scaffold(
       extendBody:fullBleed,
       body:SafeArea(top:!fullBleed,bottom:false,child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
