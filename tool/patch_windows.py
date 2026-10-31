@@ -27,6 +27,24 @@ def main() -> int:
             return 1
         CMAKE.write_text(text, encoding="utf-8")
     print(f"patched {CMAKE}")
+    # Window title and file properties « SARCADE », not the package name
+    # « sarcade_app » (card « Client Windows : écran gris », 31 Oct 2026,
+    # point 4). The exe keeps its name (installer, shortcuts, updates).
+    main_cpp = Path("windows/runner/main.cpp")
+    text = main_cpp.read_text(encoding="utf-8")
+    if 'L"SARCADE"' not in text:
+        text, n = re.subn(r'window\.Create\(L"[^"]*"', 'window.Create(L"SARCADE"', text, count=1)
+        if n != 1:
+            print("error: window.Create not found in windows/runner/main.cpp", file=sys.stderr)
+            return 1
+        main_cpp.write_text(text, encoding="utf-8")
+    print(f"patched {main_cpp}")
+    rc = Path("windows/runner/Runner.rc")
+    text = rc.read_text(encoding="utf-8")
+    for key in ("FileDescription", "ProductName"):
+        text = re.sub(r'(VALUE "%s", )"[^"]*"' % key, r'\1"SARCADE"', text)
+    rc.write_text(text, encoding="utf-8")
+    print(f"patched {rc}")
     # SARCADE icon (assets/icon/generated, tool/make_app_icons.py).
     ico = Path("windows/runner/resources/app_icon.ico")
     ico.write_bytes(Path("assets/icon/generated/windows/app_icon.ico").read_bytes())
