@@ -67,11 +67,20 @@ jobs:
           python tool/patch_windows.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           flutter pub get
+          # Firebase has no ARM64 Windows SDK and serves phones only.
+          python tool/windows_drop_plugins.py
+          flutter pub get
       - name: Build Windows ARM64
         shell: pwsh
         run: |
-          flutter build windows --release --dart-define=SARCADE_BUILD="main@$("${{ github.event.workflow_run.head_sha || github.sha }}".Substring(0,7))-arm64"
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          flutter build windows --release --dart-define=SARCADE_BUILD="${{ github.event.workflow_run.head_branch || github.ref_name }}@$("${{ github.event.workflow_run.head_sha || github.sha }}".Substring(0,7))-arm64" 2>&1 | Tee-Object -FilePath build-arm64.log
+          $code = $LASTEXITCODE
+          if ($code -ne 0) {
+            # The job log is not always reachable: errors as annotations.
+            Select-String -Path build-arm64.log -Pattern "error|Error|FAILED|fatal|not supported|unsupported" -Context 1,4 |
+              Select-Object -First 12 | ForEach-Object { Write-Host "::error title=ARM64 build::$(($_.Context.PreContext + $_.Line + $_.Context.PostContext) -join ' | ')" }
+            exit $code
+          }
           Get-ChildItem build\windows -Directory | ForEach-Object { Write-Host "built: $($_.Name)" }
       - name: Start test, native ARM64
         shell: pwsh
