@@ -103,8 +103,12 @@ jobs:
             smoke-arm64
             dist
           retention-days: 30
+      # Not published until the code is signed: Windows refuses to start the
+      # unsigned ARM64 exe on the owner's Surface (31 Oct 2026), the x64
+      # build works there. Set ARM64_PUBLISH=true (repository variable) to
+      # publish again.
       - name: Publish to the windows-dev pre-release
-        if: success() && github.event_name == 'workflow_run'
+        if: success() && github.event_name == 'workflow_run' && vars.ARM64_PUBLISH == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         shell: pwsh
