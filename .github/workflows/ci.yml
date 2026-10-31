@@ -69,6 +69,23 @@ jobs:
         run: |
           set -o pipefail
           flutter build windows --release --dart-define=SARCADE_BUILD_NUMBER=${{ github.run_number }} --dart-define=SARCADE_BUILD="${SARCADE_BRANCH}@${GITHUB_SHA:0:7}" 2>&1 | tee windows-build.log
+      - name: Start test of the Windows client (smoke)
+        # Card « Client Windows : écran gris au démarrage » (31 Oct 2026): the
+        # built app is started with SARCADE_SMOKE_FILE; it writes a report
+        # once its first screen is up (errors included) and quits. A capture
+        # of the screen and the startup log are kept as an artifact.
+        shell: pwsh
+        run: |
+          $exe = "build\windows\x64\runner\Release\sarcade_app.exe"
+          $out = "smoke"; New-Item -ItemType Directory -Force $out | Out-Null
+          & tool\windows_smoke.ps1 -Exe $exe -Out $out
+          exit $LASTEXITCODE
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-smoke
+          path: smoke
+          retention-days: 30
       - name: Report Windows build errors
         if: failure()
         shell: bash
