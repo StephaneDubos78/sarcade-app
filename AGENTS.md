@@ -37,7 +37,7 @@ Décision du porteur, 28 octobre 2026, 23 h 10.
 6. **Coffre partagé** : `git pull` juste avant d'écrire, petit commit juste après ; section « Qui fait quoi » dans la note de reprise.
 
 ## Pièges connus
-- Test Android « urgent message notification not shown » instable : relancer le job avant de chercher un bug.
+- Test Android « urgent message notification not shown » : stabilisé le 31 octobre 2026 (attente de la notification via `getActiveNotifications`, puis 4 s réelles). S'il revient, relancer le job une fois avant de chercher un bug.
 - `lib/src/features/map/operational_map_page.dart` est gros et souvent en conflit : fusionner `main` dans la branche avant la PR.
 - Textes : `lib/src/l10n/strings.dart`, toujours en français **et** en anglais.
 - Les fonctions du web passent par `lib/src/platform/platform_services_web.dart` (équivalent `_io` pour les autres plateformes).

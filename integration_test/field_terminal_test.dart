@@ -10,6 +10,7 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:integration_test/integration_test.dart';
@@ -156,9 +157,17 @@ void main() {
     // Leave the urgent notification on screen a few seconds: opening the
     // messages marks it read and removes it (notification actions, lot 3),
     // before the Android watcher of e2e/android/run.sh could read it.
-    for (var i = 0; i < 8; i++) {
-      await t.pump(const Duration(seconds: 1));
-    }
+    // Unstable test (« urgent message notification not shown »): the
+    // pumps of a live test do not wait real time, so the messages could
+    // open before the watcher's next sample. Wait until Android really
+    // shows the notification, then 4 real seconds (watcher every 1 s).
+    final notifications = FlutterLocalNotificationsPlugin();
+    await pumpUntilTrue(t, () async {
+      final active = await notifications.getActiveNotifications();
+      return active.any((n) => '${n.title} ${n.body}'.contains('E2E urgent from PCO $run'));
+    }, 'urgent notification shown by Android', timeout: const Duration(seconds: 30));
+    await t.runAsync(() => Future<void>.delayed(const Duration(seconds: 4)));
+    await t.pump();
     await t.tap(find.byTooltip(S.t('map.messages')));
     // Phone (29 Oct 2026, like WhatsApp): the list of the conversations
     // first, its last message in the line; a touch opens the conversation.
