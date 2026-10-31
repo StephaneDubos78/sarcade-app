@@ -27,10 +27,15 @@ List<PointAction> pointMenuEntries({required bool pco})=>[
 const ownPositionRadiusM=30.0;
 bool nearOwnPosition(LatLng point,LatLng? me)=>me!=null&&const Distance().as(LengthUnit.Meter,point,me)<=ownPositionRadiusM;
 
-Future<PointAction?> showPointMenu(BuildContext context,{required LatLng point,required PlaceDescriber places,required bool pco,required String coordinates}) async {
+/// [objects]: drawn shapes under the finger, offered first as « Sélectionner
+/// … » ([onSelectObject]); the point menu always opens (31 Oct 2026).
+Future<PointAction?> showPointMenu(BuildContext context,{required LatLng point,required PlaceDescriber places,required bool pco,required String coordinates,
+    List<({String id,String label})> objects=const [],ValueChanged<String>? onSelectObject}) async {
   final choice=await showModalBottomSheet<PointAction>(context:context,showDragHandle:true,builder:(c)=>SafeArea(child:Padding(
     padding:const EdgeInsets.fromLTRB(16,0,16,12),
     child:Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+      for(final o in objects)ListTile(key:ValueKey('select-${o.id}'),contentPadding:EdgeInsets.zero,leading:const Icon(Icons.highlight_alt),
+        title:Text(S.t('point.selectObject',{'name':o.label})),onTap:(){Navigator.pop(c);onSelectObject?.call(o.id);}),
       _LocationLine(point:point,places:places,coordinates:coordinates,onOpen:()=>Navigator.pop(c,PointAction.info)),
       const SizedBox(height:12),
       _Grid(entries:pointMenuEntries(pco:pco),onPick:(a)=>Navigator.pop(c,a)),
