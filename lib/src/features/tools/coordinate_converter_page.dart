@@ -27,6 +27,7 @@ import '../measure/coordinates.dart';
 import '../search/map_search.dart';
 import 'converter_input.dart';
 import 'paste_locations.dart';
+import '../../ui/link_status.dart';
 
 enum ConverterSource { me, map, search, input }
 
@@ -290,7 +291,7 @@ class _CoordinateConverterPageState extends State<CoordinateConverterPage> {
     final show=a.show??widget.onShow, measure=a.measure??widget.onMeasure;
     final formats=converterFormats;
     return Scaffold(
-      appBar:AppBar(title:Text(S.t('converter.title'))),
+      appBar:LinkedAppBar(title:Text(S.t('converter.title'))),
       body:ListView(padding:const EdgeInsets.fromLTRB(16,8,16,24),children:[
         Text(S.t('converter.help'),style:t.textTheme.bodyMedium?.copyWith(color:t.colorScheme.onSurfaceVariant)),
         const SizedBox(height:12),

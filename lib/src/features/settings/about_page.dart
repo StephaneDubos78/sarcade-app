@@ -6,13 +6,14 @@ import '../../l10n/strings.dart';
 import '../basemaps/basemap_models.dart';
 import '../basemaps/basemap_sheet.dart' show basemapNotices;
 import 'notifications_panel.dart' show VersionStatus;
+import '../../ui/link_status.dart';
 
 class SarcadeAboutPage extends StatelessWidget {
   const SarcadeAboutPage({super.key});
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: Text(S.t('about.title'))),
+    appBar: LinkedAppBar(title: Text(S.t('about.title'))),
     body: SafeArea(child: Center(child: ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 640),
       child: ListView(padding: const EdgeInsets.all(20), children: const [SarcadeAboutContent()]),

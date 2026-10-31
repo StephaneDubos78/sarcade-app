@@ -83,6 +83,7 @@ import '../measure/measure_controller.dart';
 import '../measure/measure_widgets.dart';
 import '../navigation/navigation_widgets.dart';
 import '../navigation/follow_mode.dart';
+import '../navigation/point_label.dart';
 import '../routes/route_models.dart';
 import '../routes/routes_controller.dart';
 import '../routes/routes_layers.dart';
@@ -115,6 +116,7 @@ import '../poi/poi_icons.dart';
 import '../poi/poi_list.dart';
 import '../routes/waypoint_sheet.dart';
 import '../../ui/action_buttons.dart';
+import '../../ui/link_status.dart';
 
 class OperationalMapPage extends StatefulWidget {
   final SarcadeApi api; final String eventId,deviceId,tileUrl,tileAttribution; final LocalStore store; final VoidCallback? onSettings;
@@ -219,6 +221,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   /// Rights given by the server for the checked email (PCO, administrator).
   Future<void> _loadRoles() async {
     myActorId=widget.deviceId;
+    // Link pill of every screen: a touch opens the Diagnostic (31 Oct 2026).
+    linkStatusOnTap=()=>_openDiagnostics();
     try{
       final me=await widget.api.me();
       myRoles={for(final r in (me?['roles'] as List?)??const [])'$r'};
@@ -428,20 +432,28 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     if(_adjusting!=null){_adjustOrigin(point);return;}
     final wide=MediaQuery.sizeOf(context).width>=_compactWidth;
     final me=_me??_positionOf(widget.deviceId);
-    if(gesture&&nearOwnPosition(point,me)){await _bearings.startTaking();if(wide&&mounted)_startAim(BearingAim(me!));return;}
-    // Long press on a drawn object: « Sélectionner » it; other touches add
-    // objects (card « Sélection sortie de la barre de dessin », 17 h 36).
+    if(gesture&&nearOwnPosition(point,me)){await _bearings.startTaking();if(!mounted)return;if(wide){_startAim(BearingAim(me!));}else{_focusBearing(me!);}return;}
+    // Long press on a line, a point, a text or the outline of a shape:
+    // « Sélectionner » it. Inside a shape the point menu opens, the shape
+    // offered at its top (card « Appui long dans une zone dessinée », 31 Oct
+    // 2026: a bearing could not be taken inside a sector any more).
+    var under=const <MapFeature>[];
     if(gesture&&_showDrawings){
-      final cam=_map.camera;
-      final hit=hitTest(_drawing.features,cam.latLngToScreenOffset(point),cam.latLngToScreenOffset,radiusPx:_circleRadiusPx);
+      final cam=_map.camera; final at=cam.latLngToScreenOffset(point);
+      final hit=hitOutline(_drawing.features,at,cam.latLngToScreenOffset,radiusPx:_circleRadiusPx);
       if(hit!=null&&_drawing.canSelect(hit)){_drawing.startSelection(hit.id);return;}
+      under=shapesUnder(_drawing.features,at,cam.latLngToScreenOffset,radiusPx:_circleRadiusPx).where(_drawing.canSelect).toList();
     }
+    // Shown in the language of each device wherever it is displayed
+    // (pointLabel, 31 Oct 2026).
     final label=S.t('nav.point');
     final choice=await showPointMenu(context,point:point,places:_places,pco:isPco(widget.deviceId),
-      coordinates:formatCoordinates(point,_coordFormat,mgrsDigits:_mgrsDigits));
+      coordinates:formatCoordinates(point,_coordFormat,mgrsDigits:_mgrsDigits),
+      objects:[for(final f in under)(id:f.id,label:f.label.trim().isEmpty?f.kind.label:f.label.trim())],
+      onSelectObject:_drawing.startSelection);
     if(choice==null||!mounted)return;
     switch(choice){
-      case PointAction.bearing: await _bearings.startTaking(from:point);if(wide&&mounted)_startAim(BearingAim(point));
+      case PointAction.bearing: await _bearings.startTaking(from:point);if(!mounted)return;if(wide){_startAim(BearingAim(point));}else{_focusBearing(point);}
       case PointAction.poi: await _createPoiHere(point);
       case PointAction.order: await _sendOperatorHere(point);
       case PointAction.measure: await _measureTo(point,label);
@@ -472,7 +484,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       ..sort((a,b)=>a.label.toLowerCase().compareTo(b.label.toLowerCase()));
     final d=await showMoveOrderDialog(context,ops);
     if(d==null||!mounted)return;
-    final label=d.label.isEmpty?S.t('order.point'):d.label;
+    // No default name stored: each device shows its own (31 Oct 2026).
+    final label=d.label.trim();
     for(final t in d.targets){await _routes.sendMoveOrder(targetId:t,destination:point,label:label,note:d.note);}
     if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(S.t('order.sent',{'n':d.targets.length}))));
   }
@@ -481,6 +494,9 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     showModalBottomSheet<void>(context:context,showDragHandle:true,builder:(c)=>SafeArea(child:Column(mainAxisSize:MainAxisSize.min,children:[
       ListTile(leading:Icon(Icons.flag,color:moveOrderColor(o.status)),title:Text('${S.t('order.title')} · ${o.targetId}'),
         subtitle:Text('« ${o.label} » · ${S.t('order.status.${o.status}')}${o.note.isEmpty?'':'\n${o.note}'}')),
+      // « Ouvrir dans… » Waze, Google Maps… (31 Oct 2026).
+      ListTile(key:const ValueKey('order-open-in'),leading:const Icon(Icons.open_in_new),title:Text(S.t('ext.open')),
+        onTap:(){Navigator.pop(c);unawaited(_openElsewhere(o.destination,o.label));}),
       if(o.open&&(isPco(widget.deviceId)||o.createdBy==widget.deviceId))ListTile(leading:const Icon(Icons.cancel_outlined),
         title:Text(S.t('order.cancel')),onTap:(){Navigator.pop(c);unawaited(_routes.setMoveOrderStatus(o.json,'cancelled'));}),
       if(canRemoveMoveOrder(o,widget.deviceId,pco:isPco(widget.deviceId)))ListTile(key:const ValueKey('order-remove'),leading:const Icon(Icons.wrong_location_outlined),
@@ -687,7 +703,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   void _openPoiList(){
     Widget list(VoidCallback? close)=>PoiListView(pois:_pois.values.toList(),from:_me??_positionOf(widget.deviceId)??_mapCentre(),onClose:close,
       onOpen:(p){if(_isCompact)Navigator.pop(context);_onMapNow((){_fitPoints([LatLng(p.lat,p.lon)]);unawaited(_openPoi(p));});});
-    if(_isCompact){Navigator.push(context,MaterialPageRoute(builder:(c)=>Scaffold(appBar:AppBar(title:Text(S.t('poi.layer'))),body:list(null))));return;}
+    if(_isCompact){Navigator.push(context,MaterialPageRoute(builder:(c)=>Scaffold(appBar:LinkedAppBar(title:Text(S.t('poi.layer'))),body:list(null))));return;}
     _openDesk('pois',()=>Material(child:list(()=>setState((){_deskId=null;_deskPage=null;}))));
   }
 
@@ -775,7 +791,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       show:(p)=>_onMapNow((){setState(()=>_searchPin=p);_map.move(p,15);}),
       measure:(p)=>_onMapNow(()=>_measureTo(p,S.t('nav.point'))),
       poi:(p)=>_onMapNow(()=>_createPoiHere(p)),
-      bearing:(p)=>_onMapNow(()=>_bearings.startTaking(from:p)),
+      bearing:(p)=>_onMapNow(() async {await _bearings.startTaking(from:p);if(mounted)_focusBearing(p);}),
       order:isPco(widget.deviceId)?((p)=>_onMapNow(()=>_sendOperatorHere(p))):null,
       message:_sendText,
       pickOnMap:()=>_startPick(S.t('converter.touchMap'),(p,_)=>_openConverter(initial:p)))));
@@ -791,8 +807,9 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     actorId:widget.deviceId,sync:_sync,store:widget.store,initialText:measureMessage(_measure,_coordFormat,mgrsDigits:_mgrsDigits))));
 
   /// « Open in… » with the navigation app chosen by the organisation.
-  Future<void> _openElsewhere(LatLng p,String label)=>openInOtherApp(context,p,label,
-    app:widget.store.preference('nav_app')??'operator',hideTracking:widget.store.preference('nav_hide_tracking')=='1');
+  Future<void> _openElsewhere(LatLng p,String label)=>openInOtherApp(context,p,pointLabel(label),
+    app:widget.store.preference('nav_app')??'operator',hideTracking:widget.store.preference('nav_hide_tracking')=='1',
+    readPref:widget.store.preference,writePref:widget.store.setPreference);
 
   void _initRoutes(){
     _routes=RoutesController(api:widget.api,store:widget.store,sync:_sync,eventId:widget.eventId,actorId:widget.deviceId);
@@ -891,6 +908,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   }
 
   Future<void> _navigateTo(LatLng point,String label) async {
+    // A graph published since the event opened is fetched now (Wi-Fi).
+    if(_graphs.graph==null)unawaited(_graphs.check());
     final mode=await chooseNavigationMode(context,label);
     if(mode==null)return;
     if(_follow)_setFollow(false);
@@ -1417,6 +1436,24 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   void _onSelectionRect(Rect r){final cam=_map.camera;_drawing.addToSelection(featuresInRect(_drawing.features,r,cam.latLngToScreenOffset,radiusPx:_circleRadiusPx).map((f)=>f.id));}
   void _onSelectionTap(Offset at){final cam=_map.camera;final hit=hitTest(_drawing.features,at,cam.latLngToScreenOffset,radiusPx:_circleRadiusPx);if(hit!=null){_drawing.toggle(hit.id);}else{_drawing.endSelection();}}
   void _syncEscapes()=>_escapes.sync([if(_showPanel)'teams',if(_showRoutesPanel)'routes',if(_showReferencePanel)'reference',if(_showResection)'resection',if(_deskId!=null)'desk',if(_chatPeer!=null)'chat']);
+  /// A window open over the map (side panel, page beside the rail).
+  bool get _mapPanelOpen=>mapPanelOpen(teams:_showPanel,reference:_showReferencePanel,routes:_showRoutesPanel,resection:_showResection,chat:_chatPeer!=null,desk:_deskId!=null);
+
+  /// « Carte » (tab bar of a phone, rail of a computer; decision of the
+  /// porteur, 31 Oct 2026, 1 h 14): every window closes and the map shows.
+  /// What runs on the map itself (bearing, navigation, drawing, measure)
+  /// goes on; drafts are kept.
+  void _showMapOnly(){
+    final nav=Navigator.of(context); final me=ModalRoute.of(context);
+    nav.popUntil((r)=>r==me||r.isFirst);
+    setState((){
+      _tab=0;_builtTabs.add(0);_deskPage=null;_deskId=null;_chatPeer=null;
+      _showPanel=false;_showReferencePanel=false;_selectedReference=null;
+      _showRoutesPanel=false;_drawingRouteId=null;
+      _showResection=false;_resectionCtl.result=null;
+    });
+  }
+
   bool _escapePanel(){_syncEscapes();return _escapes.escape((k)=>setState((){switch(k){
     case 'teams':_showPanel=false; case 'routes':_showRoutesPanel=false;_drawingRouteId=null;
     case 'reference':_showReferencePanel=false;_selectedReference=null; case 'chat':_chatPeer=null; case 'resection':_showResection=false;_resectionCtl.result=null;
@@ -1568,11 +1605,11 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       Expanded(child:TabBarView(children:[list,_nearbyPanel(closable:false)])),
     ]));
     if(!screen)return tabs;
-    return Scaffold(appBar:AppBar(title:Text(S.t('tabs.teams'))),body:tabs);
+    return Scaffold(appBar:LinkedAppBar(title:Text(S.t('tabs.teams'))),body:tabs);
   }
 
   /// Phone « Plus »: a normal screen, a list of large buttons.
-  Widget _moreScreen(List<_RailAction> items)=>Scaffold(appBar:AppBar(title:Text(S.t('tabs.more'))),
+  Widget _moreScreen(List<_RailAction> items)=>Scaffold(appBar:LinkedAppBar(title:Text(S.t('tabs.more'))),
     body:ListView(padding:const EdgeInsets.symmetric(vertical:8),children:[
       for(final a in items)ListTile(minTileHeight:64,leading:Badge(isLabelVisible:a.alert,smallSize:10,child:Icon(a.icon,size:28)),
         title:Text(a.label,style:const TextStyle(fontSize:17)),trailing:const Icon(Icons.chevron_right),onTap:a.onTap),
@@ -1924,7 +1961,15 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     a.fix(p,snap:HardwareKeyboard.instance.isShiftPressed);_bearings.setManual(a.azimuthDeg);}
   void _cancelAim(){_aim=null;_bearings.stopTaking();}
   /// Mouse bearing started (new or changed): map centred on its origin (30 Oct 2026, 12 h 44).
-  void _startAim(BearingAim a){setState(()=>_aim=a);glideMapTo(_map,a.origin);}
+  void _startAim(BearingAim a){setState(()=>_aim=a);_focusBearing(a.origin);}
+  /// Bearing started (finger, mouse, « Modifier »): the map glides once so
+  /// that its origin sits in the middle of the visible part, never under
+  /// the bearing sheet (31 Oct 2026); afterwards the map is free.
+  void _focusBearing(LatLng origin){
+    Size size; try{size=Size(_map.camera.nonRotatedSize.width,_map.camera.nonRotatedSize.height);}catch(_){return;}
+    final wide=MediaQuery.sizeOf(context).width>=_compactWidth;
+    glideMapTo(_map,origin,focus:bearingFocus(size,phone:!wide,rightSheetPx:wide&&_aim!=null?bearingSheetWidth+24:0));
+  }
   /// « Modifier » on a computer: mouse arrow from the same origin, panel
   /// prefilled; Échap or a right click leaves the bearing as it was.
   Future<void> _editWithMouse(Bearing b) async {
@@ -2243,7 +2288,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     child:child,
   );
 
-  @override void dispose(){_tvScreens.dispose();if(currentMapView==_tvView)currentMapView=null;if(currentMapOptions==_tvOptions)currentMapOptions=null;_stopCompass();_webUpdateTimer?.cancel();_saveViewTimer?.cancel();_bearings.dispose();_positionsTimer?.cancel();_meSub?.cancel();_mapEvents?.cancel();AccessManager.instance.removeListener(_onAccessChanged);_fcmRefresh?.cancel();_fcmForeground?.cancel();if(registerWakeupHook==_wakeupNoted)registerWakeupHook=null;_opensSub?.cancel();_answersSub?.cancel();_rtSub?.cancel();_tracking.removeListener(_onOperationsChanged);_ops.removeListener(_onOperationsChanged);_tracking.dispose();_ops.dispose();_routes.removeListener(_onRoutesChanged);_nav.removeListener(_onNavigationChanged);_variantHits.dispose();_bearingHits.dispose();_routeHits.dispose();_routes.dispose();_nav.dispose();_graphs.removeListener(_onRoutesChanged);_graphs.dispose();_measure.removeListener(_onRoutesChanged);_measure.dispose();_syncUiTimer?.cancel();_sync.dispose();_realtime.dispose();_drawing.dispose();_resectionCtl.dispose();widget.api.close();super.dispose();}
+  @override void dispose(){linkStatusOnTap=null;_tvScreens.dispose();if(currentMapView==_tvView)currentMapView=null;if(currentMapOptions==_tvOptions)currentMapOptions=null;_stopCompass();_webUpdateTimer?.cancel();_saveViewTimer?.cancel();_bearings.dispose();_positionsTimer?.cancel();_meSub?.cancel();_mapEvents?.cancel();AccessManager.instance.removeListener(_onAccessChanged);_fcmRefresh?.cancel();_fcmForeground?.cancel();if(registerWakeupHook==_wakeupNoted)registerWakeupHook=null;_opensSub?.cancel();_answersSub?.cancel();_rtSub?.cancel();_tracking.removeListener(_onOperationsChanged);_ops.removeListener(_onOperationsChanged);_tracking.dispose();_ops.dispose();_routes.removeListener(_onRoutesChanged);_nav.removeListener(_onNavigationChanged);_variantHits.dispose();_bearingHits.dispose();_routeHits.dispose();_routes.dispose();_nav.dispose();_graphs.removeListener(_onRoutesChanged);_graphs.dispose();_measure.removeListener(_onRoutesChanged);_measure.dispose();_syncUiTimer?.cancel();_sync.dispose();_realtime.dispose();_drawing.dispose();_resectionCtl.dispose();widget.api.close();super.dispose();}
 
   late final _tvNearby=TvNearbyWatcher(widget.api);
   // « Écrans » button of the map (lot 11).
@@ -2281,7 +2326,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     // under the status bar; folded while points are added on the map.
     final fullPanel=sidePanelFullScreen(screenWidth);
     final routeEntry=fullPanel&&_showRoutesPanel&&_drawingRouteId!=null?_routes.route(_drawingRouteId!):null;
-    Widget routesPanel()=>RoutesPanel(
+    Widget routesPanel()=>RoutesPanel(onClose:_showMapOnly,onOpenIn:(p,l)=>unawaited(_openElsewhere(p,l)),
           controller:_routes,api:widget.api,actorId:widget.deviceId,selectedRouteId:_selectedRouteId,drawingRouteId:_drawingRouteId,
           groups:widget.store.groups(widget.eventId).map(CommGroup.fromJson).toList(),
           onSelect:(id)=>setState((){_selectedRouteId=id;if(id==null)_drawingRouteId=null;}),
@@ -2297,7 +2342,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     void toggleOperators()=>setState((){_deskPage=null;_deskId=null;_showPanel=!_showPanel;if(_showPanel){_showReferencePanel=false;_showResection=false;}});
     void openFiles()=>_openDesk('files',()=>FilesPage(api:widget.api,eventId:widget.eventId,actorId:widget.deviceId,store:widget.store,drawings:DrawingFileActions(importFile:_importFile,exportAll:_exportGeoJson,count:()=>_drawing.features.length)));
     void openMessages()=>_openMessages(fromButton:true);
-    void showMap()=>setState((){_tab=0;_deskPage=null;_deskId=null;_showPanel=false;_showReferencePanel=false;_showRoutesPanel=false;_showResection=false;_drawingRouteId=null;});
+    void showMap()=>_showMapOnly();
     void openSettings(){
       final b=widget.settingsBuilder;
       if(!compact&&b!=null){_openDesk('settings',b);}else{widget.onSettings?.call();}
@@ -2350,8 +2395,9 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     final fullBleed=compact&&_tab==0&&sosAlert==null&&!banners.visible&&graphBanner==null;
     return PopScope(
       // Phone: Back first returns to the Carte tab, then leaves the application.
-      canPop:!compact||_tab==0,
-      onPopInvokedWithResult:(didPop,_){if(!didPop&&_tab!=0)_goTab(0);},
+      // A panel over the map is closed first (31 Oct 2026).
+      canPop:!compact||(_tab==0&&!_mapPanelOpen),
+      onPopInvokedWithResult:(didPop,_){if(didPop)return;if(_mapPanelOpen){_escapePanel();}else if(_tab!=0){_goTab(0);}},
       child:Scaffold(
       extendBody:fullBleed,
       body:SafeArea(top:!fullBleed,bottom:false,child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
@@ -2530,6 +2576,10 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
             onMgrsDigits:(d) async {await widget.store.setPreference('mgrs_digits','$d');if(mounted)setState((){});},
             onFormat:(f) async {await widget.store.setPreference('coord_format',f.name);if(mounted)setState((){});}),
           NavigationCard(nav:_nav,following:_follow,onRecentre:()=>_setFollow(true),
+            onOpenIn:(){final d=_nav.destination;if(d!=null)unawaited(_openElsewhere(d,_nav.label));},
+            // No engine on the server and no road graph here: one touch (31 Oct 2026).
+            onDownloadGraph:_graphs.graph==null?()=>unawaited(_graphs.check(allowMobile:true)):null,
+            graphBytes:_graphs.pendingMobileBytes,graphDownloading:_graphs.downloading,
             rotate:_phoneOrTablet?null:_followRotates,
             onRotate:_phoneOrTablet?null:(v) async {
               await widget.store.setPreference('nav_rotate_desktop',v?'1':null);
@@ -2558,7 +2608,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       ])),
       ])),
       // Phone: tab bar always visible, each tab a real screen.
-      bottomNavigationBar:compact?_TabBar(index:_tab,messagesIcon:_messagesIcon(),onSelect:(i)=>i==1?_openMessages(fromButton:true):_goTab(i),moreAlert:diagnosticsAlert()):null,
+      bottomNavigationBar:compact?_TabBar(index:_tab,messagesIcon:_messagesIcon(),onSelect:(i)=>i==1?_openMessages(fromButton:true):i==0?_showMapOnly():_goTab(i),moreAlert:diagnosticsAlert()):null,
     ));
   }
 }
@@ -2685,3 +2735,7 @@ class _HoldButtonState extends State<_HoldButton> with SingleTickerProviderState
 /// (revue d'ergonomie n° 42).
 String operatorsTitle(int operators,int stations)=>stations==0?S.t('operators.title',{'n':operators})
   :S.t('operators.titleStations',{'n':operators,'m':stations});
+
+/// True when a window covers or flanks the map.
+bool mapPanelOpen({required bool teams,required bool reference,required bool routes,required bool resection,required bool chat,required bool desk})=>
+  teams||reference||routes||resection||chat||desk;

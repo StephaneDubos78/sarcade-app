@@ -443,6 +443,12 @@ class SarcadeApi {
     if(r.statusCode!=200) throw SarcadeHttpException('basemaps',r.statusCode);
     return (jsonDecode(r.body) as List).map((e)=>Map<String,dynamic>.from(e as Map)).toList();
   }
+  /// Itinerary engine of the server (Valhalla): {available, url}.
+  Future<Map<String,dynamic>> routingStatus() async {
+    final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/routing/status'));
+    if(r.statusCode!=200) throw SarcadeHttpException('routing_status',r.statusCode);
+    return Map<String,dynamic>.from(jsonDecode(r.body) as Map);
+  }
   /// Version of the road graph for navigation on the device.
   Future<Map<String,dynamic>> roadGraphInfo() async {
     final r=await _client.get(Uri.parse('$baseUrl/api/v0.1/routing/graph/info'));

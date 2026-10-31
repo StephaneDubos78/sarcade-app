@@ -11,6 +11,7 @@ import '../../offline/local_store.dart';
 import '../../services/sarcade_api.dart';
 import '../../ui/save_bar.dart';
 import 'signals.dart';
+import '../../ui/link_status.dart';
 
 class SignalDefaultsPage extends StatefulWidget {
   final SarcadeApi api; final LocalStore? store;
@@ -85,7 +86,7 @@ class _SignalDefaultsPageState extends State<SignalDefaultsPage> {
   Widget build(BuildContext context){
     final t=Theme.of(context);
     return Scaffold(
-      appBar:AppBar(title:Text(S.t('signals.title'))),
+      appBar:LinkedAppBar(title:Text(S.t('signals.title'))),
       floatingActionButton:_loading||_list.length>=20?null:FloatingActionButton.extended(onPressed:()=>_edit(),
         icon:const Icon(Icons.add),label:Text(S.t('signals.add'))),
       body:_loading?const Center(child:CircularProgressIndicator()):Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[

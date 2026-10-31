@@ -17,6 +17,7 @@ import '../places/readable_place.dart';
 import 'coordinate_rows.dart';
 import 'coordinates.dart';
 import 'wmm.dart';
+import '../../ui/link_status.dart';
 
 /// GPS fix of my own position.
 class GpsFix {
@@ -91,7 +92,7 @@ class _PointInfoPageState extends State<PointInfoPage> {
     final from=lines.where((l)=>fromKeys.contains(l.$1)).toList();
     final gps=lines.where((l)=>gpsKeys.contains(l.$1)).toList();
     return Scaffold(
-      appBar:AppBar(title:Text(widget.title)),
+      appBar:LinkedAppBar(title:Text(widget.title)),
       body:ListView(padding:const EdgeInsets.fromLTRB(16,8,16,24),children:[
         InfoBlock(title:S.t('info.coordinates'),children:coordinateRows(p,infoFormats)),
         InfoBlock(title:S.t('info.place'),trailing:_loading?const Padding(padding:EdgeInsets.all(10),child:SizedBox(width:16,height:16,child:CircularProgressIndicator(strokeWidth:2))):null,

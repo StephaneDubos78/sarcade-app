@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../../ui/overlay_page.dart';
 import '../../ui/choice_pills.dart';
@@ -29,6 +30,8 @@ import '../../services/power_state.dart';
 import '../../ui/save_bar.dart';
 import '../../ui/action_buttons.dart';
 import '../../services/event_names.dart';
+import '../../ui/link_status.dart';
+import '../measure/external_maps.dart' show openInChoices, navAppMineKey;
 
 /// Operator settings: server address, event and terminal identifier,
 /// language, radio callsign. Lets one APK serve every field operator
@@ -433,6 +436,14 @@ class _SettingsPageState extends State<SettingsPage> {
       const SizedBox(height:8),
       ActionChip(avatar:const Icon(Icons.palette_outlined,size:18),label:Text(S.t('settings.otherColor')),onPressed:_pickOtherColor),
     ])),
+    // « Toujours ouvrir avec … » of « Ouvrir dans… », changed here
+    // (31 Oct 2026); applied at once on this device.
+    if(widget.store!=null)_row(S.t('settings.navApp'),child:Align(alignment:Alignment.centerRight,child:DropdownButton<String>(
+      key:const ValueKey('settings-nav-app'),value:widget.store!.preference(navAppMineKey)??'',
+      items:[DropdownMenuItem(value:'',child:Text(S.t('settings.navAppAsk'))),
+        for(final a in openInChoices(android:!kIsWeb&&defaultTargetPlatform==TargetPlatform.android,ios:!kIsWeb&&defaultTargetPlatform==TargetPlatform.iOS))
+          if(a!='other')DropdownMenuItem(value:a,child:Text(S.t('ext.app.$a')))],
+      onChanged:(v) async {await widget.store!.setPreference(navAppMineKey,v==null||v.isEmpty?null:v);if(mounted)setState((){});}))),
     // Under « Couleur de dessin » (29 Oct 2026).
     _row(S.t('settings.aprsConsent'),help:S.t('settings.aprsConsentHelp'),child:Align(alignment:Alignment.centerRight,
       child:Switch(value:_aprsConsent,onChanged:(v)=>setState((){_aprsConsent=v;_dirty=true;})))),
@@ -567,7 +578,7 @@ class _SettingsPageState extends State<SettingsPage> {
     final t=Theme.of(context);
     return Scaffold(
       // Same surface as the content in both themes (revue n° 68).
-      appBar:AppBar(automaticallyImplyLeading:!widget.firstRun,backgroundColor:t.colorScheme.surface,surfaceTintColor:Colors.transparent,scrolledUnderElevation:0),
+      appBar:LinkedAppBar(linkStatus:!widget.firstRun,automaticallyImplyLeading:!widget.firstRun,backgroundColor:t.colorScheme.surface,surfaceTintColor:Colors.transparent,scrolledUnderElevation:0),
       // Fixed save bar at the bottom (charte « style Play Console »); none on
       // Diagnostic and À propos, nothing to save there (revue n° 64).
       bottomNavigationBar:settingsShowsSaveBar(tab:_tabs[_tab.clamp(0,_tabs.length-1)],firstRun:widget.firstRun,dirty:_dirty)?SaveBar(changed:widget.firstRun||_dirty,saving:_saving,onSave:_trySave,

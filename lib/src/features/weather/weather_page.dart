@@ -5,6 +5,7 @@ import '../../models/comm_group.dart' show isPco;
 import '../../offline/local_store.dart';
 import '../../services/sarcade_api.dart';
 import 'weather_models.dart';
+import '../../ui/link_status.dart';
 
 IconData weatherIcon(String key,{bool night=false})=>switch(key){
   'clear'=>night?Icons.nightlight_round:Icons.wb_sunny,'partly'=>night?Icons.nights_stay:Icons.wb_cloudy,'overcast'=>Icons.cloud,'fog'=>Icons.foggy,
@@ -179,7 +180,7 @@ class _WeatherPageState extends State<WeatherPage> {
     final title=widget.point==null?S.t('weather.title'):S.t('weather.pointTitle',{'label':widget.point!.label});
     final t=Theme.of(context); final s=t.colorScheme;
     return Scaffold(
-      appBar:AppBar(title:Text(title),actions:[
+      appBar:LinkedAppBar(title:Text(title),actions:[
         // « Diffuser » written (revue n° 51).
         if(widget.point==null&&isPco(widget.actorId))TextButton.icon(onPressed:_bulletin,icon:const Icon(Icons.campaign_outlined),label:Text(S.t('weather.broadcast'))),
         IconButton(tooltip:S.t('weather.refresh'),onPressed:widget.point==null?_refresh:_load,icon:const Icon(Icons.refresh)),

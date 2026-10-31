@@ -3,6 +3,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import '../../l10n/strings.dart';
 import '../map/drawing/geometry.dart' show distanceM;
+import '../navigation/point_label.dart';
 
 /// Move order of the PCO to an operator (decision of the porteur of
 /// 29 October 2026): go to a point of the map. The server checks that only
@@ -17,7 +18,7 @@ class MoveOrder {
   String get note=>'${json['note']??''}';
   Map<String,dynamic> get _d=>Map<String,dynamic>.from(json['destination'] as Map? ?? const {});
   LatLng get destination=>LatLng((_d['lat'] as num?)?.toDouble()??0,(_d['lon'] as num?)?.toDouble()??0);
-  String get label{final l='${_d['label']??''}';return l.isEmpty?S.t('order.point'):l;}
+  String get label=>pointLabel('${_d['label']??''}');
   /// Still to carry out: sent or accepted.
   bool get open=>status=='sent'||status=='accepted';
   DateTime? get updatedAt=>DateTime.tryParse('${json['updated_at']??''}');

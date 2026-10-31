@@ -8,6 +8,7 @@ import 'tv_code.dart';
 import 'tv_nearby.dart';
 import 'tv_qr_scan_page.dart';
 import 'tv_view.dart';
+import '../../ui/link_status.dart';
 
 /// « Afficher sur une TV » (any operator, decision of the porteur of
 /// 29 October 2026): pair the screen opened on tv.sarcade.org by scanning
@@ -18,7 +19,7 @@ class TvScreensPage extends StatelessWidget {
   /// The camera opens at once.
   final bool scanOnOpen;
   const TvScreensPage({super.key,required this.api,required this.eventId,this.scanOnOpen=false});
-  @override Widget build(BuildContext context)=>Scaffold(appBar:AppBar(title:Text(S.t('tv.menu'))),
+  @override Widget build(BuildContext context)=>Scaffold(appBar:LinkedAppBar(title:Text(S.t('tv.menu'))),
     body:ListView(padding:const EdgeInsets.all(16),children:[
       Text(S.t('tv.help'),style:Theme.of(context).textTheme.bodyLarge),
       const SizedBox(height:16),
