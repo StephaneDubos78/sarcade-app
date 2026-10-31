@@ -180,10 +180,11 @@ class _WeatherPageState extends State<WeatherPage> {
     final title=widget.point==null?S.t('weather.title'):S.t('weather.pointTitle',{'label':widget.point!.label});
     final t=Theme.of(context); final s=t.colorScheme;
     return Scaffold(
-      appBar:LinkedAppBar(title:Text(title),actions:[
-        // « Diffuser » written (revue n° 51).
-        if(widget.point==null&&isPco(widget.actorId))TextButton.icon(onPressed:_bulletin,icon:const Icon(Icons.campaign_outlined),label:Text(S.t('weather.broadcast'))),
-        IconButton(tooltip:S.t('weather.refresh'),onPressed:widget.point==null?_refresh:_load,icon:const Icon(Icons.refresh)),
+      appBar:LinkedAppBar(title:Text(title),secondary:[
+        // « Diffuser » written on a wide screen (revue n° 51); in ⋮ on a
+        // phone with « Actualiser », so the title shows whole (card C3).
+        if(widget.point==null&&isPco(widget.actorId))AppBarAction(icon:Icons.campaign_outlined,label:S.t('weather.broadcast'),onPressed:_bulletin,written:true),
+        AppBarAction(icon:Icons.refresh,label:S.t('weather.refresh'),onPressed:widget.point==null?_refresh:_load),
       ]),
       body:RefreshIndicator(onRefresh:_load,child:ListView(padding:const EdgeInsets.only(bottom:24),children:[
         if(_loading)const LinearProgressIndicator(),
