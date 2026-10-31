@@ -217,3 +217,10 @@ Stream<List<({String name,List<int> bytes})>> desktopFileDrops(){
     onCancel:(){web.window.removeEventListener('dragover',over);web.window.removeEventListener('drop',drop);});
   return c.stream;
 }
+
+// Startup log and smoke test: the browser console is enough on the web.
+String? startupLogPath()=>null;
+void writeStartupLog(String line){}
+String? smokeReportPath()=>null;
+void writeSmokeReport(String text){}
+void exitProcess(int code){}

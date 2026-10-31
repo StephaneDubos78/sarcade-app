@@ -1,0 +1,40 @@
+name: Windows ARM64
+
+# Card « Client Windows : écran gris au démarrage » (31 Oct 2026): the
+# owner's PC is ARM64 (Surface Pro 11), where the x64 build runs emulated.
+# This starts the x64 portable build of the windows-dev pre-release on a
+# Windows ARM64 machine (tool/windows_smoke.ps1). Not run on pull requests,
+# so a missing ARM runner never blocks a merge: after each merge on main
+# and by hand (Actions › Windows ARM64 › Run workflow).
+on:
+  workflow_run:
+    workflows: [CI]
+    branches: [main]
+    types: [completed]
+  workflow_dispatch:
+
+jobs:
+  x64-emulated:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: windows-11-arm
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: x64 portable build of windows-dev
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          gh release download windows-dev --pattern sarcade-windows-portable.zip --dir dl
+          Expand-Archive dl\sarcade-windows-portable.zip -DestinationPath app
+      - name: Start test, x64 emulated on ARM64
+        shell: pwsh
+        run: |
+          & tool\windows_smoke.ps1 -Exe "app\sarcade_app.exe" -Out smoke
+          exit $LASTEXITCODE
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-arm64-smoke
+          path: smoke
+          retention-days: 30
