@@ -29,6 +29,7 @@ import '../aprs/aprs_page.dart';
 import '../search/map_search.dart';
 import '../search/map_search_bar.dart';
 import '../../ui/map_view.dart';
+import '../../ui/test_ids.dart';
 import '../../ui/compass_follow.dart';
 import '../compass/shared_compass.dart';
 import '../compass/compass_status.dart';
@@ -775,14 +776,14 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   /// from the point menu (30 Oct 2026, 1 h 48). Phone: the « Outils » tab.
   List<ToolItem> _toolItems()=>[
     // Ordered by use (card « Outils, ordre par usage », 30 Oct 2026, 12 h 50).
-    ToolItem(icon:Icons.cloud_outlined,title:S.t('weather.menu'),subtitle:S.t('tools.weatherHelp'),color:Colors.orange,onTap:()=>_openWeather()),
-    ToolItem(icon:Icons.pin_drop_outlined,title:S.t('converter.title'),subtitle:S.t('tools.converterHelp'),color:Colors.blue,
+    ToolItem(id:'weather',icon:Icons.cloud_outlined,title:S.t('weather.menu'),subtitle:S.t('tools.weatherHelp'),color:Colors.orange,onTap:()=>_openWeather()),
+    ToolItem(id:'converter',icon:Icons.pin_drop_outlined,title:S.t('converter.title'),subtitle:S.t('tools.converterHelp'),color:Colors.blue,
       onTap:()=>_openConverter()),
-    ToolItem(icon:Icons.route,title:S.t('routes.menu'),subtitle:S.t('tools.routesHelp'),color:Colors.green,onTap:_openRoutesPanel),
-    ToolItem(icon:Icons.my_location,title:S.t('resection.title'),subtitle:S.t('tools.resectionHelp'),color:Colors.indigo,onTap:_openResection),
-    ToolItem(icon:Icons.tv,title:S.t('tv.menu'),subtitle:S.t('tools.tvHelp'),color:Colors.deepPurple,group:ToolGroup.pc,
+    ToolItem(id:'routes',icon:Icons.route,title:S.t('routes.menu'),subtitle:S.t('tools.routesHelp'),color:Colors.green,onTap:_openRoutesPanel),
+    ToolItem(id:'resection',icon:Icons.my_location,title:S.t('resection.title'),subtitle:S.t('tools.resectionHelp'),color:Colors.indigo,onTap:_openResection),
+    ToolItem(id:'tv',icon:Icons.tv,title:S.t('tv.menu'),subtitle:S.t('tools.tvHelp'),color:Colors.deepPurple,group:ToolGroup.pc,
       onTap:_openTvScreens),
-    if(isPco(widget.deviceId))ToolItem(icon:Icons.settings_input_antenna,title:S.t('aprs.title'),subtitle:S.t('tools.aprsHelp'),color:Colors.purple,group:ToolGroup.pc,
+    if(isPco(widget.deviceId))ToolItem(id:'aprs',icon:Icons.settings_input_antenna,title:S.t('aprs.title'),subtitle:S.t('tools.aprsHelp'),color:Colors.purple,group:ToolGroup.pc,
       onTap:()=>_openDesk('aprs',()=>AprsPage(api:widget.api,eventId:widget.eventId,actorId:widget.deviceId,
         onShowOnMap:(p,_)=>_onMapNow((){setState(()=>_searchPin=p);_map.move(p,15);})))),
   ];
@@ -1421,8 +1422,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
 
   /// Floating button of 48 × 48 px (the small ones were 40 px).
   Widget _fab(String tag,String tooltip,Widget icon,VoidCallback onPressed,{Color? background,Color? foreground})=>
-    SizedBox(width:48,height:48,child:FloatingActionButton(heroTag:tag,tooltip:tooltip,onPressed:onPressed,
-      backgroundColor:background,foregroundColor:foreground,shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(14)),child:icon));
+    withId('map.$tag',SizedBox(width:48,height:48,child:FloatingActionButton(heroTag:tag,tooltip:tooltip,onPressed:onPressed,
+      backgroundColor:background,foregroundColor:foreground,shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(14)),child:icon)));
 
   /// Map search (request of 26 Oct 2026): what the device knows, then the
   /// addresses from the server. The chosen result gets a red pin; a tap on
@@ -1630,8 +1631,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   /// Phone « Plus »: a normal screen, a list of large buttons.
   Widget _moreScreen(List<_RailAction> items)=>Scaffold(appBar:LinkedAppBar(title:Text(S.t('tabs.more'))),
     body:ListView(padding:const EdgeInsets.symmetric(vertical:8),children:[
-      for(final a in items)ListTile(minTileHeight:64,leading:Badge(isLabelVisible:a.alert,smallSize:10,child:Icon(a.icon,size:28)),
-        title:Text(a.label,style:const TextStyle(fontSize:17)),trailing:const Icon(Icons.chevron_right),onTap:a.onTap),
+      for(final a in items)withId('more.${a.id}',ListTile(minTileHeight:64,leading:Badge(isLabelVisible:a.alert,smallSize:10,child:Icon(a.icon,size:28)),
+        title:Text(a.label,style:const TextStyle(fontSize:17)),trailing:const Icon(Icons.chevron_right),onTap:a.onTap)),
     ]));
 
 
@@ -2369,22 +2370,22 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     // Phone « Plus » (decision of 30 Oct 2026, 3 h 10): Fichiers and
     // Paramètres; « Outils » is a tab, « Itinéraires » is in it.
     final more=<_RailAction>[
-      _RailAction(Icons.folder_copy_outlined,S.t('map.files'),openFiles),
-      if(widget.onSettings!=null)_RailAction(Icons.settings_outlined,S.t('map.settings'),widget.onSettings!,alert:diagnosticsAlert()),
+      _RailAction(Icons.folder_copy_outlined,S.t('map.files'),openFiles,id:'files'),
+      if(widget.onSettings!=null)_RailAction(Icons.settings_outlined,S.t('map.settings'),widget.onSettings!,alert:diagnosticsAlert(),id:'settings'),
     ];
     // Computer: every entry visible, no « … » (decision of 29 Oct 2026,
     // 12 h 17); Carte and Messages are drawn by the rail itself, Paramètres
     // at the bottom.
     final rail=<_RailAction>[
-      _RailAction(Icons.groups_outlined,S.t('tabs.teams'),toggleOperators,selected:_showPanel),
-      _RailAction(Icons.folder_copy_outlined,S.t('map.files'),openFiles,selected:_deskId=='files'),
+      _RailAction(Icons.groups_outlined,S.t('tabs.teams'),toggleOperators,selected:_showPanel,id:'teams'),
+      _RailAction(Icons.folder_copy_outlined,S.t('map.files'),openFiles,selected:_deskId=='files',id:'files'),
       // « Itinéraires » moved into « Outils » (29 Oct 2026); wrench icon, the
       // handyman glyph did not show on the web.
       _RailAction(Icons.build_outlined,S.t('tools.title'),_openTools,
-        selected:_showResection||_showRoutesPanel||const {'tools','converter','tv','aprs','weather'}.contains(_deskId)),
+        selected:_showResection||_showRoutesPanel||const {'tools','converter','tv','aprs','weather'}.contains(_deskId),id:'tools'),
     ];
     final railBottom=(widget.onSettings!=null||widget.settingsBuilder!=null)
-      ?_RailAction(Icons.settings_outlined,S.t('map.settings'),openSettings,selected:_deskId=='settings',alert:diagnosticsAlert()):null;
+      ?_RailAction(Icons.settings_outlined,S.t('map.settings'),openSettings,selected:_deskId=='settings',alert:diagnosticsAlert(),id:'settings'):null;
     // Blue while Messages is open, page or side panel (card « Bouton Messages
     // pas mis en évidence », 30 Oct 2026, 16 h 13): one button in blue.
     final messagesOn=messagesRailSelected(deskId:_deskId,chatPeer:_chatPeer);
@@ -2559,7 +2560,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
                 if(!compact)...[const SizedBox(width:8),_trackingBadge()],
               ])),
               const SizedBox(width:8),
-              _linkWeatherPill(),
+              withId('link.map',_linkWeatherPill()),
             ],
           ]),
           // Phone: filters in one button; computer: chips visible.
@@ -2638,7 +2639,9 @@ class _RailAction {
   final IconData icon; final String label; final VoidCallback onTap; final bool selected;
   /// Red dot: a problem waits in the Diagnostic (Paramètres).
   final bool alert;
-  const _RailAction(this.icon,this.label,this.onTap,{this.selected=false,this.alert=false});
+  /// Test identifier (`nav.<id>` in the rail, `more.<id>` on the phone).
+  final String id;
+  const _RailAction(this.icon,this.label,this.onTap,{this.selected=false,this.alert=false,this.id=''});
 }
 
 /// Computer: vertical rail on the left, 9 entries (note « Navigation et
@@ -2648,21 +2651,21 @@ class _Rail extends StatelessWidget {
   const _Rail({required this.messages,required this.actions,required this.onMap,required this.mapSelected,this.bottom});
   @override Widget build(BuildContext context){
     final scheme=Theme.of(context).colorScheme;
-    Widget button(IconData icon,String label,VoidCallback onTap,{bool selected=false,bool alert=false})=>Padding(padding:const EdgeInsets.symmetric(vertical:2),
-      child:IconButton(tooltip:label,onPressed:onTap,isSelected:selected,
+    Widget button(IconData icon,String label,VoidCallback onTap,{bool selected=false,bool alert=false,String id=''})=>Padding(padding:const EdgeInsets.symmetric(vertical:2),
+      child:withId('nav.$id',IconButton(tooltip:label,onPressed:onTap,isSelected:selected,
         style:IconButton.styleFrom(fixedSize:const Size(48,48),shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(14)),
           backgroundColor:selected?scheme.primaryContainer:null,foregroundColor:selected?scheme.primary:scheme.onSurfaceVariant),
-        icon:Badge(isLabelVisible:alert,smallSize:10,child:Icon(icon))));
+        icon:Badge(isLabelVisible:alert,smallSize:10,child:Icon(icon)))));
     return Container(width:72,margin:const EdgeInsets.fromLTRB(8,8,0,8),decoration:glass(context),
       child:Column(children:[
         Expanded(child:SingleChildScrollView(padding:const EdgeInsets.symmetric(vertical:8),child:Column(children:[
-          button(Icons.map_outlined,S.t('tabs.map'),onMap,selected:mapSelected),
-          Padding(padding:const EdgeInsets.symmetric(vertical:2),child:messages),
-          for(final a in actions)button(a.icon,a.label,a.onTap,selected:a.selected),
+          button(Icons.map_outlined,S.t('tabs.map'),onMap,selected:mapSelected,id:'map'),
+          Padding(padding:const EdgeInsets.symmetric(vertical:2),child:withId('nav.messages',messages)),
+          for(final a in actions)button(a.icon,a.label,a.onTap,selected:a.selected,id:a.id),
         ]))),
         if(bottom!=null)...[
           const Divider(height:1,indent:14,endIndent:14),
-          Padding(padding:const EdgeInsets.symmetric(vertical:6),child:button(bottom!.icon,bottom!.label,bottom!.onTap,selected:bottom!.selected,alert:bottom!.alert)),
+          Padding(padding:const EdgeInsets.symmetric(vertical:6),child:button(bottom!.icon,bottom!.label,bottom!.onTap,selected:bottom!.selected,alert:bottom!.alert,id:bottom!.id)),
         ],
       ]));
   }
@@ -2674,9 +2677,10 @@ class _TabBar extends StatelessWidget {
   const _TabBar({required this.index,required this.messagesIcon,required this.onSelect,this.moreAlert=false});
   @override Widget build(BuildContext context){
     final scheme=Theme.of(context).colorScheme;
+    const ids=['map','messages','teams','tools','more'];
     Widget tab(int i,Widget icon,String label,{String? tooltip})=>Expanded(child:Tooltip(message:tooltip??label,excludeFromSemantics:true,child:InkWell(
       onTap:()=>onSelect(i),borderRadius:BorderRadius.circular(28),
-      child:Semantics(button:true,selected:index==i,label:tooltip??label,excludeSemantics:true,child:Container(height:60,
+      child:Semantics(identifier:'nav.${ids[i]}',button:true,selected:index==i,label:tooltip??label,excludeSemantics:true,child:Container(height:60,
         decoration:BoxDecoration(color:index==i?scheme.primaryContainer:null,borderRadius:BorderRadius.circular(28)),
         child:Column(mainAxisAlignment:MainAxisAlignment.center,children:[
           IconTheme(data:IconThemeData(color:index==i?scheme.primary:scheme.onSurfaceVariant),child:icon),
