@@ -49,6 +49,9 @@ jobs:
     runs-on: windows-latest
     permissions:
       contents: write
+    env:
+      # Empty until the signing account is set (steps « Azure Trusted Signing »).
+      AZURE_TS_ACCOUNT: ${{ secrets.AZURE_TS_ACCOUNT }}
     steps:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
@@ -92,6 +95,24 @@ jobs:
         run: |
           grep -n -B2 -A6 -E "error|Error|FAILED|fatal" windows-build.log \
             | head -80 | sed 's/%/%25/g' | while IFS= read -r line; do echo "::error::${line}"; done || true
+      # Code signing with Azure Trusted Signing (card « Windows, installeur
+      # bloqué par Defender : signer le code », 31 Oct 2026): off until the
+      # owner puts the six AZURE_* secrets of his signing account in GitHub.
+      # The program and its DLL are signed before the installer is built,
+      # then the installer itself.
+      - name: Sign the program and its DLL (Azure Trusted Signing)
+        if: env.AZURE_TS_ACCOUNT != ''
+        uses: azure/trusted-signing-action@v2
+        with:
+          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+          endpoint: ${{ secrets.AZURE_TS_ENDPOINT }}
+          trusted-signing-account-name: ${{ secrets.AZURE_TS_ACCOUNT }}
+          certificate-profile-name: ${{ secrets.AZURE_TS_PROFILE }}
+          files-folder: ${{ github.workspace }}\build\windows\x64\runner\Release
+          files-folder-filter: exe,dll
+          files-folder-recurse: true
       - name: Installer (Inno Setup)
         shell: pwsh
         run: |
@@ -102,6 +123,17 @@ jobs:
           & $iscc tool\windows_installer.iss
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Compress-Archive -Path build\windows\x64\runner\Release\* -DestinationPath build\installer\sarcade-windows-portable.zip
+      - name: Sign the installer (Azure Trusted Signing)
+        if: env.AZURE_TS_ACCOUNT != ''
+        uses: azure/trusted-signing-action@v2
+        with:
+          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+          endpoint: ${{ secrets.AZURE_TS_ENDPOINT }}
+          trusted-signing-account-name: ${{ secrets.AZURE_TS_ACCOUNT }}
+          certificate-profile-name: ${{ secrets.AZURE_TS_PROFILE }}
+          files: ${{ github.workspace }}\build\installer\sarcade-windows-setup.exe
       - name: Sign the installer (when the certificate is in the secrets)
         shell: pwsh
         env:
