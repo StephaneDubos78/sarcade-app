@@ -1417,6 +1417,24 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   void _onSelectionRect(Rect r){final cam=_map.camera;_drawing.addToSelection(featuresInRect(_drawing.features,r,cam.latLngToScreenOffset,radiusPx:_circleRadiusPx).map((f)=>f.id));}
   void _onSelectionTap(Offset at){final cam=_map.camera;final hit=hitTest(_drawing.features,at,cam.latLngToScreenOffset,radiusPx:_circleRadiusPx);if(hit!=null){_drawing.toggle(hit.id);}else{_drawing.endSelection();}}
   void _syncEscapes()=>_escapes.sync([if(_showPanel)'teams',if(_showRoutesPanel)'routes',if(_showReferencePanel)'reference',if(_showResection)'resection',if(_deskId!=null)'desk',if(_chatPeer!=null)'chat']);
+  /// A window open over the map (side panel, page beside the rail).
+  bool get _mapPanelOpen=>mapPanelOpen(teams:_showPanel,reference:_showReferencePanel,routes:_showRoutesPanel,resection:_showResection,chat:_chatPeer!=null,desk:_deskId!=null);
+
+  /// « Carte » (tab bar of a phone, rail of a computer; decision of the
+  /// porteur, 31 Oct 2026, 1 h 14): every window closes and the map shows.
+  /// What runs on the map itself (bearing, navigation, drawing, measure)
+  /// goes on; drafts are kept.
+  void _showMapOnly(){
+    final nav=Navigator.of(context); final me=ModalRoute.of(context);
+    nav.popUntil((r)=>r==me||r.isFirst);
+    setState((){
+      _tab=0;_builtTabs.add(0);_deskPage=null;_deskId=null;_chatPeer=null;
+      _showPanel=false;_showReferencePanel=false;_selectedReference=null;
+      _showRoutesPanel=false;_drawingRouteId=null;
+      _showResection=false;_resectionCtl.result=null;
+    });
+  }
+
   bool _escapePanel(){_syncEscapes();return _escapes.escape((k)=>setState((){switch(k){
     case 'teams':_showPanel=false; case 'routes':_showRoutesPanel=false;_drawingRouteId=null;
     case 'reference':_showReferencePanel=false;_selectedReference=null; case 'chat':_chatPeer=null; case 'resection':_showResection=false;_resectionCtl.result=null;
@@ -2281,7 +2299,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     // under the status bar; folded while points are added on the map.
     final fullPanel=sidePanelFullScreen(screenWidth);
     final routeEntry=fullPanel&&_showRoutesPanel&&_drawingRouteId!=null?_routes.route(_drawingRouteId!):null;
-    Widget routesPanel()=>RoutesPanel(
+    Widget routesPanel()=>RoutesPanel(onClose:_showMapOnly,
           controller:_routes,api:widget.api,actorId:widget.deviceId,selectedRouteId:_selectedRouteId,drawingRouteId:_drawingRouteId,
           groups:widget.store.groups(widget.eventId).map(CommGroup.fromJson).toList(),
           onSelect:(id)=>setState((){_selectedRouteId=id;if(id==null)_drawingRouteId=null;}),
@@ -2297,7 +2315,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     void toggleOperators()=>setState((){_deskPage=null;_deskId=null;_showPanel=!_showPanel;if(_showPanel){_showReferencePanel=false;_showResection=false;}});
     void openFiles()=>_openDesk('files',()=>FilesPage(api:widget.api,eventId:widget.eventId,actorId:widget.deviceId,store:widget.store,drawings:DrawingFileActions(importFile:_importFile,exportAll:_exportGeoJson,count:()=>_drawing.features.length)));
     void openMessages()=>_openMessages(fromButton:true);
-    void showMap()=>setState((){_tab=0;_deskPage=null;_deskId=null;_showPanel=false;_showReferencePanel=false;_showRoutesPanel=false;_showResection=false;_drawingRouteId=null;});
+    void showMap()=>_showMapOnly();
     void openSettings(){
       final b=widget.settingsBuilder;
       if(!compact&&b!=null){_openDesk('settings',b);}else{widget.onSettings?.call();}
@@ -2350,8 +2368,9 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     final fullBleed=compact&&_tab==0&&sosAlert==null&&!banners.visible&&graphBanner==null;
     return PopScope(
       // Phone: Back first returns to the Carte tab, then leaves the application.
-      canPop:!compact||_tab==0,
-      onPopInvokedWithResult:(didPop,_){if(!didPop&&_tab!=0)_goTab(0);},
+      // A panel over the map is closed first (31 Oct 2026).
+      canPop:!compact||(_tab==0&&!_mapPanelOpen),
+      onPopInvokedWithResult:(didPop,_){if(didPop)return;if(_mapPanelOpen){_escapePanel();}else if(_tab!=0){_goTab(0);}},
       child:Scaffold(
       extendBody:fullBleed,
       body:SafeArea(top:!fullBleed,bottom:false,child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
@@ -2558,7 +2577,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       ])),
       ])),
       // Phone: tab bar always visible, each tab a real screen.
-      bottomNavigationBar:compact?_TabBar(index:_tab,messagesIcon:_messagesIcon(),onSelect:(i)=>i==1?_openMessages(fromButton:true):_goTab(i),moreAlert:diagnosticsAlert()):null,
+      bottomNavigationBar:compact?_TabBar(index:_tab,messagesIcon:_messagesIcon(),onSelect:(i)=>i==1?_openMessages(fromButton:true):i==0?_showMapOnly():_goTab(i),moreAlert:diagnosticsAlert()):null,
     ));
   }
 }
@@ -2685,3 +2704,7 @@ class _HoldButtonState extends State<_HoldButton> with SingleTickerProviderState
 /// (revue d'ergonomie n° 42).
 String operatorsTitle(int operators,int stations)=>stations==0?S.t('operators.title',{'n':operators})
   :S.t('operators.titleStations',{'n':operators,'m':stations});
+
+/// True when a window covers or flanks the map.
+bool mapPanelOpen({required bool teams,required bool reference,required bool routes,required bool resection,required bool chat,required bool desk})=>
+  teams||reference||routes||resection||chat||desk;
