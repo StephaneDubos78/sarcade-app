@@ -46,7 +46,7 @@ class ToolsPage extends StatelessWidget {
                   child:Icon(i.icon,color:i.color)),
                 const SizedBox(width:14),
                 Expanded(child:Column(mainAxisAlignment:MainAxisAlignment.center,crossAxisAlignment:CrossAxisAlignment.start,children:[
-                  Text(i.title,style:t.textTheme.titleMedium?.copyWith(fontWeight:FontWeight.w600)),
+                  Text(i.title,maxLines:1,overflow:TextOverflow.ellipsis,style:t.textTheme.titleMedium?.copyWith(fontWeight:FontWeight.w600)),
                   const SizedBox(height:2),
                   Text(i.subtitle,maxLines:2,overflow:TextOverflow.ellipsis,style:t.textTheme.bodySmall?.copyWith(color:t.colorScheme.onSurfaceVariant)),
                 ])),
