@@ -112,3 +112,34 @@ Future<List<String>> localAddresses() async {
 /// Files dropped from the file manager: web only for now; Windows and Linux
 /// need a package (desktop_drop) not yet added.
 Stream<List<({String name,List<int> bytes})>> desktopFileDrops()=>const Stream<List<({String name,List<int> bytes})>>.empty();
+
+// --- Startup log and smoke test (card « Client Windows : écran gris au
+// démarrage », 31 Oct 2026): installed apps write their startup and their
+// errors to a file the operator can send; the CI starts the built app with
+// SARCADE_SMOKE_FILE set and reads the report.
+
+/// %LOCALAPPDATA%\SARCADE\logs\demarrage.log on Windows,
+/// ~/.local/share/sarcade/logs/demarrage.log on Linux and macOS; phones keep
+/// the system log (null).
+String? startupLogPath(){
+  final env=Platform.environment;
+  if(Platform.isWindows){final base=env['LOCALAPPDATA'];return base==null?null:'$base\\SARCADE\\logs\\demarrage.log';}
+  final home=env['HOME'];
+  if((Platform.isLinux||Platform.isMacOS)&&home!=null)return '$home/.local/share/sarcade/logs/demarrage.log';
+  return null;
+}
+
+/// Appends a line; the file is kept under 512 KB (older part in .old).
+void writeStartupLog(String line){
+  final path=startupLogPath(); if(path==null)return;
+  try{
+    final f=File(path); f.parent.createSync(recursive:true);
+    if(f.existsSync()&&f.lengthSync()>512*1024)f.renameSync('$path.old');
+    f.writeAsStringSync('${DateTime.now().toIso8601String()} $line\n',mode:FileMode.append,flush:true);
+  }catch(_){}
+}
+
+/// File of the smoke report asked by the CI, or null in normal use.
+String? smokeReportPath()=>Platform.environment['SARCADE_SMOKE_FILE'];
+void writeSmokeReport(String text){final p=smokeReportPath();if(p==null)return;try{File(p).writeAsStringSync(text,flush:true);}catch(_){}}
+void exitProcess(int code)=>exit(code);
