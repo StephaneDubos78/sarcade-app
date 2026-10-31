@@ -13,6 +13,9 @@ $report = Join-Path $Out "report.json"
 Remove-Item $report -ErrorAction SilentlyContinue
 $env:SARCADE_SMOKE_FILE = $report
 Write-Host "Architecture: $env:PROCESSOR_ARCHITECTURE ; exe: $Exe"
+# Fresh log: the unit tests of the same machine write to it too.
+$log = Join-Path $env:LOCALAPPDATA "SARCADE\logs\demarrage.log"
+Remove-Item $log -ErrorAction SilentlyContinue
 $p = Start-Process -FilePath $Exe -PassThru
 Start-Sleep -Seconds $CaptureAfter
 try {
@@ -28,7 +31,6 @@ if (-not $p.WaitForExit($Timeout * 1000)) {
   Write-Host "::error title=Windows start::the app did not end within $Timeout s (first screen never drawn?)"
   Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
 }
-$log = Join-Path $env:LOCALAPPDATA "SARCADE\logs\demarrage.log"
 if (Test-Path $log) {
   Copy-Item $log (Join-Path $Out "demarrage.log"); Write-Host "--- demarrage.log"; Get-Content $log -Tail 80
   # Readable from the API without downloading the artifact (one annotation).
