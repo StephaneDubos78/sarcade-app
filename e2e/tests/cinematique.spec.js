@@ -104,6 +104,27 @@ for (const size of SIZES) {
       await expectMapFree(page, size, 'selection › Carte');
     });
 
+    test('converter « Touch the map »: « Carte » and Escape end it (N1, N2)', async () => {
+      const exits = compact ? ['Carte'] : ['Carte', 'Escape'];
+      for (const exit of exits) {
+        await tapId(page, 'nav.tools'); await tapId(page, 'tool.converter');
+        await tapName(page, 'Touch the map');
+        await expect(page.getByText('Touch the map: point to convert')).toHaveCount(1, { timeout: 10_000 });
+        if (exit === 'Carte') await tapId(page, 'nav.map'); else { await page.keyboard.press('Escape'); await page.waitForTimeout(700); }
+        await expect(page.getByText('Touch the map: point to convert')).toHaveCount(0);
+        await expectMapFree(page, size, `converter pick › ${exit}`);
+      }
+    });
+
+    test('Escape closes an empty drawing bar (N1)', async () => {
+      if (compact) test.skip(true, 'no keyboard on a phone');
+      await tapId(page, 'map.drawing-tools');
+      await expect(page.getByRole('button', { name: 'Close the tools' }).first()).toBeVisible({ timeout: 10_000 });
+      await page.keyboard.press('Escape'); await page.waitForTimeout(700);
+      await expect(page.getByRole('button', { name: 'Close the tools' })).toHaveCount(0);
+      await expectMapFree(page, size, 'drawing bar › Échap');
+    });
+
     test('point menu and base map sheet close with Escape', async () => {
       if (compact) test.skip(true, 'no keyboard on a phone');
       await pointMenu(page, size);
