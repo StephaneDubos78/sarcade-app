@@ -26,10 +26,12 @@ class NavigationCard extends StatelessWidget {
   /// Computers: option to turn the map in the direction of travel.
   final bool? rotate;
   final ValueChanged<bool>? onRotate;
+  /// « Ouvrir dans… » the destination in Waze, Google Maps… (31 Oct 2026).
+  final VoidCallback? onOpenIn;
   /// « Télécharger les routes » in one touch when neither the server nor
   /// this device can compute (31 Oct 2026); [graphBytes] its size.
   final VoidCallback? onDownloadGraph; final int? graphBytes; final bool graphDownloading;
-  const NavigationCard({super.key,required this.nav,this.following=false,this.onRecentre,this.rotate,this.onRotate,
+  const NavigationCard({super.key,this.onOpenIn,required this.nav,this.following=false,this.onRecentre,this.rotate,this.onRotate,
     this.onDownloadGraph,this.graphBytes,this.graphDownloading=false});
 
   String _delta(Itinerary alt,Itinerary main){
@@ -55,6 +57,7 @@ class NavigationCard extends StatelessWidget {
           else if(nav.state!=NavState.idle)Text('${formatDistance(nav.remaining)} · ${S.t('nav.eta',{'time':_eta(nav.eta)})}'
             '${(it?.straight??false)&&nav.bearing!=null?' · ${nav.bearing!.round()}°':''}'),
         ])),
+        if(onOpenIn!=null&&nav.state!=NavState.idle)IconButton(key:const ValueKey('nav-open-in'),tooltip:S.t('ext.open'),onPressed:onOpenIn,icon:const Icon(Icons.open_in_new)),
         IconButton(tooltip:S.t('nav.stop'),onPressed:nav.cancel,icon:const Icon(Icons.close)),
       ]),
       if(instruction!=null)Padding(padding:const EdgeInsets.only(top:6),child:Text(instruction,style:theme.textTheme.bodyLarge)),

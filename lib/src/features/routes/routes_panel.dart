@@ -21,10 +21,12 @@ class RoutesPanel extends StatelessWidget {
   /// « Envoyer » a route to a channel or an operator (7a, 28 Oct 2026).
   final void Function(String text)? onSend;
   final ValueChanged<List<LatLng>> onFocus;
+  /// « Ouvrir dans… » a waypoint in Waze, Google Maps… (31 Oct 2026).
+  final void Function(LatLng point,String label)? onOpenIn;
   /// ✕ of the list (phone, full screen; card « bloqué dans Itinéraires »,
   /// 31 Oct 2026): back to the map.
   final VoidCallback? onClose;
-  const RoutesPanel({super.key,this.onClose,required this.controller,required this.api,required this.actorId,required this.selectedRouteId,
+  const RoutesPanel({super.key,this.onOpenIn,this.onClose,required this.controller,required this.api,required this.actorId,required this.selectedRouteId,
     required this.drawingRouteId,required this.groups,required this.onSelect,required this.onDraw,required this.onDrawClosure,
     required this.onNavigate,required this.onFocus,this.onSend});
 
@@ -111,6 +113,7 @@ class RoutesPanel extends StatelessWidget {
         onTap:()=>onFocus([ordered[i].point]),
         trailing:PopupMenuButton<String>(onSelected:(v)=>_waypointAction(context,r,ordered[i],v),itemBuilder:(_)=>[
           PopupMenuItem(value:'navigate',child:Text(S.t('nav.goHere'))),
+          if(onOpenIn!=null)PopupMenuItem(value:'open_in',child:Text(S.t('ext.open'))),
           PopupMenuItem(value:'passage',child:Text(S.t('routes.markPassage'))),
           PopupMenuItem(value:'report',child:Text(S.t('routes.report'))),
           if(editable)...[
@@ -128,6 +131,7 @@ class RoutesPanel extends StatelessWidget {
     final messenger=ScaffoldMessenger.of(context);
     switch(action){
       case 'navigate': onNavigate(w.point,w.name);
+      case 'open_in': onOpenIn?.call(w.point,w.name);
       case 'passage': await controller.recordPassage(w,mode:'manual');
         messenger.showSnackBar(SnackBar(content:Text(S.t('routes.passageRecorded',{'name':w.name}))));
       case 'report':

@@ -45,6 +45,7 @@ class S {
 }
 
 const Texts _fr={
+  'ext.app.other':'Autre application','ext.app.openstreetmap':'OpenStreetMap','ext.always':'Toujours ouvrir avec cette application','ext.warningShort':'Votre position est transmise','ext.warningAll':'Google Maps et Waze reçoivent votre position','settings.navApp':'Application de navigation','settings.navAppAsk':'Demander à chaque fois',
   'nav.downloadGraph':'Télécharger les routes sur l’appareil','nav.downloadGraphSize':'Télécharger les routes ({mb} Mo, Wi-Fi conseillé)',
   'diag.routing':'Calcul d’itinéraire','diag.routing.server':'Serveur','diag.routing.device':'Sur l’appareil','diag.routing.none':'Indisponible (ligne droite)',
   'point.selectObject':'Sélectionner « {name} »',
@@ -490,6 +491,7 @@ const Texts _fr={
 };
 
 const Texts _en={
+  'ext.app.other':'Other application','ext.app.openstreetmap':'OpenStreetMap','ext.always':'Always open with this application','ext.warningShort':'Your position is shared','ext.warningAll':'Google Maps and Waze receive your position','settings.navApp':'Navigation application','settings.navAppAsk':'Ask every time',
   'nav.downloadGraph':'Download the roads on the device','nav.downloadGraphSize':'Download the roads ({mb} MB, Wi-Fi advised)',
   'diag.routing':'Itinerary computation','diag.routing.server':'Server','diag.routing.device':'On the device','diag.routing.none':'Unavailable (straight line)',
   'point.selectObject':'Select « {name} »',
