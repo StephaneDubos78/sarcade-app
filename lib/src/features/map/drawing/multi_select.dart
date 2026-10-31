@@ -5,6 +5,7 @@ library;
 
 import 'dart:convert';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -114,27 +115,48 @@ Future<void> deleteSelection(BuildContext context,DrawingController c) async {
   if(ok==true)c.deleteSelected();
 }
 
-/// Selection rectangle (Maj + glisser on a computer, « Sélection » then a
-/// drag on a phone); a touch without a drag selects one object.
+/// Selection rectangle. Maj + glisser on a computer always draws it. In the
+/// « Sélectionner une zone » mode (card C1 of the cinématique review, 31 Oct
+/// 2026), a plain drag moves the map ([onMove], pinch and wheel zoom too)
+/// and the rectangle starts with a long press, then a drag; without
+/// [onMove], every drag draws it. A touch without a drag selects one object.
 class SelectionRectOverlay extends StatefulWidget {
   final void Function(Rect rect) onRect; final void Function(Offset at) onTap;
-  const SelectionRectOverlay({super.key,required this.onRect,required this.onTap});
+  final void Function(ScaleStartDetails d)? onMoveStart;
+  final void Function(ScaleUpdateDetails d)? onMove;
+  final void Function(PointerScrollEvent e)? onWheel;
+  const SelectionRectOverlay({super.key,required this.onRect,required this.onTap,this.onMoveStart,this.onMove,this.onWheel});
   @override State<SelectionRectOverlay> createState()=>_SelectionRectOverlayState();
 }
 
 class _SelectionRectOverlayState extends State<SelectionRectOverlay> {
   Offset? _a, _b;
+  void _start(Offset p)=>setState((){_a=p;_b=p;});
+  void _update(Offset p)=>setState(()=>_b=p);
+  void _end(){final a=_a, b=_b;setState((){_a=null;_b=null;});if(a!=null&&b!=null&&a!=b)widget.onRect(selectionRect(a,b));}
   @override Widget build(BuildContext context){
     final s=Theme.of(context).colorScheme; final a=_a, b=_b;
-    return GestureDetector(key:const ValueKey('selection-rect'),behavior:HitTestBehavior.opaque,
-      onTapUp:(d)=>widget.onTap(d.localPosition),
-      onPanStart:(d)=>setState((){_a=d.localPosition;_b=d.localPosition;}),
-      onPanUpdate:(d)=>setState(()=>_b=d.localPosition),
-      onPanEnd:(_){final a=_a, b=_b;setState((){_a=null;_b=null;});if(a!=null&&b!=null)widget.onRect(selectionRect(a,b));},
-      child:MouseRegion(cursor:SystemMouseCursors.precise,child:Stack(children:[
-        if(a!=null&&b!=null)Positioned.fromRect(rect:selectionRect(a,b),child:Container(decoration:BoxDecoration(
-          color:s.primary.withValues(alpha:0.10),border:Border.all(color:s.primary,width:1.5)))),
-      ])));
+    final moves=widget.onMove!=null;
+    final box=MouseRegion(cursor:moves?SystemMouseCursors.grab:SystemMouseCursors.precise,child:Stack(children:[
+      if(a!=null&&b!=null)Positioned.fromRect(rect:selectionRect(a,b),child:Container(decoration:BoxDecoration(
+        color:s.primary.withValues(alpha:0.10),border:Border.all(color:s.primary,width:1.5)))),
+    ]));
+    final detector=moves
+      ? GestureDetector(key:const ValueKey('selection-rect'),behavior:HitTestBehavior.opaque,
+          onTapUp:(d)=>widget.onTap(d.localPosition),
+          onLongPressStart:(d)=>_start(d.localPosition),
+          onLongPressMoveUpdate:(d)=>_update(d.localPosition),
+          onLongPressEnd:(_)=>_end(),
+          onScaleStart:widget.onMoveStart,
+          onScaleUpdate:widget.onMove,
+          child:box)
+      : GestureDetector(key:const ValueKey('selection-rect'),behavior:HitTestBehavior.opaque,
+          onTapUp:(d)=>widget.onTap(d.localPosition),
+          onPanStart:(d)=>_start(d.localPosition),
+          onPanUpdate:(d)=>_update(d.localPosition),
+          onPanEnd:(_)=>_end(),
+          child:box);
+    return Listener(onPointerSignal:(e){if(e is PointerScrollEvent)widget.onWheel?.call(e);},child:detector);
   }
 }
 
