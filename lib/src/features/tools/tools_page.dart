@@ -4,6 +4,8 @@ library;
 
 import 'package:flutter/material.dart';
 
+import '../../ui/test_ids.dart';
+
 import '../../l10n/strings.dart';
 import '../../ui/link_status.dart';
 
@@ -14,7 +16,9 @@ enum ToolGroup { field, pc }
 
 class ToolItem {
   final IconData icon; final String title, subtitle; final Color color; final VoidCallback onTap; final ToolGroup group;
-  const ToolItem({required this.icon,required this.title,required this.subtitle,required this.color,required this.onTap,this.group=ToolGroup.field});
+  /// Test identifier: `tool.<id>` (card B of the cinématique review).
+  final String id;
+  const ToolItem({required this.icon,required this.title,required this.subtitle,required this.color,required this.onTap,this.group=ToolGroup.field,this.id=''});
 }
 
 class ToolsPage extends StatelessWidget {
@@ -28,7 +32,7 @@ class ToolsPage extends StatelessWidget {
       appBar:LinkedAppBar(title:Text(S.t('tools.title'))),
       body:LayoutBuilder(builder:(context,c){
         final columns=c.maxWidth>=900?3:c.maxWidth>=560?2:1;
-        Widget tile(ToolItem i)=>Card(elevation:0,clipBehavior:Clip.antiAlias,
+        Widget tile(ToolItem i)=>withId('tool.${i.id}',Card(elevation:0,clipBehavior:Clip.antiAlias,
             color:t.colorScheme.surfaceContainerLow,
             child:InkWell(
               // On a phone the page is a screen of its own: it closes first,
@@ -44,7 +48,7 @@ class ToolsPage extends StatelessWidget {
                   Text(i.subtitle,maxLines:2,overflow:TextOverflow.ellipsis,style:t.textTheme.bodySmall?.copyWith(color:t.colorScheme.onSurfaceVariant)),
                 ])),
                 Icon(Icons.chevron_right,color:t.colorScheme.onSurfaceVariant),
-              ]))));
+              ])))));
         return CustomScrollView(slivers:[
           for(final g in ToolGroup.values)
             if(items.any((i)=>i.group==g))...[

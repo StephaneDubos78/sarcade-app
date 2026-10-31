@@ -12,6 +12,7 @@ import 'package:flutter/material.dart';
 
 import '../features/map/stations.dart' show ServerLink, serverLink;
 import '../l10n/strings.dart';
+import 'test_ids.dart';
 import '../offline/sync_service.dart';
 import '../services/realtime_service.dart';
 
@@ -46,13 +47,13 @@ class _LinkStatusPillState extends State<LinkStatusPill> {
     final pending=sync.currentItems.length;
     final scheme=Theme.of(context).colorScheme;
     final text=linkText(state,pending);
-    return Tooltip(message:'${S.t('links.serverLink')} : ${S.t('links.${state.name}')}',child:InkWell(key:const ValueKey('link-status'),
+    return withId('link.status',Tooltip(message:'${S.t('links.serverLink')} : ${S.t('links.${state.name}')}',child:InkWell(key:const ValueKey('link-status'),
       customBorder:const StadiumBorder(),onTap:linkStatusOnTap,
       child:ConstrainedBox(constraints:const BoxConstraints(minWidth:48,minHeight:48),child:Center(child:Padding(
         padding:const EdgeInsets.symmetric(horizontal:10),child:Row(mainAxisSize:MainAxisSize.min,children:[
           Container(width:10,height:10,decoration:BoxDecoration(color:linkColor(state,scheme),shape:BoxShape.circle)),
           if(text.isNotEmpty)...[const SizedBox(width:6),Text(text,style:TextStyle(fontSize:13,fontWeight:FontWeight.w600,color:scheme.onSurface))],
-        ]))))));
+        ])))))));
   }
 }
 

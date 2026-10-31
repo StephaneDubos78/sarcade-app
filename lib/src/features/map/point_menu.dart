@@ -11,6 +11,7 @@ import 'package:flutter/services.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../../l10n/strings.dart';
+import '../../ui/test_ids.dart';
 import '../places/readable_place.dart';
 
 /// [info]: the location line touched, fiche « Infos du point » (lot 5).
@@ -65,13 +66,13 @@ class _Grid extends StatelessWidget {
     final s=Theme.of(context).colorScheme;
     // Two rows: three icons per row (four with the PCO entry on the first).
     final perRow=(entries.length/2).ceil();
-    Widget cell(PointAction a)=>Expanded(child:InkWell(borderRadius:BorderRadius.circular(16),onTap:()=>onPick(a),
+    Widget cell(PointAction a)=>Expanded(child:withId('point.${a.name}',InkWell(borderRadius:BorderRadius.circular(16),onTap:()=>onPick(a),
       child:Padding(padding:const EdgeInsets.symmetric(vertical:8,horizontal:2),child:Column(mainAxisSize:MainAxisSize.min,children:[
         Container(width:52,height:52,decoration:BoxDecoration(color:s.primaryContainer,shape:BoxShape.circle),
           child:Icon(_icon(a),color:s.onPrimaryContainer)),
         const SizedBox(height:6),
         Text(_label(a),textAlign:TextAlign.center,maxLines:2,overflow:TextOverflow.ellipsis,style:const TextStyle(fontSize:13)),
-      ]))));
+      ])))));
     Widget row(List<PointAction> list)=>Row(crossAxisAlignment:CrossAxisAlignment.start,children:[
       for(final a in list)cell(a),for(var i=list.length;i<perRow;i++)const Expanded(child:SizedBox.shrink())]);
     return Column(mainAxisSize:MainAxisSize.min,children:[row(entries.take(perRow).toList()),const SizedBox(height:4),row(entries.skip(perRow).toList())]);
