@@ -15,6 +15,7 @@ import 'package:http/http.dart' as http;
 import 'package:integration_test/integration_test.dart';
 import 'package:sarcade_app/main.dart' as app;
 import 'package:sarcade_app/src/l10n/strings.dart';
+import 'package:sarcade_app/src/ui/test_ids.dart';
 
 const server = String.fromEnvironment('SARCADE_E2E_URL', defaultValue: 'http://10.0.2.2:8000');
 const eventName = String.fromEnvironment('SARCADE_E2E_EVENT_NAME', defaultValue: 'E2E android');
@@ -181,5 +182,39 @@ void main() {
     await pumpUntilTrue(t, () async => (await pco.changes()).any((c) => c['object_type'] == 'ack'
         && c['payload']['message_id'] == routine['id'] && c['payload']['actor_id'] == device),
         'ACK of the routine message', timeout: const Duration(seconds: 90));
+
+    // 5. Cinématique on Android (vault, revue du 31 Oct 2026, point E):
+    //    the system back gesture leaves each screen, then the map.
+    Finder byId(String id) => find.byWidgetPredicate((w) => hasTestId(w, id));
+    // The system back of Android, without its last step: on the map with
+    // nothing open, the real gesture closes the app (the test would hang);
+    // maybePop runs the same PopScope of the map page but never quits.
+    Future<void> back() async {
+      await t.state<NavigatorState>(find.byType(Navigator).first).maybePop();
+      await t.pump(const Duration(seconds: 1));
+    }
+    Future<void> onMap(String what) async {
+      await pumpUntil(t, byId('map.map-layers'), timeout: const Duration(seconds: 10));
+      expect(byId('map.map-layers').hitTestable(), findsOneWidget, reason: '$what: the map is back\nOn screen: ${screenTexts()}');
+    }
+    // Conversation, then the list of the conversations, then the map.
+    await back(); await back();
+    await onMap('messages › back');
+    // Itinéraires and Résection (blocked on a phone before lot 12).
+    for (final tool in ['tool.routes', 'tool.resection']) {
+      await t.tap(byId('nav.tools')); await pumpUntil(t, byId(tool));
+      await t.tap(byId(tool)); await t.pump(const Duration(seconds: 1));
+      await back();
+      await onMap('$tool › back');
+    }
+    // « Sélectionner une zone » (card C1): back leaves the selection first.
+    final centre = t.getCenter(find.byType(Scaffold).first);
+    await t.longPressAt(centre - const Offset(120, 200)); await t.pump(const Duration(seconds: 1));
+    await pumpUntil(t, byId('point.select'));
+    await t.tap(byId('point.select')); await t.pump(const Duration(seconds: 1));
+    expect(find.text(S.t('draw.selectHint')), findsOneWidget, reason: 'selection mode on');
+    await back();
+    expect(find.text(S.t('draw.selectHint')), findsNothing, reason: 'back leaves the selection\nOn screen: ${screenTexts()}');
+    await onMap('selection › back');
   });
 }
