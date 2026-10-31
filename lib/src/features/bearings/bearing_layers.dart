@@ -20,7 +20,7 @@ List<Widget> buildBearingLayers({required Iterable<Bearing> bearings,Bearing? dr
   void add(Bearing b,{bool live=false}){
     // A bearing set aside from the zone: grey dashed line, no cone.
     if(!live&&excluded.contains(b.id)){
-      lines.add(Polyline<Bearing>(points:[b.origin,b.end],color:const Color(0xFF8A8F98),strokeWidth:2,pattern:const StrokePattern.dashed(segments:[10,8]),hitValue:b));
+      lines.add(Polyline<Bearing>(points:[b.origin,b.end],color:const Color(0xFF8A8F98),strokeWidth:2,pattern:StrokePattern.dashed(segments:const [10,8]),hitValue:b));
       return;
     }
     final c=Color(byOperator?(b.operatorColor??operatorColor(b.createdBy)):searchColor(b.search)); final (l,r)=b.cone;
@@ -55,7 +55,7 @@ List<Widget> buildBearingLayers({required Iterable<Bearing> bearings,Bearing? dr
             if(ex)Container(margin:const EdgeInsets.only(right:4),padding:const EdgeInsets.symmetric(horizontal:3),decoration:BoxDecoration(color:const Color(0xFFFF9F1C),borderRadius:BorderRadius.circular(3)),
               child:const Text('EX',style:TextStyle(fontSize:9,fontWeight:FontWeight.w800,color:Colors.black,height:1.3))),
             Text(zoneLabel(z.radiusM,z.bearings,z.excluded.length),maxLines:1,softWrap:false,style:const TextStyle(fontSize:11,color:Color(0xFFFFC2C8),height:1.2)),
-          ]))))))));
+          ])))))));
   }
   return [
     if(cones.isNotEmpty)PolygonLayer(polygons:cones),
