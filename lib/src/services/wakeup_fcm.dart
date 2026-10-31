@@ -5,7 +5,9 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
-import 'notification_actions.dart' show notificationIdFor;
+import '../features/car/car_background.dart' show fetchWokenMessage;
+import '../l10n/strings.dart';
+import 'notification_actions.dart' show NotificationPayload, actionOpen, actionsFor, notificationIdFor;
 
 /// Wake-up of Android when SARCADE is closed (note « Réveil des appareils »).
 /// The Firebase project is given at build time by the CI (secret
@@ -68,10 +70,21 @@ Future<void> showWakeNotification(Map<String,dynamic> data) async {
   final urgent=wakeChannel(data)!='sarcade_routine';
   final plugin=FlutterLocalNotificationsPlugin();
   await plugin.initialize(const InitializationSettings(android:AndroidInitializationSettings('@mipmap/ic_launcher')));
-  await plugin.show(wakeNotificationId(data),wakeTitle(data),'Ouvrez SARCADE pour le lire.',
+  // Real text read from the server of the application, so that the car
+  // reads the message itself (lot 1a); otherwise the generic text.
+  final woken=data['kind']=='test'?null:await fetchWokenMessage(data);
+  final m=woken?.message;
+  final payload=m==null?null:NotificationPayload(eventId:m.eventId,messageId:m.id,deviceId:woken!.deviceId,
+    priority:m.priority,tag:'${data['tag']}');
+  // Same title as the notification shown by the application.
+  final title=m==null?wakeTitle(data):'SARCADE · ${S.t('priority.${m.priority}')} · ${m.senderId}';
+  await plugin.show(wakeNotificationId(data),title,m?.body??'Ouvrez SARCADE pour le lire.',
     NotificationDetails(android:AndroidNotificationDetails(wakeChannel(data),wakeChannel(data),
       importance:urgent?Importance.max:Importance.defaultImportance,priority:urgent?Priority.max:Priority.defaultPriority,
-      category:AndroidNotificationCategory.message)));
+      category:AndroidNotificationCategory.message,
+      actions:payload==null?null:[for(final a in actionsFor(m!.priority))
+        AndroidNotificationAction(a,S.t('notif.action.$a'),showsUserInterface:a==actionOpen)])),
+    payload:payload?.encode());
 }
 
 /// Token of this phone for the server; null without Firebase.

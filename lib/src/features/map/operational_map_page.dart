@@ -57,6 +57,7 @@ import 'drawing/hit_test.dart';
 import 'drawing/import_formats.dart';
 import 'drawing/map_feature.dart';
 import '../../services/wakeup_fcm.dart';
+import '../car/car_background.dart' show CarContext, saveCarContext;
 import '../../services/wakeup_state.dart';
 import '../../services/notification_service.dart';
 import '../../services/location_service.dart';
@@ -964,6 +965,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   /// Web Push subscription of this browser is given to the server. Android
   /// (Firebase) comes with its own step.
   Future<bool> _registerWakeup() async {
+    // Server of the application for the answers given in the car (lot 1a).
+    unawaited(saveCarContext(CarContext(serverUrl:widget.api.baseUrl,eventId:widget.eventId,deviceId:widget.deviceId)));
     if(fcmAvailable){
       try{
         final token=await fcmToken();
