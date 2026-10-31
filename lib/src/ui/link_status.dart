@@ -57,15 +57,48 @@ class _LinkStatusPillState extends State<LinkStatusPill> {
 }
 
 /// AppBar with the link pill at the end of its actions.
+/// Secondary action of a [LinkedAppBar] (card C3 of the cinématique
+/// review, 31 Oct 2026): written out on a wide screen, an icon on a phone,
+/// and in the ⋮ menu when there are two or more on a phone, so the title
+/// keeps its room next to the link status pill.
+class AppBarAction {
+  final IconData icon; final String label; final VoidCallback? onPressed; final Key? key;
+  /// Written with its label on a wide screen (« Diffuser »), an icon otherwise.
+  final bool written;
+  const AppBarAction({required this.icon,required this.label,required this.onPressed,this.written=false,this.key});
+}
+
+/// Width under which secondary actions shrink (phone in portrait).
+const double appBarNarrowWidth=600;
+
+/// How the secondary actions show for a screen width: 'wide', 'icons' or
+/// 'menu' (⋮).
+String appBarActionsLayout(double width,int n)=>width>=appBarNarrowWidth?'wide':(n>=2?'menu':'icons');
+
 class LinkedAppBar extends StatelessWidget implements PreferredSizeWidget {
   final Widget? title, leading; final List<Widget>? actions; final bool automaticallyImplyLeading;
   final PreferredSizeWidget? bottom; final Color? backgroundColor, surfaceTintColor; final double? scrolledUnderElevation, titleSpacing;
+  /// Actions that give way to the title on a phone (see [AppBarAction]).
+  final List<AppBarAction> secondary;
   /// False on the first setup (no server yet).
   final bool linkStatus;
   const LinkedAppBar({super.key,this.title,this.leading,this.actions,this.automaticallyImplyLeading=true,this.bottom,
-    this.backgroundColor,this.surfaceTintColor,this.scrolledUnderElevation,this.titleSpacing,this.linkStatus=true});
+    this.backgroundColor,this.surfaceTintColor,this.scrolledUnderElevation,this.titleSpacing,this.linkStatus=true,this.secondary=const []});
   @override Size get preferredSize=>Size.fromHeight(kToolbarHeight+(bottom?.preferredSize.height??0));
+  List<Widget> _secondary(BuildContext context){
+    if(secondary.isEmpty)return const [];
+    switch(appBarActionsLayout(MediaQuery.sizeOf(context).width,secondary.length)){
+      case 'wide':return [for(final a in secondary)a.written
+        ?TextButton.icon(key:a.key,onPressed:a.onPressed,icon:Icon(a.icon),label:Text(a.label))
+        :IconButton(key:a.key,tooltip:a.label,onPressed:a.onPressed,icon:Icon(a.icon))];
+      case 'icons':return [for(final a in secondary)IconButton(key:a.key,tooltip:a.label,onPressed:a.onPressed,icon:Icon(a.icon))];
+      default:return [PopupMenuButton<int>(key:const ValueKey('appbar-more'),tooltip:S.t('appbar.more'),icon:const Icon(Icons.more_vert),
+        onSelected:(i)=>secondary[i].onPressed?.call(),
+        itemBuilder:(_)=>[for(var i=0;i<secondary.length;i++)PopupMenuItem<int>(key:secondary[i].key,value:i,enabled:secondary[i].onPressed!=null,
+          child:Row(children:[Icon(secondary[i].icon,size:20),const SizedBox(width:12),Flexible(child:Text(secondary[i].label))]))])];
+    }
+  }
   @override Widget build(BuildContext context)=>AppBar(title:title,leading:leading,automaticallyImplyLeading:automaticallyImplyLeading,bottom:bottom,
     backgroundColor:backgroundColor,surfaceTintColor:surfaceTintColor,scrolledUnderElevation:scrolledUnderElevation,titleSpacing:titleSpacing,
-    actions:[...?actions,if(linkStatus)const LinkStatusPill(),const SizedBox(width:4)]);
+    actions:[...?actions,..._secondary(context),if(linkStatus)const LinkStatusPill(),const SizedBox(width:4)]);
 }
