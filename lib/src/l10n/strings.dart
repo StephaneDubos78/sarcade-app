@@ -45,6 +45,7 @@ class S {
 }
 
 const Texts _fr={
+  'ext.app.other':'Autre application','ext.app.openstreetmap':'OpenStreetMap','ext.always':'Toujours ouvrir avec cette application','ext.warningShort':'Votre position est transmise','ext.warningAll':'Google Maps et Waze reçoivent votre position','settings.navApp':'Application de navigation','settings.navAppAsk':'Demander à chaque fois',
   'weather.broadcast':'Diffuser',
   'paste.title':'Coller une position','paste.button':'Coller','paste.hint':'Texte, message, lien Google Maps, Plans, OpenStreetMap, Waze…','paste.read':'Lire',
   'paste.empty':'Le presse-papiers est vide','paste.none':'Aucune position trouvée dans ce texte','paste.offline':'Aucune position trouvée ; recherche d’adresse impossible hors connexion',
@@ -487,6 +488,7 @@ const Texts _fr={
 };
 
 const Texts _en={
+  'ext.app.other':'Other application','ext.app.openstreetmap':'OpenStreetMap','ext.always':'Always open with this application','ext.warningShort':'Your position is shared','ext.warningAll':'Google Maps and Waze receive your position','settings.navApp':'Navigation application','settings.navAppAsk':'Ask every time',
   'weather.broadcast':'Broadcast',
   'paste.title':'Paste a position','paste.button':'Paste','paste.hint':'Text, message, Google Maps, Apple Maps, OpenStreetMap, Waze link…','paste.read':'Read',
   'paste.empty':'The clipboard is empty','paste.none':'No position found in this text','paste.offline':'No position found; address search impossible offline',

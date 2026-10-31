@@ -481,6 +481,9 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     showModalBottomSheet<void>(context:context,showDragHandle:true,builder:(c)=>SafeArea(child:Column(mainAxisSize:MainAxisSize.min,children:[
       ListTile(leading:Icon(Icons.flag,color:moveOrderColor(o.status)),title:Text('${S.t('order.title')} · ${o.targetId}'),
         subtitle:Text('« ${o.label} » · ${S.t('order.status.${o.status}')}${o.note.isEmpty?'':'\n${o.note}'}')),
+      // « Ouvrir dans… » Waze, Google Maps… (31 Oct 2026).
+      ListTile(key:const ValueKey('order-open-in'),leading:const Icon(Icons.open_in_new),title:Text(S.t('ext.open')),
+        onTap:(){Navigator.pop(c);unawaited(_openElsewhere(o.destination,o.label));}),
       if(o.open&&(isPco(widget.deviceId)||o.createdBy==widget.deviceId))ListTile(leading:const Icon(Icons.cancel_outlined),
         title:Text(S.t('order.cancel')),onTap:(){Navigator.pop(c);unawaited(_routes.setMoveOrderStatus(o.json,'cancelled'));}),
       if(canRemoveMoveOrder(o,widget.deviceId,pco:isPco(widget.deviceId)))ListTile(key:const ValueKey('order-remove'),leading:const Icon(Icons.wrong_location_outlined),
@@ -792,7 +795,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
 
   /// « Open in… » with the navigation app chosen by the organisation.
   Future<void> _openElsewhere(LatLng p,String label)=>openInOtherApp(context,p,label,
-    app:widget.store.preference('nav_app')??'operator',hideTracking:widget.store.preference('nav_hide_tracking')=='1');
+    app:widget.store.preference('nav_app')??'operator',hideTracking:widget.store.preference('nav_hide_tracking')=='1',
+    readPref:widget.store.preference,writePref:widget.store.setPreference);
 
   void _initRoutes(){
     _routes=RoutesController(api:widget.api,store:widget.store,sync:_sync,eventId:widget.eventId,actorId:widget.deviceId);
@@ -2281,7 +2285,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     // under the status bar; folded while points are added on the map.
     final fullPanel=sidePanelFullScreen(screenWidth);
     final routeEntry=fullPanel&&_showRoutesPanel&&_drawingRouteId!=null?_routes.route(_drawingRouteId!):null;
-    Widget routesPanel()=>RoutesPanel(
+    Widget routesPanel()=>RoutesPanel(onOpenIn:(p,l)=>unawaited(_openElsewhere(p,l)),
           controller:_routes,api:widget.api,actorId:widget.deviceId,selectedRouteId:_selectedRouteId,drawingRouteId:_drawingRouteId,
           groups:widget.store.groups(widget.eventId).map(CommGroup.fromJson).toList(),
           onSelect:(id)=>setState((){_selectedRouteId=id;if(id==null)_drawingRouteId=null;}),
@@ -2530,6 +2534,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
             onMgrsDigits:(d) async {await widget.store.setPreference('mgrs_digits','$d');if(mounted)setState((){});},
             onFormat:(f) async {await widget.store.setPreference('coord_format',f.name);if(mounted)setState((){});}),
           NavigationCard(nav:_nav,following:_follow,onRecentre:()=>_setFollow(true),
+            onOpenIn:(){final d=_nav.destination;if(d!=null)unawaited(_openElsewhere(d,_nav.label));},
             rotate:_phoneOrTablet?null:_followRotates,
             onRotate:_phoneOrTablet?null:(v) async {
               await widget.store.setPreference('nav_rotate_desktop',v?'1':null);
