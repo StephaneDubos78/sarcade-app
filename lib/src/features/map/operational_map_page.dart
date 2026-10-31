@@ -951,8 +951,11 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     final expected=widget.store.preference(_expectedVersionKey);
     if(expected!=null){
       unawaited(widget.store.setPreference(_expectedVersionKey,null));
-      WidgetsBinding.instance.addPostFrameCallback((_){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content:Text(S.t(expected==appVersionFull||expected==appBuild?'webUpdate.loaded':'webUpdate.notLoaded',{'v':appVersionFull,'e':expected}))));});
+      WidgetsBinding.instance.addPostFrameCallback((_){
+        if(!mounted)return;
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content:Text(S.t(expected==appVersionFull||expected==appBuild?'webUpdate.loaded':'webUpdate.notLoaded',{'v':appVersionFull,'e':expected}))));
+      });
     }
     Future<void> check() async {
       final served=await fetchServedBuild();
