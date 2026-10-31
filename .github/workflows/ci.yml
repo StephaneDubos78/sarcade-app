@@ -98,10 +98,12 @@ jobs:
       # Code signing with Azure Trusted Signing (card « Windows, installeur
       # bloqué par Defender : signer le code », 31 Oct 2026): off until the
       # owner puts the six AZURE_* secrets of his signing account in GitHub.
-      # The program and its DLL are signed before the installer is built,
-      # then the installer itself.
-      - name: Sign the program and its DLL (Azure Trusted Signing)
-        if: env.AZURE_TS_ACCOUNT != ''
+      # Only what is published (after a merge on main), and only the program
+      # and the installer, the files SmartScreen and Defender check: about
+      # 2 signatures per merge, far under the 5 000 of the Basic offer (card
+      # « Signature Windows : limiter le nombre de signatures », 31 Oct 2026).
+      - name: Sign the program (Azure Trusted Signing)
+        if: env.AZURE_TS_ACCOUNT != '' && github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: azure/trusted-signing-action@v2
         with:
           azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
@@ -110,9 +112,7 @@ jobs:
           endpoint: ${{ secrets.AZURE_TS_ENDPOINT }}
           trusted-signing-account-name: ${{ secrets.AZURE_TS_ACCOUNT }}
           certificate-profile-name: ${{ secrets.AZURE_TS_PROFILE }}
-          files-folder: ${{ github.workspace }}\build\windows\x64\runner\Release
-          files-folder-filter: exe,dll
-          files-folder-recurse: true
+          files: ${{ github.workspace }}\build\windows\x64\runner\Release\sarcade_app.exe
       - name: Installer (Inno Setup)
         shell: pwsh
         run: |
@@ -124,7 +124,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Compress-Archive -Path build\windows\x64\runner\Release\* -DestinationPath build\installer\sarcade-windows-portable.zip
       - name: Sign the installer (Azure Trusted Signing)
-        if: env.AZURE_TS_ACCOUNT != ''
+        if: env.AZURE_TS_ACCOUNT != '' && github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: azure/trusted-signing-action@v2
         with:
           azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
