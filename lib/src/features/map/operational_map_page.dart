@@ -2157,7 +2157,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
 
   /// Details of a bearing; change or delete for its author or the PCO.
   Future<void> _showBearingSheet(Bearing b) async {
-    final can=b.canEdit(widget.deviceId,isPco(widget.deviceId));
+    final can=b.canEdit(widget.deviceId,isPco(widget.deviceId)), pco=isPco(widget.deviceId);
+    final zone=bearingZoneStatus(b,_bearings.all);
     final l=b.takenAt.toLocal(); String two(int v)=>v.toString().padLeft(2,'0');
     final choice=await showModalBottomSheet<String>(context:context,showDragHandle:true,builder:(c)=>SafeArea(child:Padding(padding:const EdgeInsets.fromLTRB(20,0,20,12),
       child:Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.start,children:[
@@ -2174,14 +2175,23 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
         if(b.comment.isNotEmpty)Padding(padding:const EdgeInsets.only(top:6),child:Text(b.comment)),
         Text(S.t('bearings.lineCone',{'l':geo.formatDistance(b.lengthM),'c':b.coneDeg.toStringAsFixed(0)}),style:TextStyle(fontSize:12,color:Theme.of(c).colorScheme.onSurfaceVariant)),
         PlaceLine(describer:_places,point:b.origin),
+        if(zone!=null)Padding(padding:const EdgeInsets.only(top:4),child:Text(zone,key:const ValueKey('bearing-zone-status'),style:TextStyle(fontSize:12,color:Theme.of(c).colorScheme.tertiary))),
         const SizedBox(height:8),
         ListTile(contentPadding:EdgeInsets.zero,leading:const Icon(Icons.place_outlined),title:Text(S.t('bearings.fromOrigin')),onTap:()=>Navigator.pop(c,'origin')),
+        // The PCO decides by hand when the automatic rule is wrong.
+        if(pco&&b.search.isNotEmpty)for(final z in const ['out','in','auto'])if(z!=b.zone)ListTile(key:ValueKey('bearing-zone-$z'),contentPadding:EdgeInsets.zero,
+          leading:Icon(z=='out'?Icons.remove_circle_outline:z=='in'?Icons.push_pin_outlined:Icons.auto_mode),title:Text(S.t(z=='out'?'bearings.zoneOut':z=='in'?'bearings.zoneIn':'bearings.zoneAuto')),
+          onTap:()=>Navigator.pop(c,'zone:$z')),
         if(can)ListTile(contentPadding:EdgeInsets.zero,leading:const Icon(Icons.open_with),title:Text(S.t('bearings.adjust')),onTap:()=>Navigator.pop(c,'adjust')),
         if(can)ListTile(contentPadding:EdgeInsets.zero,leading:const Icon(Icons.edit_outlined),title:Text(S.t('bearings.edit')),onTap:()=>Navigator.pop(c,'edit')),
         if(can)ListTile(contentPadding:EdgeInsets.zero,leading:Icon(Icons.delete_outline,color:Theme.of(c).colorScheme.error),title:Text(S.t('bearings.delete')),onTap:()=>Navigator.pop(c,'delete')),
       ]))));
     if(!mounted)return;
     if(choice=='origin'){await _onLongPress(b.origin);return;}
+    if(choice!=null&&choice.startsWith('zone:')){
+      await _bearings.update(b.copyWith(zone:choice.substring(5),updatedBy:widget.deviceId,updatedAt:DateTime.now().toUtc()));
+      return;
+    }
     if(choice=='delete'){
       final ok=await showDialog<bool>(context:context,builder:(c)=>AlertDialog(content:Text(S.t('bearings.deleteConfirm')),actions:[
         TextButton(onPressed:()=>Navigator.pop(c,false),child:Text(S.t('common.cancel'))),FilledButton(onPressed:()=>Navigator.pop(c,true),child:Text(S.t('bearings.delete')))]));
