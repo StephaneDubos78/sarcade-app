@@ -46,7 +46,9 @@ class LocalStore {
   List<Map<String,dynamic>> messages()=>_messageBox.values.map((e)=>Map<String,dynamic>.from(e)).toList();
   /// Changes of messages and acknowledgements, from any source (real time,
   /// synchronisation, this device), so open screens can refresh.
-  List<Stream<BoxEvent>> messageChanges()=>[_messageBox.watch(),_ackBox.watch()];
+  /// Messages, receipts and channels (a channel archived on another device
+  /// disappears at once, card « Ordre des pastilles de groupes »).
+  List<Stream<BoxEvent>> messageChanges()=>[_messageBox.watch(),_ackBox.watch(),_groupBox.watch()];
   List<Map<String,dynamic>> acks()=>_ackBox.values.map((e)=>Map<String,dynamic>.from(e)).toList();
   List<Map<String,dynamic>> references()=>_referenceBox.values.map((e)=>Map<String,dynamic>.from(e)).toList();
 
