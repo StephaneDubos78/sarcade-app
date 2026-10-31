@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../l10n/strings.dart';
+import '../../ui/link_status.dart';
 
 /// Usual predefined messages, offered when the event has none of its own.
 List<String> defaultQuickMessages()=>[for(final k in const ['inPlace','signalHeard','signalLost','backToPco','needHelp','copy'])S.t('quick.$k')];
@@ -39,7 +40,7 @@ class _QuickMessagesEditorState extends State<QuickMessagesEditor> {
   @override Widget build(BuildContext context){
     final t=Theme.of(context);
     return Scaffold(
-      appBar:AppBar(title:Text(S.t('event.quick')),actions:[
+      appBar:LinkedAppBar(title:Text(S.t('event.quick')),actions:[
         TextButton(onPressed:()=>Navigator.pop(context,cleanQuickMessages(_rows.map((r)=>r.$2.text))),child:Text(S.t('common.save'))),
       ]),
       body:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[

@@ -7,6 +7,7 @@ import '../../services/sarcade_api.dart';
 import 'route_models.dart';
 import 'routes_controller.dart';
 import 'routes_layers.dart';
+import '../../ui/link_status.dart';
 
 /// Side panel of the routes: list, waypoints with legs and cumulated
 /// lengths, passages, assignment, GPX export, road closures.
@@ -38,6 +39,8 @@ class RoutesPanel extends StatelessWidget {
         IconButton(tooltip:S.t('routes.refresh'),onPressed:controller.refresh,icon:const Icon(Icons.refresh)),
         // ⊘ with its words (revue n° 54).
         if(isPco(actorId))TextButton.icon(onPressed:onDrawClosure,icon:const Icon(Icons.block),label:Text(S.t('closures.new'))),
+        // Full screen on a phone: the map pill is hidden, the link shows here.
+        if(onClose!=null)const LinkStatusPill(),
         if(onClose!=null)IconButton(key:const ValueKey('routes-close'),tooltip:S.t('common.close'),onPressed:onClose,icon:const Icon(Icons.close)),
       ])),
       // « Nouvel itinéraire »: full blue button with the route icon (1 h 43, option A).

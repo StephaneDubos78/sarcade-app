@@ -116,6 +116,7 @@ import '../poi/poi_icons.dart';
 import '../poi/poi_list.dart';
 import '../routes/waypoint_sheet.dart';
 import '../../ui/action_buttons.dart';
+import '../../ui/link_status.dart';
 
 class OperationalMapPage extends StatefulWidget {
   final SarcadeApi api; final String eventId,deviceId,tileUrl,tileAttribution; final LocalStore store; final VoidCallback? onSettings;
@@ -220,6 +221,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   /// Rights given by the server for the checked email (PCO, administrator).
   Future<void> _loadRoles() async {
     myActorId=widget.deviceId;
+    // Link pill of every screen: a touch opens the Diagnostic (31 Oct 2026).
+    linkStatusOnTap=()=>_openDiagnostics();
     try{
       final me=await widget.api.me();
       myRoles={for(final r in (me?['roles'] as List?)??const [])'$r'};
@@ -700,7 +703,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   void _openPoiList(){
     Widget list(VoidCallback? close)=>PoiListView(pois:_pois.values.toList(),from:_me??_positionOf(widget.deviceId)??_mapCentre(),onClose:close,
       onOpen:(p){if(_isCompact)Navigator.pop(context);_onMapNow((){_fitPoints([LatLng(p.lat,p.lon)]);unawaited(_openPoi(p));});});
-    if(_isCompact){Navigator.push(context,MaterialPageRoute(builder:(c)=>Scaffold(appBar:AppBar(title:Text(S.t('poi.layer'))),body:list(null))));return;}
+    if(_isCompact){Navigator.push(context,MaterialPageRoute(builder:(c)=>Scaffold(appBar:LinkedAppBar(title:Text(S.t('poi.layer'))),body:list(null))));return;}
     _openDesk('pois',()=>Material(child:list(()=>setState((){_deskId=null;_deskPage=null;}))));
   }
 
@@ -1602,11 +1605,11 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       Expanded(child:TabBarView(children:[list,_nearbyPanel(closable:false)])),
     ]));
     if(!screen)return tabs;
-    return Scaffold(appBar:AppBar(title:Text(S.t('tabs.teams'))),body:tabs);
+    return Scaffold(appBar:LinkedAppBar(title:Text(S.t('tabs.teams'))),body:tabs);
   }
 
   /// Phone « Plus »: a normal screen, a list of large buttons.
-  Widget _moreScreen(List<_RailAction> items)=>Scaffold(appBar:AppBar(title:Text(S.t('tabs.more'))),
+  Widget _moreScreen(List<_RailAction> items)=>Scaffold(appBar:LinkedAppBar(title:Text(S.t('tabs.more'))),
     body:ListView(padding:const EdgeInsets.symmetric(vertical:8),children:[
       for(final a in items)ListTile(minTileHeight:64,leading:Badge(isLabelVisible:a.alert,smallSize:10,child:Icon(a.icon,size:28)),
         title:Text(a.label,style:const TextStyle(fontSize:17)),trailing:const Icon(Icons.chevron_right),onTap:a.onTap),
@@ -2285,7 +2288,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     child:child,
   );
 
-  @override void dispose(){_tvScreens.dispose();if(currentMapView==_tvView)currentMapView=null;if(currentMapOptions==_tvOptions)currentMapOptions=null;_stopCompass();_webUpdateTimer?.cancel();_saveViewTimer?.cancel();_bearings.dispose();_positionsTimer?.cancel();_meSub?.cancel();_mapEvents?.cancel();AccessManager.instance.removeListener(_onAccessChanged);_fcmRefresh?.cancel();_fcmForeground?.cancel();if(registerWakeupHook==_wakeupNoted)registerWakeupHook=null;_opensSub?.cancel();_answersSub?.cancel();_rtSub?.cancel();_tracking.removeListener(_onOperationsChanged);_ops.removeListener(_onOperationsChanged);_tracking.dispose();_ops.dispose();_routes.removeListener(_onRoutesChanged);_nav.removeListener(_onNavigationChanged);_variantHits.dispose();_bearingHits.dispose();_routeHits.dispose();_routes.dispose();_nav.dispose();_graphs.removeListener(_onRoutesChanged);_graphs.dispose();_measure.removeListener(_onRoutesChanged);_measure.dispose();_syncUiTimer?.cancel();_sync.dispose();_realtime.dispose();_drawing.dispose();_resectionCtl.dispose();widget.api.close();super.dispose();}
+  @override void dispose(){linkStatusOnTap=null;_tvScreens.dispose();if(currentMapView==_tvView)currentMapView=null;if(currentMapOptions==_tvOptions)currentMapOptions=null;_stopCompass();_webUpdateTimer?.cancel();_saveViewTimer?.cancel();_bearings.dispose();_positionsTimer?.cancel();_meSub?.cancel();_mapEvents?.cancel();AccessManager.instance.removeListener(_onAccessChanged);_fcmRefresh?.cancel();_fcmForeground?.cancel();if(registerWakeupHook==_wakeupNoted)registerWakeupHook=null;_opensSub?.cancel();_answersSub?.cancel();_rtSub?.cancel();_tracking.removeListener(_onOperationsChanged);_ops.removeListener(_onOperationsChanged);_tracking.dispose();_ops.dispose();_routes.removeListener(_onRoutesChanged);_nav.removeListener(_onNavigationChanged);_variantHits.dispose();_bearingHits.dispose();_routeHits.dispose();_routes.dispose();_nav.dispose();_graphs.removeListener(_onRoutesChanged);_graphs.dispose();_measure.removeListener(_onRoutesChanged);_measure.dispose();_syncUiTimer?.cancel();_sync.dispose();_realtime.dispose();_drawing.dispose();_resectionCtl.dispose();widget.api.close();super.dispose();}
 
   late final _tvNearby=TvNearbyWatcher(widget.api);
   // « Écrans » button of the map (lot 11).

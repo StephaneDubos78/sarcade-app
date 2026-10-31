@@ -13,6 +13,7 @@ import 'drawings_section.dart';
 import 'file_tree.dart';
 export 'drawings_section.dart' show DrawingFileActions;
 import '../../ui/action_buttons.dart';
+import '../../ui/link_status.dart';
 
 /// Files screen (« Écran Fichiers enrichi », « Personnel », 28 Oct 2026;
 /// « sous-dossiers et interface plus soignée », 29 Oct 2026): folders up to
@@ -534,7 +535,7 @@ class _FilesPageState extends State<FilesPage> with SingleTickerProviderStateMix
         IconButton(tooltip:S.t('routes.refresh'),onPressed:(){_load();_loadPersonal();},icon:const Icon(Icons.refresh))];
       if(_wide){
         return Scaffold(
-          appBar:AppBar(title:Text(S.t('map.files')),actions:actions,bottom:PreferredSize(preferredSize:const Size.fromHeight(26),child:help)),
+          appBar:LinkedAppBar(title:Text(S.t('map.files')),actions:actions,bottom:PreferredSize(preferredSize:const Size.fromHeight(26),child:help)),
           body:Row(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
             SizedBox(width:260,child:_tree()),
             const VerticalDivider(width:1),
@@ -542,7 +543,7 @@ class _FilesPageState extends State<FilesPage> with SingleTickerProviderStateMix
           ]));
       }
       return Scaffold(
-        appBar:AppBar(title:Text(S.t('map.files')),actions:actions,
+        appBar:LinkedAppBar(title:Text(S.t('map.files')),actions:actions,
           bottom:PreferredSize(preferredSize:const Size.fromHeight(70),child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
             // Tabs on the left, underlined (not spread over the whole width).
             TabBar(controller:_tabs,isScrollable:true,tabAlignment:TabAlignment.start,tabs:[Tab(text:S.t('files.tabEvent')),Tab(text:S.t('files.tabPersonal'))]),
