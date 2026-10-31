@@ -33,9 +33,14 @@ try {
   Add-Type @"
 using System; using System.Runtime.InteropServices;
 public static class W32 { [StructLayout(LayoutKind.Sequential)] public struct R { public int L, T, Rt, B; }
-  [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out R r); }
+  [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out R r);
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr FindWindow(string c, string t); }
 "@
   $p.Refresh(); $h = $p.MainWindowHandle
+  # The Flutter window is not always the « main window » of the process:
+  # found by its title too (« SARCADE », older builds « sarcade_app »).
+  if ($h -eq [IntPtr]::Zero) { $h = [W32]::FindWindow($null, "SARCADE") }
+  if ($h -eq [IntPtr]::Zero) { $h = [W32]::FindWindow($null, "sarcade_app") }
   if ($h -ne [IntPtr]::Zero) {
     $r = New-Object W32+R; [void][W32]::GetWindowRect($h, [ref]$r)
     $colors = @{}
