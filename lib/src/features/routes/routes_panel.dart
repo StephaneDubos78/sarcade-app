@@ -21,7 +21,10 @@ class RoutesPanel extends StatelessWidget {
   /// « Envoyer » a route to a channel or an operator (7a, 28 Oct 2026).
   final void Function(String text)? onSend;
   final ValueChanged<List<LatLng>> onFocus;
-  const RoutesPanel({super.key,required this.controller,required this.api,required this.actorId,required this.selectedRouteId,
+  /// ✕ of the list (phone, full screen; card « bloqué dans Itinéraires »,
+  /// 31 Oct 2026): back to the map.
+  final VoidCallback? onClose;
+  const RoutesPanel({super.key,this.onClose,required this.controller,required this.api,required this.actorId,required this.selectedRouteId,
     required this.drawingRouteId,required this.groups,required this.onSelect,required this.onDraw,required this.onDrawClosure,
     required this.onNavigate,required this.onFocus,this.onSend});
 
@@ -33,6 +36,7 @@ class RoutesPanel extends StatelessWidget {
         IconButton(tooltip:S.t('routes.refresh'),onPressed:controller.refresh,icon:const Icon(Icons.refresh)),
         // ⊘ with its words (revue n° 54).
         if(isPco(actorId))TextButton.icon(onPressed:onDrawClosure,icon:const Icon(Icons.block),label:Text(S.t('closures.new'))),
+        if(onClose!=null)IconButton(key:const ValueKey('routes-close'),tooltip:S.t('common.close'),onPressed:onClose,icon:const Icon(Icons.close)),
       ])),
       // « Nouvel itinéraire »: full blue button with the route icon (1 h 43, option A).
       if(selected==null)Padding(padding:const EdgeInsets.fromLTRB(14,4,14,4),child:Align(alignment:Alignment.centerLeft,
