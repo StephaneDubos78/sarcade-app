@@ -45,6 +45,8 @@ class S {
 }
 
 const Texts _fr={
+  'nav.downloadGraph':'Télécharger les routes sur l’appareil','nav.downloadGraphSize':'Télécharger les routes ({mb} Mo, Wi-Fi conseillé)',
+  'diag.routing':'Calcul d’itinéraire','diag.routing.server':'Serveur','diag.routing.device':'Sur l’appareil','diag.routing.none':'Indisponible (ligne droite)',
   'weather.broadcast':'Diffuser',
   'paste.title':'Coller une position','paste.button':'Coller','paste.hint':'Texte, message, lien Google Maps, Plans, OpenStreetMap, Waze…','paste.read':'Lire',
   'paste.empty':'Le presse-papiers est vide','paste.none':'Aucune position trouvée dans ce texte','paste.offline':'Aucune position trouvée ; recherche d’adresse impossible hors connexion',
@@ -216,7 +218,7 @@ const Texts _fr={
   'nav.stop':'Arrêter la navigation','nav.arrived':'Arrivé à destination','nav.shared':'Itinéraire partagé avec le PCO',
   'nav.mode.car':'En voiture','nav.mode.foot':'À pied','nav.mode.offroad':'Tout-terrain (pistes et chemins)',
   'nav.mode.straight':'Ligne droite','nav.mode.straightHelp':'Distance et cap, sans itinéraire',
-  'nav.notice.engine_unavailable':'Calcul d’itinéraire indisponible : ligne droite affichée.',
+  'nav.notice.engine_unavailable':'Itinéraire en ligne droite : calcul des routes indisponible sur ce serveur',
   'nav.notice.no_route':'Aucun itinéraire trouvé : ligne droite affichée.','nav.notice.no_position':'Position actuelle indisponible.',
   'nav.point':'Point de la carte','nav.longPress':'Appui long sur la carte : naviguer jusqu’à ce point',
   // Weather
@@ -487,6 +489,8 @@ const Texts _fr={
 };
 
 const Texts _en={
+  'nav.downloadGraph':'Download the roads on the device','nav.downloadGraphSize':'Download the roads ({mb} MB, Wi-Fi advised)',
+  'diag.routing':'Itinerary computation','diag.routing.server':'Server','diag.routing.device':'On the device','diag.routing.none':'Unavailable (straight line)',
   'weather.broadcast':'Broadcast',
   'paste.title':'Paste a position','paste.button':'Paste','paste.hint':'Text, message, Google Maps, Apple Maps, OpenStreetMap, Waze link…','paste.read':'Read',
   'paste.empty':'The clipboard is empty','paste.none':'No position found in this text','paste.offline':'No position found; address search impossible offline',
@@ -648,7 +652,7 @@ const Texts _en={
   'nav.stop':'Stop navigation','nav.arrived':'Arrived','nav.shared':'Itinerary shared with the command post',
   'nav.mode.car':'By car','nav.mode.foot':'On foot','nav.mode.offroad':'Off-road (tracks and paths)',
   'nav.mode.straight':'Straight line','nav.mode.straightHelp':'Distance and bearing, no itinerary',
-  'nav.notice.engine_unavailable':'Itinerary computation unavailable: straight line shown.',
+  'nav.notice.engine_unavailable':'Straight-line itinerary: road computation unavailable on this server',
   'nav.notice.no_route':'No itinerary found: straight line shown.','nav.notice.no_position':'Current position unavailable.',
   'nav.point':'Map point','nav.longPress':'Long press on the map: navigate to that point',
   'weather.title':'Event weather','weather.pointTitle':'Weather · {label}','weather.refresh':'Refresh',
