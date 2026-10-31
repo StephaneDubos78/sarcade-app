@@ -186,7 +186,13 @@ void main() {
     // 5. Cinématique on Android (vault, revue du 31 Oct 2026, point E):
     //    the system back gesture leaves each screen, then the map.
     Finder byId(String id) => find.byWidgetPredicate((w) => hasTestId(w, id));
-    Future<void> back() async { await t.binding.handlePopRoute(); await t.pump(const Duration(seconds: 1)); }
+    // The system back of Android, without its last step: on the map with
+    // nothing open, the real gesture closes the app (the test would hang);
+    // maybePop runs the same PopScope of the map page but never quits.
+    Future<void> back() async {
+      await t.state<NavigatorState>(find.byType(Navigator).first).maybePop();
+      await t.pump(const Duration(seconds: 1));
+    }
     Future<void> onMap(String what) async {
       await pumpUntil(t, byId('map.map-layers'), timeout: const Duration(seconds: 10));
       expect(byId('map.map-layers').hitTestable(), findsOneWidget, reason: '$what: the map is back\nOn screen: ${screenTexts()}');
@@ -203,7 +209,7 @@ void main() {
     }
     // « Sélectionner une zone » (card C1): back leaves the selection first.
     final centre = t.getCenter(find.byType(Scaffold).first);
-    await t.longPressAt(centre - const Offset(0, 120)); await t.pump(const Duration(seconds: 1));
+    await t.longPressAt(centre - const Offset(120, 200)); await t.pump(const Duration(seconds: 1));
     await pumpUntil(t, byId('point.select'));
     await t.tap(byId('point.select')); await t.pump(const Duration(seconds: 1));
     expect(find.text(S.t('draw.selectHint')), findsOneWidget, reason: 'selection mode on');
