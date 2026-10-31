@@ -44,7 +44,23 @@ class EventSettings {
   }
 
   int clampInterval(int s)=>s<trackingMinS?trackingMinS:(s>trackingMaxS?trackingMaxS:s);
+
+  /// Modules of the event (card « Séparer le Core et les modules », 31 Oct
+  /// 2026): ADRASEC when the server does not say (older servers, events
+  /// created before, first start before the heartbeat).
+  List<String> get modules=>eventModules(raw);
+  bool moduleOn(String id)=>modules.contains(id);
 }
+
+/// Modules of event settings ([raw] of [EventSettings], or `settings` of
+/// GET /events/{id}).
+List<String> eventModules(Map<String,dynamic>? settings){
+  final m=settings?['modules'];
+  return m is List?m.whereType<String>().toList():const ['adrasec'];
+}
+
+/// Modules offered to the PCO, in display order (same list as the server).
+const eventModuleIds=['adrasec','race'];
 
 /// Alert shown when items have waited in the Outbox longer than the PCO
 /// threshold (5 minutes by default). Null when nothing is late.
