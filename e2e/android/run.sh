@@ -49,7 +49,9 @@ adb exec-out screencap -p > e2e/android/out/last-screen.png 2>/dev/null || true
 if grep -q "E2E urgent from PCO" e2e/android/out/notifications.txt; then
   echo "::notice title=notification::$(grep -m1 -B1 'E2E urgent from PCO' e2e/android/out/notifications.txt | tr -d '\r' | tr '\n' ' ')"
 else
-  echo "::error title=notification::urgent message notification not shown by the app"
+  # The integration test already checked the notification through the
+  # plugin (getActiveNotifications): only a missed sample remains here.
+  echo "::error title=notification::urgent message notification not shown by the app (watcher: $(wc -l < e2e/android/out/notifications.txt) lines read)"
   status=1
 fi
 exit $status
