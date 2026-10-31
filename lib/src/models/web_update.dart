@@ -10,6 +10,21 @@ bool webUpdateAvailable(String running,String? served){
   return running.isNotEmpty&&s.isNotEmpty&&s!=running;
 }
 
+/// Version and build number served (« 0.1.0+560 »), written by the CI
+/// since the card « Bandeau Nouvelle version avec les numéros », or null.
+String? parseServedVersion(Object? json){
+  if(json is Map&&json['version'] is String&&(json['version'] as String).trim().isNotEmpty)return (json['version'] as String).trim();
+  return null;
+}
+
+/// « (0.1.0+535 → 0.1.0+560) », put before « Nouvelle version disponible »
+/// on the web, mobile and Windows alike; empty when a number is unknown.
+String versionChange(String current,String? target){
+  final t=target?.trim()??'';
+  if(current.trim().isEmpty||t.isEmpty||t==current)return '';
+  return '($current → $t) ';
+}
+
 /// Build read from the content of `sarcade_build.json`, or null.
 String? parseServedBuild(Object? json){
   if(json is Map&&json['build'] is String)return json['build'] as String;

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../config/version.dart';
 import '../l10n/strings.dart';
+import '../models/web_update.dart' show versionChange;
 import '../platform/platform_services.dart';
 import '../services/sarcade_api.dart';
 import 'event_settings.dart';
@@ -23,13 +24,15 @@ class OperationsBanners extends StatelessWidget {
   final VoidCallback? onEnableNotifications; final VoidCallback? onDismissNotifications;
   /// Web client: a newer build is served; reloading runs it.
   final VoidCallback? onWebUpdate;
+  /// « (0.1.0+535 → 0.1.0+560) » and, in the tooltip, the commits.
+  final String webUpdateChange, webUpdateBuilds;
   /// What is blocked (« 1 photo non envoyée », unsent_summary.dart) and the
   /// list of the items not sent, opened by a touch on the banner.
   final String? alertWhat; final VoidCallback? onOpenUnsent;
   const OperationsBanners({super.key,required this.settings,required this.update,required this.alert,
     required this.heldPhotos,required this.onSyncNow,required this.onUpdate,
     this.accessRequired=false,this.accessRenewBy,this.onSignIn,this.onReload,
-    this.onEnableNotifications,this.onDismissNotifications,this.onWebUpdate,this.alertWhat,this.onOpenUnsent});
+    this.onEnableNotifications,this.onDismissNotifications,this.onWebUpdate,this.alertWhat,this.onOpenUnsent,this.webUpdateChange='',this.webUpdateBuilds=''});
 
   static String _date(DateTime t){final l=t.toLocal();String two(int v)=>v.toString().padLeft(2,'0');return '${two(l.day)}/${two(l.month)} ${two(l.hour)}:${two(l.minute)}';}
 
@@ -54,11 +57,11 @@ class OperationsBanners extends StatelessWidget {
         text:S.t('access.webExpired'),
         action:OutlinedButton(onPressed:onReload,child:Text(S.t('access.reload')))),
       // Night blue, white text, lighter blue button (29 Oct 2026).
-      if(onWebUpdate!=null)_Banner(icon:Icons.system_update_alt,color:webUpdateBannerColor,foreground:Colors.white,
-        text:S.t('webUpdate.available'),
+      if(onWebUpdate!=null)Tooltip(message:webUpdateBuilds,child:_Banner(key:const ValueKey('web-update-banner'),icon:Icons.system_update_alt,color:webUpdateBannerColor,foreground:Colors.white,
+        text:'$webUpdateChange${S.t('webUpdate.available')}',
         action:FilledButton(onPressed:onWebUpdate,
           style:FilledButton.styleFrom(backgroundColor:webUpdateButtonColor,foregroundColor:Colors.white),
-          child:Text(S.t('webUpdate.reload')))),
+          child:Text(S.t('webUpdate.reload'))))),
       if(onEnableNotifications!=null)_Banner(icon:Icons.notifications_active_outlined,color:scheme.secondaryContainer,
         text:S.t('notifications.prompt'),
         action:Row(mainAxisSize:MainAxisSize.min,children:[
@@ -68,7 +71,7 @@ class OperationsBanners extends StatelessWidget {
       if(settings.eventEnded)_Banner(icon:Icons.flag,color:scheme.tertiaryContainer,
         text:'${S.t('event.ended')} · ${S.t('event.endedDetail')}'),
       if(update.status==UpdateStatus.invited)_Banner(icon:Icons.system_update,color:scheme.secondaryContainer,
-        text:S.t('update.invited',{'version':update.targetVersion,'deadline':update.deadline==null?'-':_time(update.deadline!)}),
+        text:'${versionChange(appVersionFull,update.targetVersion)}${S.t('update.invited',{'version':update.targetVersion,'deadline':update.deadline==null?'-':_time(update.deadline!)})}',
         action:update.packageUrl==null?null:OutlinedButton(onPressed:onUpdate,child:Text(S.t('update.download')))),
       if(update.status==UpdateStatus.deferred)_Banner(icon:Icons.system_update,color:scheme.secondaryContainer,
         text:S.t('update.deferred',{'version':update.targetVersion})),
