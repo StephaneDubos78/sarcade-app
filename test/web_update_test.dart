@@ -17,4 +17,11 @@ void main() {
     expect(parseServedBuild({'other': 1}), isNull);
     expect(parseServedBuild('text'), isNull);
   });
+  test('served version and the change shown before « Nouvelle version »', () {
+    expect(parseServedVersion({'build': 'main@abc1234', 'version': '0.1.0+560'}), '0.1.0+560');
+    expect(parseServedVersion({'build': 'main@abc1234'}), isNull);
+    expect(versionChange('0.1.0+535', '0.1.0+560'), '(0.1.0+535 → 0.1.0+560) ');
+    expect(versionChange('0.1.0+535', null), '');
+    expect(versionChange('0.1.0+560', '0.1.0+560'), '');
+  });
 }

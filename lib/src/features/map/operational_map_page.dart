@@ -943,13 +943,24 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
 
   /// Web client: checks every 5 minutes (and 20 s after start) whether the
   /// server publishes a newer build than the one running.
-  Timer? _webUpdateTimer; bool _webUpdate=false;
+  Timer? _webUpdateTimer; bool _webUpdate=false; String? _servedVersion, _servedBuild;
+  static const _expectedVersionKey='web_update_expected';
   void _initWebUpdate(){
     if(!isWebPlatform||appBuild.isEmpty)return;
+    // After « Mettre à jour »: « Version 0.1.0+560 chargée » once.
+    final expected=widget.store.preference(_expectedVersionKey);
+    if(expected!=null){
+      unawaited(widget.store.setPreference(_expectedVersionKey,null));
+      WidgetsBinding.instance.addPostFrameCallback((_){
+        if(!mounted)return;
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content:Text(S.t(expected==appVersionFull||expected==appBuild?'webUpdate.loaded':'webUpdate.notLoaded',{'v':appVersionFull,'e':expected}))));
+      });
+    }
     Future<void> check() async {
       final served=await fetchServedBuild();
-      final available=webUpdateAvailable(appBuild,served);
-      if(mounted&&available!=_webUpdate)setState(()=>_webUpdate=available);
+      final available=webUpdateAvailable(appBuild,served.build);
+      if(mounted&&(available!=_webUpdate||served.version!=_servedVersion))setState((){_webUpdate=available;_servedVersion=served.version;_servedBuild=served.build;});
     }
     Timer(const Duration(seconds:20),check);
     _webUpdateTimer=Timer.periodic(const Duration(minutes:5),(_)=>check());
@@ -2437,7 +2448,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
           onReload:isWebPlatform&&!_sync.lastSyncOk&&_sync.lastServerContact!=null&&browserOnline?reloadApp:null,
           onEnableNotifications:_notificationsBanner?_enableNotifications:null,
           onDismissNotifications:()=>setState(()=>_notificationsDismissed=true),
-          onWebUpdate:_webUpdate?()=>unawaited(reloadFresh()):null);
+          webUpdateChange:versionChange(appVersionFull,_servedVersion),webUpdateBuilds:'$appBuild → ${_servedBuild??'?'}',
+          onWebUpdate:_webUpdate?()async{await widget.store.setPreference(_expectedVersionKey,_servedVersion??_servedBuild);await reloadFresh();}:null);
     final graphBanner=_graphs.pendingMobileBytes!=null&&!_graphs.downloading?Material(color:Theme.of(context).colorScheme.secondaryContainer,child:Padding(
           padding:const EdgeInsets.symmetric(horizontal:12,vertical:4),
           child:Row(children:[const Icon(Icons.alt_route,size:18),const SizedBox(width:8),

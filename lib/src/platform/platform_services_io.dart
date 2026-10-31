@@ -81,7 +81,7 @@ WebSocketChannel openWebSocket(Uri uri,Map<String,String> headers)=>
 void reloadApp(){}
 
 /// Installed apps are updated by their package: no served web build.
-Future<String?> fetchServedBuild() async=>null;
+Future<({String? build,String? version})> fetchServedBuild() async=>(build:null,version:null);
 Future<void> reloadFresh() async {}
 Future<String?> webPushSubscription(String publicKey) async=>null;
 /// Installed apps: the wake-up signals come by Firebase (wakeup_fcm.dart).

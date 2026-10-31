@@ -496,7 +496,9 @@ jobs:
           flutter build web --release --no-web-resources-cdn --dart-define=SARCADE_BUILD_NUMBER=${{ github.run_number }} --dart-define=SARCADE_BUILD="${SARCADE_BRANCH}@${GITHUB_SHA::7}" 2>&1 | tee web-build.log
           # Build served next to the app: open clients compare it with theirs
           # and offer « Mettre à jour » (lib/src/models/web_update.dart).
-          printf '{"build":"%s"}\n' "${SARCADE_BRANCH}@${GITHUB_SHA::7}" > build/web/sarcade_build.json
+          # With the version (« 0.1.0+560 ») for « (0.1.0+535 → 0.1.0+560) ».
+          V=$(sed -n 's/^version: *\([0-9.]*\).*/\1/p' pubspec.yaml)
+          printf '{"build":"%s","version":"%s"}\n' "${SARCADE_BRANCH}@${GITHUB_SHA::7}" "${V}+${{ github.run_number }}" > build/web/sarcade_build.json
           # Code file named after the build: no copy of an older one can run.
           python3 tool/version_web.py build/web "${SARCADE_BRANCH}@${GITHUB_SHA::7}"
       - name: Report web build errors

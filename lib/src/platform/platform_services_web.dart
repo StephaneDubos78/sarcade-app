@@ -56,14 +56,14 @@ void reloadApp()=>web.window.location.reload();
 
 /// Build published next to the web app (`sarcade_build.json`, written by the
 /// CI), read past every cache; null when unreadable (offline, local build).
-Future<String?> fetchServedBuild() async {
+Future<({String? build,String? version})> fetchServedBuild() async {
   try{
     final url='sarcade_build.json?t=${DateTime.now().millisecondsSinceEpoch}';
     final r=await web.window.fetch(url.toJS,web.RequestInit(cache:'no-store',credentials:'include')).toDart;
-    if(!r.ok)return null;
-    final text=(await r.text().toDart).toDart;
-    return parseServedBuild(jsonDecode(text));
-  }catch(_){return null;}
+    if(!r.ok)return (build:null,version:null);
+    final json=jsonDecode((await r.text().toDart).toDart);
+    return (build:parseServedBuild(json),version:parseServedVersion(json));
+  }catch(_){return (build:null,version:null);}
 }
 
 /// « Mettre à jour »: drops the copies kept by the SARCADE service worker,
