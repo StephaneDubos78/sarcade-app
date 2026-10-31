@@ -5,6 +5,7 @@ import '../../services/sarcade_api.dart';
 import '../aprs/aprs_page.dart';
 import 'quick_messages_editor.dart';
 import '../../services/event_names.dart';
+import '../../operations/event_settings.dart' show eventModules, eventModuleIds;
 
 /// Paramètres › Événement (PCO): settings of the active event kept by the
 /// server, applied at once and written in the logbook by the server —
@@ -92,7 +93,17 @@ class _EventSettingsSectionState extends State<EventSettingsSection> {
         onChanged:(v){if(v!=null)_patch({'position_old_min':v});}))),
       _row(S.t('event.quick'),help:S.t('event.quickHelp',{'n':(s['quick_messages'] as List?)?.length??0}),
         child:SizedBox(width:eventActionWidth,child:OutlinedButton(onPressed:_editQuick,child:Text(S.t('event.edit'))))),
-      _row(S.t('event.aprsFollowed'),help:[S.t('event.aprsFollowedHelp',{'g':(s['aprs_groups'] as List?)?.length??0,'c':(s['aprs_callsigns'] as List?)?.length??0}),
+      // Modules of the event (card « Séparer le Core et les modules », 31 Oct
+      // 2026): the PCO turns them on or off; the server writes the logbook.
+      Padding(padding:const EdgeInsets.only(top:16,bottom:4),child:Text(S.t('modules.title'),
+        style:Theme.of(context).textTheme.titleSmall?.copyWith(color:Theme.of(context).colorScheme.primary,fontWeight:FontWeight.w600))),
+      for(final id in eventModuleIds)SwitchListTile(key:ValueKey('module-$id'),contentPadding:EdgeInsets.zero,
+        title:Text(S.t('modules.$id')),subtitle:Text(S.t('modules.${id}Help')),
+        value:eventModules(s).contains(id),
+        onChanged:(on){final now=eventModules(s).toList();if(on){now.add(id);}else{now.remove(id);}
+          _patch({'modules':[for(final m in eventModuleIds)if(now.contains(m))m]});}),
+      const Divider(height:1),
+      if(eventModules(s).contains('adrasec'))_row(S.t('event.aprsFollowed'),help:[S.t('event.aprsFollowedHelp',{'g':(s['aprs_groups'] as List?)?.length??0,'c':(s['aprs_callsigns'] as List?)?.length??0}),
           if(s['aprs_tx_rf']==true)S.t('event.aprsTxOn',{'call':'${s['aprs_tx_callsign']??'—'}'})].join(' · '),
         child:SizedBox(width:eventActionWidth,child:OutlinedButton(onPressed:()=>showOverlayPage<void>(context,(_)=>AprsPage(api:widget.api,eventId:widget.eventId,actorId:widget.actorId)).then((_)=>_load()),
           child:Text(S.t('diagnostics.open'))))),
