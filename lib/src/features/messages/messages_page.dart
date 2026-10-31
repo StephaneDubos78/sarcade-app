@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:uuid/uuid.dart';
 import '../../l10n/strings.dart';
 import '../../models/comm_group.dart';
+import '../../operations/event_settings.dart' show eventModules;
 import 'conversations.dart';
 import 'operator_avatar.dart';
 import '../../models/message.dart';
@@ -110,6 +111,7 @@ class _MessagesPageState extends State<MessagesPage>{
    super.didUpdateWidget(old);
    // Back on the Messages tab: same opening as a new screen (first unread).
    if(widget.active&&!old.active){
+     _refreshGroups();
      _unreadAtOpen=unreadMessages(messages:_eventMessages,seen:widget.store.seenMessages(widget.eventId)??{},
        deviceId:widget.actorId,groups:{for(final g in _groups)g.id:g}).map((m)=>m.id).toSet();
      _markSeen();
@@ -310,6 +312,33 @@ class _MessagesPageState extends State<MessagesPage>{
  /// for a purpose (a chat with an operator, a text to send): the chat at once.
  final _drafts=ConversationDrafts();
  late bool _chatOpen=widget.initialPeer!=null||widget.initialText!=null;
+
+ /// « Nouvelle discussion »: a direct chat with an operator of the list.
+ Future<void> _pickDirect() async {
+   final all=directCandidates(positions:widget.store.positions(),messages:_eventMessages,groups:_groups,eventId:widget.eventId,me:widget.actorId);
+   final filter=TextEditingController();
+   final id=await showModalBottomSheet<String>(context:context,showDragHandle:true,isScrollControlled:true,builder:(c)=>StatefulBuilder(builder:(c,set){
+     final q=filter.text.trim().toLowerCase();
+     final shown=all.where((x)=>q.isEmpty||x.toLowerCase().contains(q)).toList();
+     final typed=filter.text.trim().toUpperCase();
+     return SafeArea(child:Padding(padding:EdgeInsets.only(bottom:MediaQuery.viewInsetsOf(c).bottom),child:ConstrainedBox(constraints:BoxConstraints(maxHeight:MediaQuery.sizeOf(c).height*0.7),
+       child:Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+         Padding(padding:const EdgeInsets.fromLTRB(16,0,16,8),child:Text(S.t('messages.newDirect'),style:Theme.of(c).textTheme.titleMedium)),
+         Padding(padding:const EdgeInsets.symmetric(horizontal:16),child:TextField(key:const ValueKey('direct-filter'),controller:filter,autofocus:all.length>8,
+           decoration:InputDecoration(prefixIcon:const Icon(Icons.search),hintText:S.t('messages.directFilter')),onChanged:(_)=>set((){}),
+           onSubmitted:(_){if(shown.length==1){Navigator.pop(c,shown.first);}else if(typed.isNotEmpty&&shown.isEmpty){Navigator.pop(c,typed);}})),
+         Flexible(child:ListView(shrinkWrap:true,children:[
+           for(final x in shown)ListTile(key:ValueKey('direct-$x'),leading:_personAvatar(x),title:Text(x),onTap:()=>Navigator.pop(c,x)),
+           // Someone not seen yet: the identifier typed.
+           if(typed.isNotEmpty&&typed!=widget.actorId&&!all.contains(typed))ListTile(leading:const Icon(Icons.person_add_alt),
+             title:Text(S.t('messages.directTyped',{'id':typed})),onTap:()=>Navigator.pop(c,typed)),
+           if(all.isEmpty&&typed.isEmpty)Padding(padding:const EdgeInsets.all(16),child:Text(S.t('messages.directNone'))),
+         ])),
+       ]))));
+   }));
+   filter.dispose();
+   if(id!=null&&mounted)_open(directKey(id));
+ }
 
  void _open(String key){
    if(!_chatOpen)setState(()=>_chatOpen=true);
@@ -757,15 +786,17 @@ class _MessagesPageState extends State<MessagesPage>{
      final close=widget.onClose==null?null:IconButton(tooltip:S.t('common.close'),onPressed:widget.onClose,icon:const Icon(Icons.close));
      final listOnly=!wide&&!_chatOpen;
      final newGroup=RoundIconButton(tooltip:S.t('groups.new'),onPressed:()=>_editGroup(null),icon:Icons.group_add_outlined);
+     final newChat=RoundIconButton(key:const ValueKey('messages-new-direct'),tooltip:S.t('messages.newDirect'),onPressed:_pickDirect,icon:Icons.add_comment_outlined);
      // PCO: channels of the ADRASEC model added in one touch (28 Oct 2026).
-     final adrasec=isPco(widget.actorId)?PopupMenuButton<String>(onSelected:(_)=>_addTemplate(),itemBuilder:(_)=>[
+     // ADRASEC channel models only when the event has the module.
+     final adrasec=isPco(widget.actorId)&&eventModules(widget.store.eventSettings(widget.eventId)).contains('adrasec')?PopupMenuButton<String>(onSelected:(_)=>_addTemplate(),itemBuilder:(_)=>[
        PopupMenuItem(value:'adrasec',child:Text(S.t('groups.addAdrasec')))]):null;
      final editGroup=group!=null&&group.canManage(widget.actorId)
        ?RoundIconButton(tooltip:S.t('groups.edit'),onPressed:()=>_editGroup(group),icon:Icons.edit_outlined):null;
      final pending=_pendingPill();
      if(listOnly){
        return Scaffold(
-         appBar:LinkedAppBar(title:Row(children:[Text(S.t('tabs.messages')),?pending]),actions:[newGroup,?adrasec,?close]),
+         appBar:LinkedAppBar(title:Row(children:[Text(S.t('tabs.messages')),?pending]),actions:[newChat,newGroup,?adrasec,?close]),
          body:_convList(by,acks));
      }
      // Computer, like WhatsApp Web (30 Oct 2026, 1 h 31): no title bar, one
@@ -777,7 +808,7 @@ class _MessagesPageState extends State<MessagesPage>{
        return Scaffold(body:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
          SizedBox(height:60,child:Row(children:[
            SizedBox(width:360,child:Padding(padding:const EdgeInsets.fromLTRB(12,8,4,8),child:Row(children:[
-             Expanded(child:_searchField()),newGroup,?adrasec]))),
+             Expanded(child:_searchField()),newChat,newGroup,?adrasec]))),
            const VerticalDivider(width:1),
            const SizedBox(width:12),
            _convIcon(_conv,by),const SizedBox(width:12),

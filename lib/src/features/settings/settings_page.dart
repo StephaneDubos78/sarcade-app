@@ -277,8 +277,52 @@ class _SettingsPageState extends State<SettingsPage> {
       _loadingEvents
         ? const SizedBox(width:48,height:48,child:Padding(padding:EdgeInsets.all(12),child:CircularProgressIndicator(strokeWidth:2)))
         : IconButton(tooltip:S.t('settings.eventsRefresh'),onPressed:_loadEvents,icon:Icon(_eventsOffline?Icons.cloud_off:Icons.refresh)),
+      if(_canCreateEvent)IconButton(key:const ValueKey('event-new'),tooltip:S.t('events.new'),onPressed:_createEvent,icon:const Icon(Icons.add)),
     ]);
   }
+
+  /// The PCO creates an event from the app, on the server it is linked to.
+  bool get _canCreateEvent=>widget.api!=null&&!widget.firstRun&&isPco(widget.initial.deviceId)
+    &&normalServer(_serverText)==normalServer(widget.initial.serverUrl);
+
+  Future<void> _createEvent() async {
+    final name=TextEditingController(); var kind='exercise';
+    final ok=await showDialog<bool>(context:context,builder:(c)=>StatefulBuilder(builder:(c,set)=>AlertDialog(title:Text(S.t('events.new')),
+      content:Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+        TextField(key:const ValueKey('event-new-name'),controller:name,autofocus:true,decoration:InputDecoration(labelText:S.t('events.name'))),
+        const SizedBox(height:12),
+        DropdownButtonFormField<String>(key:const ValueKey('event-new-kind'),initialValue:kind,isExpanded:true,decoration:InputDecoration(labelText:S.t('events.model')),
+          items:[for(final k in eventKinds)DropdownMenuItem(value:k,child:Text(S.t('events.kind.$k')))],onChanged:(v)=>set(()=>kind=v??kind)),
+        const SizedBox(height:6),
+        Text(S.t('events.modulesOf',{'m':eventKindModules(kind)}),style:Theme.of(c).textTheme.bodySmall),
+      ]),
+      actions:[TextButton(onPressed:()=>Navigator.pop(c,false),child:Text(S.t('common.cancel'))),
+        FilledButton(key:const ValueKey('event-new-create'),onPressed:()=>Navigator.pop(c,true),child:Text(S.t('events.create')))])));
+    final n=name.text.trim(); name.dispose();
+    if(ok!=true||n.isEmpty||!mounted)return;
+    final m=ScaffoldMessenger.of(context);
+    try{
+      final e=await widget.api!.createEvent(n,kind);
+      if(!mounted)return;
+      await _loadEvents();
+      if(!mounted)return;
+      setState((){_event.text='${e['id']}';_dirty=true;});
+      m.showSnackBar(SnackBar(content:Text(S.t('events.created',{'n':n}))));
+    }on SarcadeHttpException catch(e){
+      m.showSnackBar(SnackBar(content:Text(S.t(e.statusCode==403?'events.pcoOnly':'events.createFailed',{'e':'HTTP ${e.statusCode}'}))));
+    }catch(_){
+      m.showSnackBar(SnackBar(content:Text(S.t('events.createFailed',{'e':S.t('settings.eventsOffline')}))));
+    }
+  }
+
+  /// « ADRASEC », « Course » or « aucun (Core seul) », for the dialog.
+  String eventKindModules(String kind){
+    final m=modulesOfKind(kind);
+    return m.isEmpty?S.t('modules.none'):m.map((id)=>S.t('modules.$id')).join(', ');
+  }
+
+  /// ADRASEC on for the event this device follows (Core and modules).
+  bool get _adrasec=>eventModules(widget.store?.eventSettings(widget.initial.eventId)).contains('adrasec');
 
   String? _required(String? v)=>(v==null||v.trim().isEmpty)?S.t('settings.required'):null;
 
@@ -444,8 +488,8 @@ class _SettingsPageState extends State<SettingsPage> {
         for(final a in openInChoices(android:!kIsWeb&&defaultTargetPlatform==TargetPlatform.android,ios:!kIsWeb&&defaultTargetPlatform==TargetPlatform.iOS))
           if(a!='other')DropdownMenuItem(value:a,child:Text(S.t('ext.app.$a')))],
       onChanged:(v) async {await widget.store!.setPreference(navAppMineKey,v==null||v.isEmpty?null:v);if(mounted)setState((){});}))),
-    // Under « Couleur de dessin » (29 Oct 2026).
-    _row(S.t('settings.aprsConsent'),help:S.t('settings.aprsConsentHelp'),child:Align(alignment:Alignment.centerRight,
+    // Under « Couleur de dessin » (29 Oct 2026); ADRASEC module only.
+    if(_adrasec)_row(S.t('settings.aprsConsent'),help:S.t('settings.aprsConsentHelp'),child:Align(alignment:Alignment.centerRight,
       child:Switch(value:_aprsConsent,onChanged:(v)=>setState((){_aprsConsent=v;_dirty=true;})))),
   ]);
 
@@ -542,7 +586,7 @@ class _SettingsPageState extends State<SettingsPage> {
     'event'=>Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
       EventSettingsSection(api:widget.api!,eventId:widget.initial.eventId,actorId:widget.initial.deviceId),
       // Default frequencies of the bearing tool: administrator only.
-      if(myRoles.contains('admin'))_row(S.t('signals.title'),help:S.t('signals.rowHelp'),child:Align(alignment:Alignment.centerRight,child:OutlinedButton(
+      if(myRoles.contains('admin')&&_adrasec)_row(S.t('signals.title'),help:S.t('signals.rowHelp'),child:Align(alignment:Alignment.centerRight,child:OutlinedButton(
         onPressed:()=>showOverlayPage<void>(context,(_)=>SignalDefaultsPage(api:widget.api!,store:widget.store)),
         child:Text(S.t('signals.manage'))))),
     ]),

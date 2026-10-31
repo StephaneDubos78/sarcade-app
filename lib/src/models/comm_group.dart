@@ -60,10 +60,20 @@ class CommGroup {
     senders:senders??this.senders,managers:managers,teamId:teamId,updatedAt:updatedAt);
 }
 
+/// Default channels in display order (server: groups.service.DEFAULT_GROUPS).
+const defaultGroupOrder=['Diffusion PCO','PCO','Équipes terrain','Transmissions','Logistique'];
+
 /// Groups shown to choose a recipient: not archived, « Tous » first, then by name.
 List<CommGroup> sortedGroups(Iterable<CommGroup> groups,{bool includeArchived=false}){
   final list=groups.where((g)=>includeArchived||!g.archived).toList();
-  int rank(CommGroup g)=>g.kind=='all'?0:g.kind=='default'?1:g.kind=='team'?2:3;
+  // Fixed order of the default channels (card « Ordre des pastilles de
+  // groupes », 31 Oct 2026): Tous, Diffusion PCO, PCO, Équipes terrain,
+  // Transmissions, Logistique; then teams, then the others by name.
+  int rank(CommGroup g){
+    if(g.kind=='all')return 0;
+    if(g.kind=='default'){final i=defaultGroupOrder.indexOf(g.name);return i<0?1+defaultGroupOrder.length:1+i;}
+    return g.kind=='team'?10:11;
+  }
   list.sort((a,b){final r=rank(a).compareTo(rank(b));return r!=0?r:a.name.toLowerCase().compareTo(b.name.toLowerCase());});
   return list;
 }

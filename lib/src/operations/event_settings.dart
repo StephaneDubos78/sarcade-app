@@ -59,6 +59,12 @@ List<String> eventModules(Map<String,dynamic>? settings){
   return m is List?m.whereType<String>().toList():const ['adrasec'];
 }
 
+/// Event models offered when the PCO creates an event, and the modules
+/// each turns on (server: sarcade.modules.TEMPLATES).
+const eventKinds=['exercise','sater','mission','race','family','friends'];
+const _kindModules={'family':<String>[],'friends':<String>[],'exercise':['adrasec'],'sater':['adrasec'],'mission':['adrasec'],'race':['race']};
+List<String> modulesOfKind(String kind)=>_kindModules[kind]??const ['adrasec'];
+
 /// Modules offered to the PCO, in display order (same list as the server).
 const eventModuleIds=['adrasec','race'];
 
