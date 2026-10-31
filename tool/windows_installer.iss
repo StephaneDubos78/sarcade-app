@@ -44,4 +44,7 @@ Name: "{autoprograms}\SARCADE"; Filename: "{app}\sarcade_app.exe"
 Name: "{autodesktop}\SARCADE"; Filename: "{app}\sarcade_app.exe"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\sarcade_app.exe"; Description: "{cm:LaunchProgram,SARCADE}"; Flags: nowait postinstall skipifsilent
+; Started with the rights of the person, never as administrator: the Windows
+; notification plugin stops an elevated SARCADE (card « Client Windows :
+; écran gris », 31 Oct 2026).
+Filename: "{app}\sarcade_app.exe"; Description: "{cm:LaunchProgram,SARCADE}"; Flags: nowait postinstall skipifsilent runasoriginaluser
