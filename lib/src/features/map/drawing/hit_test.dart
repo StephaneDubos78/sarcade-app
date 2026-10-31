@@ -67,3 +67,41 @@ MapFeature? hitTest(List<MapFeature> features,Offset tap,Projector project,{doub
   }
   return stroke??fill;
 }
+
+/// Tolerance of a long press on the outline of a closed shape (card « Appui
+/// long dans une zone dessinée », 31 Oct 2026): the inside opens the point
+/// menu, only the outline selects.
+const outlineTolerancePx=12.0;
+
+/// Feature selected at once by a long press: a point, a text, a line or an
+/// arrow under the finger, or the outline of a closed shape; never the
+/// inside of a shape.
+MapFeature? hitOutline(List<MapFeature> features,Offset tap,Projector project,{double Function(MapFeature)? radiusPx}){
+  for(final f in features.reversed){
+    if(f.isClosed){
+      final List<Offset> outline;
+      if(f.kind==FeatureKind.circle){
+        final r=radiusPx?.call(f)??0;
+        final d=((tap-project(f.points[0])).distance-r).abs();
+        if(d<=outlineTolerancePx)return f;
+        continue;
+      }
+      outline=f.ring.map(project).toList();
+      if(_polylineDistance(tap,outline,closed:true)<=outlineTolerancePx)return f;
+    }else if(featureDistance(f,tap,project,radiusPx:radiusPx)<=hitTolerancePx){
+      return f;
+    }
+  }
+  return null;
+}
+
+/// Closed shapes containing [tap], topmost first, at most [max]: offered as
+/// « Sélectionner … » at the top of the point menu.
+List<MapFeature> shapesUnder(List<MapFeature> features,Offset tap,Projector project,{double Function(MapFeature)? radiusPx,int max=3}){
+  final out=<MapFeature>[];
+  for(final f in features.reversed){
+    if(f.isClosed&&featureDistance(f,tap,project,radiusPx:radiusPx)==0)out.add(f);
+    if(out.length>=max)break;
+  }
+  return out;
+}

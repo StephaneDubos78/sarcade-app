@@ -428,20 +428,26 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     if(_adjusting!=null){_adjustOrigin(point);return;}
     final wide=MediaQuery.sizeOf(context).width>=_compactWidth;
     final me=_me??_positionOf(widget.deviceId);
-    if(gesture&&nearOwnPosition(point,me)){await _bearings.startTaking();if(wide&&mounted)_startAim(BearingAim(me!));return;}
-    // Long press on a drawn object: « Sélectionner » it; other touches add
-    // objects (card « Sélection sortie de la barre de dessin », 17 h 36).
+    if(gesture&&nearOwnPosition(point,me)){await _bearings.startTaking();if(!mounted)return;if(wide){_startAim(BearingAim(me!));}else{_focusBearing(me!);}return;}
+    // Long press on a line, a point, a text or the outline of a shape:
+    // « Sélectionner » it. Inside a shape the point menu opens, the shape
+    // offered at its top (card « Appui long dans une zone dessinée », 31 Oct
+    // 2026: a bearing could not be taken inside a sector any more).
+    var under=const <MapFeature>[];
     if(gesture&&_showDrawings){
-      final cam=_map.camera;
-      final hit=hitTest(_drawing.features,cam.latLngToScreenOffset(point),cam.latLngToScreenOffset,radiusPx:_circleRadiusPx);
+      final cam=_map.camera; final at=cam.latLngToScreenOffset(point);
+      final hit=hitOutline(_drawing.features,at,cam.latLngToScreenOffset,radiusPx:_circleRadiusPx);
       if(hit!=null&&_drawing.canSelect(hit)){_drawing.startSelection(hit.id);return;}
+      under=shapesUnder(_drawing.features,at,cam.latLngToScreenOffset,radiusPx:_circleRadiusPx).where(_drawing.canSelect).toList();
     }
     final label=S.t('nav.point');
     final choice=await showPointMenu(context,point:point,places:_places,pco:isPco(widget.deviceId),
-      coordinates:formatCoordinates(point,_coordFormat,mgrsDigits:_mgrsDigits));
+      coordinates:formatCoordinates(point,_coordFormat,mgrsDigits:_mgrsDigits),
+      objects:[for(final f in under)(id:f.id,label:f.label.trim().isEmpty?f.kind.label:f.label.trim())],
+      onSelectObject:_drawing.startSelection);
     if(choice==null||!mounted)return;
     switch(choice){
-      case PointAction.bearing: await _bearings.startTaking(from:point);if(wide&&mounted)_startAim(BearingAim(point));
+      case PointAction.bearing: await _bearings.startTaking(from:point);if(!mounted)return;if(wide){_startAim(BearingAim(point));}else{_focusBearing(point);}
       case PointAction.poi: await _createPoiHere(point);
       case PointAction.order: await _sendOperatorHere(point);
       case PointAction.measure: await _measureTo(point,label);
@@ -775,7 +781,7 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       show:(p)=>_onMapNow((){setState(()=>_searchPin=p);_map.move(p,15);}),
       measure:(p)=>_onMapNow(()=>_measureTo(p,S.t('nav.point'))),
       poi:(p)=>_onMapNow(()=>_createPoiHere(p)),
-      bearing:(p)=>_onMapNow(()=>_bearings.startTaking(from:p)),
+      bearing:(p)=>_onMapNow(() async {await _bearings.startTaking(from:p);if(mounted)_focusBearing(p);}),
       order:isPco(widget.deviceId)?((p)=>_onMapNow(()=>_sendOperatorHere(p))):null,
       message:_sendText,
       pickOnMap:()=>_startPick(S.t('converter.touchMap'),(p,_)=>_openConverter(initial:p)))));
@@ -1924,7 +1930,15 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
     a.fix(p,snap:HardwareKeyboard.instance.isShiftPressed);_bearings.setManual(a.azimuthDeg);}
   void _cancelAim(){_aim=null;_bearings.stopTaking();}
   /// Mouse bearing started (new or changed): map centred on its origin (30 Oct 2026, 12 h 44).
-  void _startAim(BearingAim a){setState(()=>_aim=a);glideMapTo(_map,a.origin);}
+  void _startAim(BearingAim a){setState(()=>_aim=a);_focusBearing(a.origin);}
+  /// Bearing started (finger, mouse, « Modifier »): the map glides once so
+  /// that its origin sits in the middle of the visible part, never under
+  /// the bearing sheet (31 Oct 2026); afterwards the map is free.
+  void _focusBearing(LatLng origin){
+    Size size; try{size=Size(_map.camera.nonRotatedSize.width,_map.camera.nonRotatedSize.height);}catch(_){return;}
+    final wide=MediaQuery.sizeOf(context).width>=_compactWidth;
+    glideMapTo(_map,origin,focus:bearingFocus(size,phone:!wide,rightSheetPx:wide&&_aim!=null?bearingSheetWidth+24:0));
+  }
   /// « Modifier » on a computer: mouse arrow from the same origin, panel
   /// prefilled; Échap or a right click leaves the bearing as it was.
   Future<void> _editWithMouse(Bearing b) async {

@@ -45,6 +45,7 @@ class S {
 }
 
 const Texts _fr={
+  'point.selectObject':'Sélectionner « {name} »',
   'weather.broadcast':'Diffuser',
   'paste.title':'Coller une position','paste.button':'Coller','paste.hint':'Texte, message, lien Google Maps, Plans, OpenStreetMap, Waze…','paste.read':'Lire',
   'paste.empty':'Le presse-papiers est vide','paste.none':'Aucune position trouvée dans ce texte','paste.offline':'Aucune position trouvée ; recherche d’adresse impossible hors connexion',
@@ -487,6 +488,7 @@ const Texts _fr={
 };
 
 const Texts _en={
+  'point.selectObject':'Select « {name} »',
   'weather.broadcast':'Broadcast',
   'paste.title':'Paste a position','paste.button':'Paste','paste.hint':'Text, message, Google Maps, Apple Maps, OpenStreetMap, Waze link…','paste.read':'Read',
   'paste.empty':'The clipboard is empty','paste.none':'No position found in this text','paste.offline':'No position found; address search impossible offline',

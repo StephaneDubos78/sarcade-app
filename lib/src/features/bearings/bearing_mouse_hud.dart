@@ -55,10 +55,35 @@ class MouseBearingHud extends StatelessWidget {
   }
 }
 
-/// Moves the map to [target] in about [duration], zoom and rotation kept.
-void glideMapTo(MapController map,LatLng target,{Duration duration=const Duration(milliseconds:350)}){
+/// Where the origin of a bearing goes on the screen, as a fraction of the
+/// map (card « Relevé au doigt : la carte ne se centre pas », 31 Oct 2026):
+/// the middle of the part left visible between the top banner and the
+/// bearing sheet — on a phone the sheet covers the bottom, on a computer
+/// or a tablet the sheet of the mouse bearing takes [rightSheetPx] on the
+/// right.
+Offset bearingFocus(Size map,{required bool phone,double rightSheetPx=0}){
+  if(phone)return Offset(map.width/2,map.height*0.32);
+  return Offset((map.width-rightSheetPx)/2,map.height*0.45);
+}
+
+/// Map centre that puts [target] at [focus] on the screen (zoom and
+/// rotation kept); [project] and [unproject] are the camera conversions.
+LatLng centreFor(LatLng target,Offset focus,Size map,Offset Function(LatLng) project,LatLng Function(Offset) unproject){
+  final p=project(target);
+  return unproject(p+Offset(map.width/2,map.height/2)-focus);
+}
+
+/// Moves the map to [target] in about [duration], zoom and rotation kept;
+/// with [focus], [target] ends there on the screen instead of the centre.
+void glideMapTo(MapController map,LatLng target,{Duration duration=const Duration(milliseconds:350),Offset? focus}){
   LatLng from; double zoom;
-  try{from=map.camera.center;zoom=map.camera.zoom;}catch(_){return;}
+  try{
+    from=map.camera.center;zoom=map.camera.zoom;
+    if(focus!=null){
+      final c=map.camera; final size=Size(c.nonRotatedSize.width,c.nonRotatedSize.height);
+      target=centreFor(target,focus,size,c.latLngToScreenOffset,c.screenOffsetToLatLng);
+    }
+  }catch(_){return;}
   const step=Duration(milliseconds:16);
   final steps=(duration.inMilliseconds/step.inMilliseconds).ceil().clamp(1,100);
   var i=0;
