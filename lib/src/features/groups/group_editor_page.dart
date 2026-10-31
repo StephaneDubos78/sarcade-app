@@ -4,6 +4,7 @@ import '../../l10n/strings.dart';
 import '../../ui/color_palette.dart';
 import '../../models/comm_group.dart';
 import '../map/drawing/drawing_controller.dart' show drawingPalette;
+import '../../ui/link_status.dart';
 
 /// Result of the editor: the group to save, or a deletion.
 class GroupEdit {
@@ -62,7 +63,7 @@ class _GroupEditorPageState extends State<GroupEditorPage> {
   }
 
   @override Widget build(BuildContext context)=>Scaffold(
-    appBar:AppBar(title:Text(widget.initial==null?S.t('groups.new'):S.t('groups.edit')),actions:[
+    appBar:LinkedAppBar(title:Text(widget.initial==null?S.t('groups.new'):S.t('groups.edit')),actions:[
       if(widget.initial!=null)IconButton(tooltip:S.t('groups.delete'),onPressed:_delete,icon:const Icon(Icons.delete_outline)),
     ]),
     body:SafeArea(child:Center(child:ConstrainedBox(constraints:const BoxConstraints(maxWidth:560),child:Form(key:_form,child:ListView(padding:const EdgeInsets.all(20),children:[

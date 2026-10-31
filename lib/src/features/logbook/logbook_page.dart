@@ -2,6 +2,7 @@ import '../../l10n/strings.dart';
 import 'package:flutter/material.dart';
 import '../../models/message.dart';
 import '../../services/sarcade_api.dart';
+import '../../ui/link_status.dart';
 
 class LogbookPage extends StatefulWidget {
  final SarcadeApi api; final String eventId;
@@ -23,7 +24,7 @@ class _LogbookPageState extends State<LogbookPage>{
  static String _two(int v)=>v.toString().padLeft(2,'0');
 
  @override Widget build(BuildContext context)=>Scaffold(
-   appBar:AppBar(title:Text(S.t('map.logbook')),actions:[IconButton(tooltip:S.t('routes.refresh'),onPressed:(){setState(()=>loading=true);_load();},icon:const Icon(Icons.refresh))]),
+   appBar:LinkedAppBar(title:Text(S.t('map.logbook')),actions:[IconButton(tooltip:S.t('routes.refresh'),onPressed:(){setState(()=>loading=true);_load();},icon:const Icon(Icons.refresh))]),
    body:loading?const Center(child:CircularProgressIndicator()):LayoutBuilder(builder:(context,c){
      final wide=c.maxWidth>=700;
      final t=Theme.of(context);

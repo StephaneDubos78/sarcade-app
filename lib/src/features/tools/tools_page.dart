@@ -5,6 +5,7 @@ library;
 import 'package:flutter/material.dart';
 
 import '../../l10n/strings.dart';
+import '../../ui/link_status.dart';
 
 /// Group of a tool (card « Outils, ordre par usage », 30 Oct 2026, 12 h 50):
 /// « Sur le terrain » (Météo, Convertisseur, Itinéraires, Résection), then
@@ -24,7 +25,7 @@ class ToolsPage extends StatelessWidget {
   Widget build(BuildContext context){
     final t=Theme.of(context);
     return Scaffold(
-      appBar:AppBar(title:Text(S.t('tools.title'))),
+      appBar:LinkedAppBar(title:Text(S.t('tools.title'))),
       body:LayoutBuilder(builder:(context,c){
         final columns=c.maxWidth>=900?3:c.maxWidth>=560?2:1;
         Widget tile(ToolItem i)=>Card(elevation:0,clipBehavior:Clip.antiAlias,

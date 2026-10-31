@@ -25,6 +25,7 @@ import '../settings/quick_messages_editor.dart' show defaultQuickMessages;
 import '../dictation/dictation_button.dart';
 import '../../ui/action_buttons.dart';
 import '../tv/tv_nearby.dart';
+import '../../ui/link_status.dart';
 
 class MessagesPage extends StatefulWidget {
  final SarcadeApi api; final String eventId,actorId; final OfflineSyncService sync; final LocalStore store;
@@ -703,7 +704,7 @@ class _MessagesPageState extends State<MessagesPage>{
      final pending=_pendingPill();
      if(listOnly){
        return Scaffold(
-         appBar:AppBar(title:Row(children:[Text(S.t('tabs.messages')),?pending]),actions:[newGroup,?adrasec,?close]),
+         appBar:LinkedAppBar(title:Row(children:[Text(S.t('tabs.messages')),?pending]),actions:[newGroup,?adrasec,?close]),
          body:_convList(by,acks));
      }
      // Computer, like WhatsApp Web (30 Oct 2026, 1 h 31): no title bar, one
@@ -722,7 +723,7 @@ class _MessagesPageState extends State<MessagesPage>{
            Flexible(child:Text(_convName(_conv,by),overflow:TextOverflow.ellipsis,style:Theme.of(context).textTheme.titleMedium)),
            ?pending,
            const Spacer(),
-           ?editGroup,favButton,?close,const SizedBox(width:4),
+           ?editGroup,favButton,?close,const LinkStatusPill(),const SizedBox(width:4),
          ])),
          const Divider(height:1),
          Expanded(child:Row(children:[
@@ -734,7 +735,7 @@ class _MessagesPageState extends State<MessagesPage>{
      }
      final back=!wide&&widget.initialPeer==null&&widget.initialText==null;
      return Scaffold(
-       appBar:AppBar(
+       appBar:LinkedAppBar(
          leading:back?BackButton(onPressed:()=>setState(()=>_chatOpen=false)):null,
          titleSpacing:back?0:null,
          title:Row(children:[
@@ -828,7 +829,7 @@ class _PhotoViewer extends StatelessWidget {
  const _PhotoViewer({required this.attachment,required this.bytes});
  @override Widget build(BuildContext context)=>Scaffold(
    backgroundColor:Colors.black,
-   appBar:AppBar(title:Text(attachment.name),actions:[
+   appBar:LinkedAppBar(title:Text(attachment.name),actions:[
      IconButton(tooltip:S.t('messages.saveFile'),icon:const Icon(Icons.download),onPressed:() async {
        final messenger=ScaffoldMessenger.of(context);
        try{
