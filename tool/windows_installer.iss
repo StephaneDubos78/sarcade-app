@@ -25,6 +25,9 @@ ArchitecturesInstallIn64BitMode=x64compatible
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
 WizardStyle=modern
+; A little larger wizard: room for the check boxes on high-DPI screens
+; (Surface, 200 %), where they were cut on the left (31 Oct 2026).
+WizardSizePercent=110
 UninstallDisplayIcon={app}\sarcade_app.exe
 ; An update closes the running client before replacing its files.
 CloseApplications=yes
