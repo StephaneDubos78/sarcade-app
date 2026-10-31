@@ -67,6 +67,9 @@ jobs:
           python tool/patch_windows.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           flutter pub get
+          # Firebase has no ARM64 Windows SDK and serves phones only.
+          python tool/windows_drop_plugins.py
+          flutter pub get
       - name: Build Windows ARM64
         shell: pwsh
         run: |
