@@ -21,6 +21,9 @@ class ToolItem {
   const ToolItem({required this.icon,required this.title,required this.subtitle,required this.color,required this.onTap,this.group=ToolGroup.field,this.id=''});
 }
 
+/// Height of a tool tile at text scale 1: title and two lines of help.
+const double toolTileHeight=96;
+
 class ToolsPage extends StatelessWidget {
   final List<ToolItem> items;
   const ToolsPage({super.key,required this.items});
@@ -43,7 +46,7 @@ class ToolsPage extends StatelessWidget {
                   child:Icon(i.icon,color:i.color)),
                 const SizedBox(width:14),
                 Expanded(child:Column(mainAxisAlignment:MainAxisAlignment.center,crossAxisAlignment:CrossAxisAlignment.start,children:[
-                  Text(i.title,style:t.textTheme.titleMedium?.copyWith(fontWeight:FontWeight.w600)),
+                  Text(i.title,maxLines:1,overflow:TextOverflow.ellipsis,style:t.textTheme.titleMedium?.copyWith(fontWeight:FontWeight.w600)),
                   const SizedBox(height:2),
                   Text(i.subtitle,maxLines:2,overflow:TextOverflow.ellipsis,style:t.textTheme.bodySmall?.copyWith(color:t.colorScheme.onSurfaceVariant)),
                 ])),
@@ -55,10 +58,13 @@ class ToolsPage extends StatelessWidget {
               SliverPadding(padding:const EdgeInsets.fromLTRB(20,16,16,8),sliver:SliverToBoxAdapter(child:Text(
                 S.t(g==ToolGroup.field?'tools.groupField':'tools.groupPc'),
                 style:t.textTheme.titleSmall?.copyWith(color:t.colorScheme.primary,fontWeight:FontWeight.w600)))),
-              SliverPadding(padding:const EdgeInsets.fromLTRB(16,0,16,8),sliver:SliverGrid.count(
-                crossAxisCount:columns,mainAxisSpacing:12,crossAxisSpacing:12,
-                childAspectRatio:columns==1?4.2:2.6,
-                children:[for(final i in items)if(i.group==g)tile(i)])),
+              // Fixed height, not a ratio (revue de cinématique, 31 Oct 2026):
+              // on a narrow phone the ratio left 33 px for the title and
+              // two lines of help, which overflowed (yellow stripes).
+              SliverPadding(padding:const EdgeInsets.fromLTRB(16,0,16,8),sliver:SliverGrid(
+                gridDelegate:SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount:columns,mainAxisSpacing:12,crossAxisSpacing:12,
+                  mainAxisExtent:toolTileHeight*MediaQuery.textScalerOf(context).scale(1)),
+                delegate:SliverChildListDelegate([for(final i in items)if(i.group==g)tile(i)]))),
             ],
           const SliverToBoxAdapter(child:SizedBox(height:16)),
         ]);
