@@ -440,6 +440,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       if(hit!=null&&_drawing.canSelect(hit)){_drawing.startSelection(hit.id);return;}
       under=shapesUnder(_drawing.features,at,cam.latLngToScreenOffset,radiusPx:_circleRadiusPx).where(_drawing.canSelect).toList();
     }
+    // Shown in the language of each device wherever it is displayed
+    // (pointLabel, 31 Oct 2026).
     final label=S.t('nav.point');
     final choice=await showPointMenu(context,point:point,places:_places,pco:isPco(widget.deviceId),
       coordinates:formatCoordinates(point,_coordFormat,mgrsDigits:_mgrsDigits),
@@ -478,7 +480,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
       ..sort((a,b)=>a.label.toLowerCase().compareTo(b.label.toLowerCase()));
     final d=await showMoveOrderDialog(context,ops);
     if(d==null||!mounted)return;
-    final label=d.label.isEmpty?S.t('order.point'):d.label;
+    // No default name stored: each device shows its own (31 Oct 2026).
+    final label=d.label.trim();
     for(final t in d.targets){await _routes.sendMoveOrder(targetId:t,destination:point,label:label,note:d.note);}
     if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(S.t('order.sent',{'n':d.targets.length}))));
   }
@@ -897,6 +900,8 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
   }
 
   Future<void> _navigateTo(LatLng point,String label) async {
+    // A graph published since the event opened is fetched now (Wi-Fi).
+    if(_graphs.graph==null)unawaited(_graphs.check());
     final mode=await chooseNavigationMode(context,label);
     if(mode==null)return;
     if(_follow)_setFollow(false);
@@ -2563,6 +2568,9 @@ class _OperationalMapPageState extends State<OperationalMapPage> {
             onMgrsDigits:(d) async {await widget.store.setPreference('mgrs_digits','$d');if(mounted)setState((){});},
             onFormat:(f) async {await widget.store.setPreference('coord_format',f.name);if(mounted)setState((){});}),
           NavigationCard(nav:_nav,following:_follow,onRecentre:()=>_setFollow(true),
+            // No engine on the server and no road graph here: one touch (31 Oct 2026).
+            onDownloadGraph:_graphs.graph==null?()=>unawaited(_graphs.check(allowMobile:true)):null,
+            graphBytes:_graphs.pendingMobileBytes,graphDownloading:_graphs.downloading,
             rotate:_phoneOrTablet?null:_followRotates,
             onRotate:_phoneOrTablet?null:(v) async {
               await widget.store.setPreference('nav_rotate_desktop',v?'1':null);

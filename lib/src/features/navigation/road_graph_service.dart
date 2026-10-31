@@ -20,7 +20,10 @@ class RoadGraphService extends ChangeNotifier {
   bool downloading=false;
   Map<String,dynamic>? get info=>store.roadGraphInfo();
 
+  /// The service of the open event, read by the Diagnostic.
+  static RoadGraphService? active;
   Future<void> start() async {
+    active=this;
     await _loadLocal();
     await check();
   }
