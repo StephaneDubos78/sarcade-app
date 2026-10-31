@@ -29,7 +29,12 @@ if (-not $p.WaitForExit($Timeout * 1000)) {
   Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
 }
 $log = Join-Path $env:LOCALAPPDATA "SARCADE\logs\demarrage.log"
-if (Test-Path $log) { Copy-Item $log (Join-Path $Out "demarrage.log"); Write-Host "--- demarrage.log"; Get-Content $log -Tail 80 }
+if (Test-Path $log) {
+  Copy-Item $log (Join-Path $Out "demarrage.log"); Write-Host "--- demarrage.log"; Get-Content $log -Tail 80
+  # Readable from the API without downloading the artifact (one annotation).
+  $tail = (Get-Content $log -Tail 12) -join "%0A"
+  Write-Host "::notice title=Windows start log ($env:PROCESSOR_ARCHITECTURE)::$tail"
+}
 else { Write-Host "::warning title=Windows start::no startup log (Dart code never ran?)" }
 if (-not (Test-Path $report)) { Write-Host "::error title=Windows start::no report: the first screen was not drawn"; exit 1 }
 $r = Get-Content $report -Raw | ConvertFrom-Json
@@ -39,5 +44,6 @@ if ($r.errors.Count -gt 0) {
   foreach ($e in $r.errors) { Write-Host "::error title=Windows start::$($e -replace "`r?`n", ' ')" }
   exit 1
 }
+Write-Host "::notice title=Windows start ($env:PROCESSOR_ARCHITECTURE)::first screen drawn without error"
 Write-Host "First screen drawn without error"
 exit 0
