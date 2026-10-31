@@ -25,6 +25,11 @@ async function tapId(page, id) {
   await expect(async () => { at = await centreOf(page, id); expect(at, `${id} on screen`).not.toBeNull(); }).toPass({ timeout: 15_000 });
   await page.mouse.click(at.x, at.y); await page.waitForTimeout(800);
 }
+/** True when some node shows [text] (in its label or its text). */
+async function textShown(page, text) {
+  return page.evaluate((text) => [...document.querySelectorAll('flt-semantics')]
+    .some((x) => ((x.getAttribute('aria-label') || '') + ' ' + (x.textContent || '')).includes(text) && x.getBoundingClientRect().width > 2), text);
+}
 /** Any node whose label is exactly [label] (button, chip, list item). */
 async function tapLabel(page, label) {
   let at = null;
@@ -122,9 +127,9 @@ for (const size of SIZES) {
       for (const exit of exits) {
         await tapId(page, 'nav.tools'); await tapId(page, 'tool.converter');
         await tapLabel(page, 'Touch the map');
-        await expect(page.getByText('Touch the map: point to convert')).toHaveCount(1, { timeout: 10_000 });
+        await expect.poll(() => textShown(page, 'point to convert'), { timeout: 10_000 }).toBe(true);
         if (exit === 'Carte') await tapId(page, 'nav.map'); else { await page.keyboard.press('Escape'); await page.waitForTimeout(700); }
-        await expect(page.getByText('Touch the map: point to convert')).toHaveCount(0);
+        await expect.poll(() => textShown(page, 'point to convert'), { timeout: 5_000 }).toBe(false);
         await expectMapFree(page, size, `converter pick › ${exit}`);
       }
     });
