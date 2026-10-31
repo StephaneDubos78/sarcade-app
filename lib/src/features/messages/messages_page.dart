@@ -205,10 +205,11 @@ class _MessagesPageState extends State<MessagesPage>{
 
  Future<void> _post(String body,{List<SarcadeAttachment> attachments=const []}) async {
    if(!_canWrite)return;
-   final m=SarcadeMessage(id:_uuid.v4(),eventId:widget.eventId,senderId:widget.actorId,recipientIds:_recipients(),priority:_priority,body:body,createdAt:DateTime.now().toUtc(),attachments:attachments);
+   final m=SarcadeMessage(id:_uuid.v4(),eventId:widget.eventId,senderId:widget.actorId,recipientIds:_recipients(),priority:_priority,body:body,createdAt:DateTime.now().toUtc(),attachments:attachments,
+     replyTo:_replyTo?.id);
    await widget.store.cacheMessage(m.toJson());
    await widget.sync.queue(objectId:m.id,objectType:'message',payload:m.toJson());
-   if(mounted)setState((){}); _text.clear();
+   if(mounted)setState(()=>_replyTo=null); _text.clear();
  }
  Future<void> _send() async {
    final body=_text.text.trim(); if(body.isEmpty)return;
@@ -291,7 +292,7 @@ class _MessagesPageState extends State<MessagesPage>{
    setState(()=>_chatOpen=false);
    return true;
  }
- @override void dispose(){widget.navigator?.detach(_backFn);for(final w in _watch){w.cancel();}_text.removeListener(_onTextChanged);_text.dispose();_scroll.dispose();super.dispose();}
+ @override void dispose(){_inputFocus.dispose();widget.navigator?.detach(_backFn);for(final w in _watch){w.cancel();}_text.removeListener(_onTextChanged);_text.dispose();_scroll.dispose();super.dispose();}
 
  Future<void> _addTemplate() async {
    try{
@@ -446,6 +447,8 @@ class _MessagesPageState extends State<MessagesPage>{
  /// Long press (phone) or right click (computer): actions on a message.
  Future<void> _actions(SarcadeMessage m,List<SarcadeAck> acks,bool mine) async {
    final choice=await showModalBottomSheet<String>(context:context,showDragHandle:true,builder:(c)=>SafeArea(child:Column(mainAxisSize:MainAxisSize.min,children:[
+     // « Répondre » first (31 Oct 2026): the answer quotes this message.
+     if(!m.deleted&&_canWrite)ListTile(key:const ValueKey('msg-reply'),leading:const Icon(Icons.reply),title:Text(S.t('messages.replyQuote')),onTap:()=>Navigator.pop(c,'reply')),
      if(!mine&&!m.deleted)for(final s in const ['received','read','accepted','rejected'])ListTile(leading:Icon(s=='rejected'?Icons.close:Icons.check),title:Text(S.t('ack.$s')),onTap:()=>Navigator.pop(c,s)),
      if(!m.deleted)ListTile(leading:const Icon(Icons.copy),title:Text(S.t('messages.copy')),onTap:()=>Navigator.pop(c,'copy')),
      ListTile(leading:const Icon(Icons.info_outline),title:Text(S.t('messages.info')),onTap:()=>Navigator.pop(c,'info')),
@@ -453,6 +456,7 @@ class _MessagesPageState extends State<MessagesPage>{
      ListTile(leading:const Icon(Icons.delete_outline),title:Text(S.t('messages.delete')),onTap:()=>Navigator.pop(c,'delete')),
    ])));
    if(choice==null||!mounted)return;
+   if(choice=='reply'){_startReply(m);return;}
    if(choice=='copy'){await Clipboard.setData(ClipboardData(text:m.body));_snack(S.t('messages.copied'));return;}
    if(choice=='info'){_showInfo(m,acks);return;}
    if(choice=='direct'){_open(directKey(m.senderId));return;}
@@ -508,6 +512,7 @@ class _MessagesPageState extends State<MessagesPage>{
        child:Text(S.t(priorityKey(m.priority)).toUpperCase(),style:TextStyle(fontSize:10,fontWeight:FontWeight.w800,color:prio,letterSpacing:0.4)))),
      if(showAuthor&&named&&!mine)Padding(padding:const EdgeInsets.only(bottom:2),child:Text(m.senderId,
        style:TextStyle(fontWeight:FontWeight.w700,fontSize:13,color:Color(authorColor(m.senderId))))),
+     if(m.replyTo!=null)_quoteInBubble(m.replyTo!),
      if(photos.isNotEmpty)Padding(padding:const EdgeInsets.only(bottom:6),child:Wrap(spacing:6,runSpacing:6,children:[
        for(final p in photos)_PhotoThumb(key:ValueKey(p.fileId),attachment:p,api:widget.api,store:widget.store,eventId:widget.eventId),
      ])),
@@ -522,9 +527,12 @@ class _MessagesPageState extends State<MessagesPage>{
      ])),
    ]);
    const r=Radius.circular(10);
-   final bubble=GestureDetector(onLongPress:()=>_actions(m,ma,mine),onSecondaryTap:()=>_actions(m,ma,mine),
-     child:Container(margin:EdgeInsets.fromLTRB(mine?56:0,1,mine?0:56,1),padding:const EdgeInsets.fromLTRB(9,6,9,5),
-       decoration:BoxDecoration(color:mine?_mineBg:_otherBg,
+   // A simple touch opens the actions (decision of 30 Oct 2026, 22 h 37);
+   // long press and right click stay; swiping right answers.
+   final bubble=GestureDetector(onTap:()=>_actions(m,ma,mine),onLongPress:()=>_actions(m,ma,mine),onSecondaryTap:()=>_actions(m,ma,mine),
+     onHorizontalDragEnd:(d){if((d.primaryVelocity??0)>300&&_canWrite)_startReply(m);},
+     child:AnimatedContainer(duration:const Duration(milliseconds:250),margin:EdgeInsets.fromLTRB(mine?56:0,1,mine?0:56,1),padding:const EdgeInsets.fromLTRB(9,6,9,5),
+       decoration:BoxDecoration(color:_flashId==m.id?Color.alphaBlend(s.primary.withValues(alpha:0.25),mine?_mineBg:_otherBg):(mine?_mineBg:_otherBg),
          // Small tail on the first bubble of a series.
          borderRadius:BorderRadius.only(topLeft:!mine&&showAuthor?const Radius.circular(2):r,topRight:mine&&showAuthor?const Radius.circular(2):r,bottomLeft:r,bottomRight:r),
          border:urgent?Border(left:BorderSide(color:prio,width:4)):null,
@@ -535,7 +543,7 @@ class _MessagesPageState extends State<MessagesPage>{
    // series; the name above it only where several people talk.
    final avatar=!mine?Padding(padding:const EdgeInsets.only(right:6,top:2),
      child:showAuthor?_personAvatar(m.senderId):const SizedBox(width:30)):null;
-   return Padding(padding:EdgeInsets.fromLTRB(10,showAuthor?6:1,10,1),child:Align(alignment:mine?Alignment.centerRight:Alignment.centerLeft,
+   return Padding(key:_keyFor(m.id),padding:EdgeInsets.fromLTRB(10,showAuthor?6:1,10,1),child:Align(alignment:mine?Alignment.centerRight:Alignment.centerLeft,
      child:ConstrainedBox(constraints:const BoxConstraints(maxWidth:600),child:MergeSemantics(child:Row(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.start,children:[
        ?avatar,
        Flexible(child:bubble),
@@ -593,13 +601,62 @@ class _MessagesPageState extends State<MessagesPage>{
  /// the predefined messages and the priority, a wide rounded field with the
  /// emoji at its end, the camera, then one round button that dictates while
  /// the field is empty and sends once there is text.
+ // --- « Répondre » (card of 30 Oct 2026, 22 h 35, validated at 22 h 38) ---
+ SarcadeMessage? _replyTo; String? _flashId;
+ final _inputFocus=FocusNode();
+ final Map<String,GlobalKey> _keys={};
+ GlobalKey _keyFor(String id)=>_keys.putIfAbsent(id,()=>GlobalKey(debugLabel:'msg-$id'));
+ void _startReply(SarcadeMessage m){setState(()=>_replyTo=m);_inputFocus.requestFocus();}
+ ({String author,String text,bool deleted}) _quote(String id)=>quoteOf(_eventMessages.where((x)=>x.id==id).firstOrNull,
+   deletedText:S.t('messages.deleted'),photoText:S.t('messages.quotePhoto'),missingText:S.t('messages.quoteMissing'));
+
+ Widget _quoteBox(({String author,String text,bool deleted}) q,{VoidCallback? onTap,Widget? trailing}){
+   final s=Theme.of(context).colorScheme;
+   final colour=q.author.isEmpty?s.outline:Color(authorColor(q.author));
+   return InkWell(onTap:onTap,borderRadius:BorderRadius.circular(6),child:Container(
+     margin:const EdgeInsets.only(bottom:4),padding:const EdgeInsets.fromLTRB(8,4,4,4),
+     decoration:BoxDecoration(color:s.onSurface.withValues(alpha:0.06),borderRadius:BorderRadius.circular(6),border:Border(left:BorderSide(color:colour,width:4))),
+     child:Row(children:[
+       Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,mainAxisSize:MainAxisSize.min,children:[
+         if(q.author.isNotEmpty)Text(q.author,style:TextStyle(fontWeight:FontWeight.w700,fontSize:12,color:colour)),
+         Text(q.text,maxLines:2,overflow:TextOverflow.ellipsis,style:TextStyle(fontSize:13,color:s.onSurfaceVariant,fontStyle:q.deleted?FontStyle.italic:null)),
+       ])),
+       ?trailing,
+     ])));
+ }
+
+ /// In a reply bubble: a touch goes back to the quoted message, which flashes.
+ Widget _quoteInBubble(String id)=>_quoteBox(_quote(id),onTap:()=>_goToMessage(id));
+
+ Widget _replyBar(SarcadeMessage r)=>Material(key:const ValueKey('reply-bar'),color:_night?const Color(0xFF202C33):const Color(0xFFF0F2F5),
+   child:Padding(padding:const EdgeInsets.fromLTRB(10,6,6,0),child:_quoteBox(quoteOf(r,deletedText:S.t('messages.deleted'),photoText:S.t('messages.quotePhoto'),missingText:''),
+     trailing:IconButton(key:const ValueKey('reply-cancel'),tooltip:S.t('common.cancel'),onPressed:()=>setState(()=>_replyTo=null),icon:const Icon(Icons.close,size:18)))));
+
+ Future<void> _goToMessage(String id) async {
+   final list=_messages; final i=list.indexWhere((m)=>m.id==id);
+   if(i<0){_snack(S.t('messages.quoteMissing'));return;}
+   var ctx=_keys[id]?.currentContext;
+   if(ctx==null&&_scroll.hasClients){
+     // Not built yet: about there first, then exactly.
+     final max=_scroll.position.maxScrollExtent;
+     await _scroll.animateTo((max*i/(list.length<2?1:list.length-1)).clamp(0.0,max),duration:const Duration(milliseconds:250),curve:Curves.easeOut);
+     await WidgetsBinding.instance.endOfFrame;
+     ctx=_keys[id]?.currentContext;
+   }
+   if(ctx!=null&&ctx.mounted)await Scrollable.ensureVisible(ctx,alignment:0.3,duration:const Duration(milliseconds:250));
+   if(!mounted)return;
+   setState(()=>_flashId=id);
+   await Future<void>.delayed(const Duration(milliseconds:1200));
+   if(mounted&&_flashId==id)setState(()=>_flashId=null);
+ }
+
  Widget _composer(){
    final s=Theme.of(context).colorScheme;
    final empty=_text.text.trim().isEmpty;
    final fieldColor=_night?const Color(0xFF2A3942):Colors.white;
    final iconColor=_night?const Color(0xFF8696A0):const Color(0xFF54656F);
    final prioColor=_priority=='immediate'?s.error:_priority=='urgent'?const Color(0xFFE8710A):null;
-   return Material(color:_night?const Color(0xFF202C33):const Color(0xFFF0F2F5),child:SafeArea(child:Padding(padding:const EdgeInsets.fromLTRB(4,6,6,6),child:Row(crossAxisAlignment:CrossAxisAlignment.end,children:[
+   final bar=Material(color:_night?const Color(0xFF202C33):const Color(0xFFF0F2F5),child:SafeArea(child:Padding(padding:const EdgeInsets.fromLTRB(4,6,6,6),child:Row(crossAxisAlignment:CrossAxisAlignment.end,children:[
      SizedBox(height:48,child:PopupMenuButton<String>(tooltip:S.t('messages.attach'),icon:Icon(Icons.add,size:28,color:iconColor),
        onSelected:(v){
          if(v=='quick'){_sendQuickMessage();}
@@ -624,7 +681,7 @@ class _MessagesPageState extends State<MessagesPage>{
            child:Container(padding:const EdgeInsets.symmetric(horizontal:8,vertical:3),
              decoration:BoxDecoration(color:prioColor.withValues(alpha:0.15),borderRadius:BorderRadius.circular(10)),
              child:Text(S.t('priority.$_priority'),style:TextStyle(fontSize:12,fontWeight:FontWeight.w600,color:prioColor))))),
-         Expanded(child:Focus(onKeyEvent:_onKey,child:TextField(controller:_text,maxLength:2048,minLines:1,maxLines:widget.initialText==null?6:8,
+         Expanded(child:Focus(onKeyEvent:_onKey,child:TextField(controller:_text,focusNode:_inputFocus,maxLength:2048,minLines:1,maxLines:widget.initialText==null?6:8,
            textCapitalization:TextCapitalization.sentences,style:const TextStyle(fontSize:17),
            // « Message » shown in the empty field (revue d'ergonomie n° 37).
            decoration:InputDecoration(hintText:S.t('messages.hint'),hintStyle:TextStyle(color:Theme.of(context).colorScheme.onSurfaceVariant),counterText:'',border:InputBorder.none,isDense:true,
@@ -639,6 +696,10 @@ class _MessagesPageState extends State<MessagesPage>{
        ? DictationButton(controller:_text,filled:true)
        : IconButton.filled(tooltip:S.t('messages.send'),onPressed:_send,icon:const Icon(Icons.send))),
    ]))));
+   // Answering (31 Oct 2026): the quoted message above the field, ✕ to cancel.
+   final r=_replyTo;
+   if(r==null)return bar;
+   return Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.stretch,children:[_replyBar(r),bar]);
  }
 
  Widget _chat(Map<String,CommGroup> by,Map<String,List<SarcadeAck>> acks){
