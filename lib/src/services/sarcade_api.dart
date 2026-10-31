@@ -339,6 +339,14 @@ class SarcadeApi {
     if(r.statusCode!=200) throw SarcadeHttpException('event',r.statusCode);
     return Map<String,dynamic>.from(jsonDecode(r.body) as Map);
   }
+  /// New event (PCO), with the model that decides its modules (card
+  /// « Séparer le Core et les modules », step 2): family, friends → Core;
+  /// exercise, sater, mission → ADRASEC; race → Course.
+  Future<Map<String,dynamic>> createEvent(String name,String kind) async {
+    final r=await _client.post(Uri.parse('$baseUrl/api/v0.1/events'),headers:_json,body:jsonEncode({'name':name,'kind':kind}));
+    if(r.statusCode!=201) throw SarcadeHttpException('create_event',r.statusCode,r.body);
+    return Map<String,dynamic>.from(jsonDecode(r.body) as Map);
+  }
   /// Changes event settings (PCO); 409 when the event is closed, 422 refused.
   Future<Map<String,dynamic>> patchEventSettings(String eventId,String actorId,Map<String,dynamic> settings) async {
     final r=await _client.patch(Uri.parse('$baseUrl/api/v0.1/events/$eventId/settings'),headers:_json,

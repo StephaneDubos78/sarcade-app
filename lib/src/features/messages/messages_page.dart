@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:uuid/uuid.dart';
 import '../../l10n/strings.dart';
 import '../../models/comm_group.dart';
+import '../../operations/event_settings.dart' show eventModules;
 import 'conversations.dart';
 import 'operator_avatar.dart';
 import '../../models/message.dart';
@@ -787,7 +788,8 @@ class _MessagesPageState extends State<MessagesPage>{
      final newGroup=RoundIconButton(tooltip:S.t('groups.new'),onPressed:()=>_editGroup(null),icon:Icons.group_add_outlined);
      final newChat=RoundIconButton(key:const ValueKey('messages-new-direct'),tooltip:S.t('messages.newDirect'),onPressed:_pickDirect,icon:Icons.add_comment_outlined);
      // PCO: channels of the ADRASEC model added in one touch (28 Oct 2026).
-     final adrasec=isPco(widget.actorId)?PopupMenuButton<String>(onSelected:(_)=>_addTemplate(),itemBuilder:(_)=>[
+     // ADRASEC channel models only when the event has the module.
+     final adrasec=isPco(widget.actorId)&&eventModules(widget.store.eventSettings(widget.eventId)).contains('adrasec')?PopupMenuButton<String>(onSelected:(_)=>_addTemplate(),itemBuilder:(_)=>[
        PopupMenuItem(value:'adrasec',child:Text(S.t('groups.addAdrasec')))]):null;
      final editGroup=group!=null&&group.canManage(widget.actorId)
        ?RoundIconButton(tooltip:S.t('groups.edit'),onPressed:()=>_editGroup(group),icon:Icons.edit_outlined):null;
